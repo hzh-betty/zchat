@@ -1,0 +1,61 @@
+{
+  "server": {
+    "http_port": 8000,
+    "websocket_port": 8001
+  },
+  "services": {
+    "user": 10003,
+    "file": 10002,
+    "speech": 10001,
+    "transmite": 10004,
+    "message": 10005,
+    "friend": 10006
+  },
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "database": "zchat",
+    "user": "testuser",
+    "password": "123456",
+    "charset": "utf8mb4",
+    "connections": 4
+  },
+  "redis": {
+    "host": "127.0.0.1",
+    "port": 6379,
+    "database": 0,
+    "password": "",
+    "connections": 2
+  },
+  "storage": {
+    "path": "./server_storage"
+  },
+  "speech": {
+    "enabled": false,
+    "app_id": "",
+    "api_key": "",
+    "secret_key": "",
+    "placeholder_result": "语音识别服务未配置"
+  },
+  "elasticsearch": {
+    "enabled": false,
+    "hosts": "http://127.0.0.1:9200/"
+  },
+  "rabbitmq": {
+    "enabled": false,
+    "host": "127.0.0.1:5672",
+    "user": "root",
+    "password": "123456",
+    "exchange": "msg_exchange",
+    "queue": "msg_queue",
+    "routing_key": "msg_queue"
+  },
+  "sms": {
+    "enabled": false,
+    "access_key_id": "",
+    "access_key_secret": "",
+    "region": "cn-chengdu",
+    "sign_name": "",
+    "template_code": ""
+  }
+}
