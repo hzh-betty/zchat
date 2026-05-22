@@ -1,0 +1,9 @@
+.vscode/
+tmp/
+*.log
+*.tmp
+build/
+
+.codex/
+AGENTS.md
+.clangd
