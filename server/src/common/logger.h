@@ -1,0 +1,55 @@
+#ifndef ZCHAT_SERVER_SRC_COMMON_LOGGER_H_
+#define ZCHAT_SERVER_SRC_COMMON_LOGGER_H_
+
+#include <memory>
+#include <string>
+
+#include <spdlog/spdlog.h>
+
+namespace zchat {
+
+void InitLogger(const std::string &service_name, bool console = true,
+                const std::string &log_file = std::string(),
+                const std::string &level = "debug");
+std::shared_ptr<spdlog::logger> Logger();
+void FlushLogger();
+
+} // namespace zchat
+
+#define ZCHAT_LOG_TRACE(...)                                                   \
+    do {                                                                       \
+        zchat::Logger()->trace("[{}:{}] {}", __FILE__, __LINE__,              \
+                               spdlog::fmt_lib::format(__VA_ARGS__));          \
+    } while (false)
+
+#define ZCHAT_LOG_DEBUG(...)                                                   \
+    do {                                                                       \
+        zchat::Logger()->debug("[{}:{}] {}", __FILE__, __LINE__,              \
+                               spdlog::fmt_lib::format(__VA_ARGS__));          \
+    } while (false)
+
+#define ZCHAT_LOG_INFO(...)                                                    \
+    do {                                                                       \
+        zchat::Logger()->info("[{}:{}] {}", __FILE__, __LINE__,               \
+                              spdlog::fmt_lib::format(__VA_ARGS__));           \
+    } while (false)
+
+#define ZCHAT_LOG_WARN(...)                                                    \
+    do {                                                                       \
+        zchat::Logger()->warn("[{}:{}] {}", __FILE__, __LINE__,               \
+                              spdlog::fmt_lib::format(__VA_ARGS__));           \
+    } while (false)
+
+#define ZCHAT_LOG_ERROR(...)                                                   \
+    do {                                                                       \
+        zchat::Logger()->error("[{}:{}] {}", __FILE__, __LINE__,              \
+                               spdlog::fmt_lib::format(__VA_ARGS__));          \
+    } while (false)
+
+#define ZCHAT_LOG_FATAL(...)                                                   \
+    do {                                                                       \
+        zchat::Logger()->critical("[{}:{}] {}", __FILE__, __LINE__,           \
+                                  spdlog::fmt_lib::format(__VA_ARGS__));       \
+    } while (false)
+
+#endif // ZCHAT_SERVER_SRC_COMMON_LOGGER_H_
