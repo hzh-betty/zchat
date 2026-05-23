@@ -72,7 +72,7 @@ message GetPendingFriendEventListReq {
 }
 
 message FriendEvent {
-    optional string event_id = 1;
+    string event_id = 1;
     UserInfo sender = 3;
 }
 message GetPendingFriendEventListRsp {

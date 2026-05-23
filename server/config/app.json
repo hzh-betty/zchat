@@ -15,8 +15,8 @@
     "host": "127.0.0.1",
     "port": 3306,
     "database": "zchat",
-    "user": "testuser",
-    "password": "123456",
+    "user": "{{ZCHAT_MYSQL_USER}}",
+    "password": "{{ZCHAT_MYSQL_PASSWORD}}",
     "charset": "utf8mb4",
     "connections": 4
   },
@@ -24,38 +24,38 @@
     "host": "127.0.0.1",
     "port": 6379,
     "database": 0,
-    "password": "",
+    "password": "{{ZCHAT_REDIS_PASSWORD}}",
     "connections": 2
   },
   "storage": {
     "path": "./server_storage"
   },
   "speech": {
-    "enabled": false,
-    "app_id": "",
-    "api_key": "",
-    "secret_key": "",
+    "enabled": true,
+    "app_id": "{{ZCHAT_SPEECH_APP_ID}}",
+    "api_key": "{{ZCHAT_SPEECH_API_KEY}}",
+    "secret_key": "{{ZCHAT_SPEECH_SECRET_KEY}}",
     "placeholder_result": "语音识别服务未配置"
   },
   "elasticsearch": {
-    "enabled": false,
+    "enabled": true,
     "hosts": "http://127.0.0.1:9200/"
   },
   "rabbitmq": {
-    "enabled": false,
+    "enabled": true,
     "host": "127.0.0.1:5672",
-    "user": "root",
-    "password": "123456",
+    "user": "{{ZCHAT_RABBITMQ_USER}}",
+    "password": "{{ZCHAT_RABBITMQ_PASSWORD}}",
     "exchange": "msg_exchange",
     "queue": "msg_queue",
     "routing_key": "msg_queue"
   },
   "sms": {
-    "enabled": false,
-    "access_key_id": "",
-    "access_key_secret": "",
+    "enabled": true,
+    "access_key_id": "{{ZCHAT_SMS_ACCESS_KEY_ID}}",
+    "access_key_secret": "{{ZCHAT_SMS_ACCESS_KEY_SECRET}}",
     "region": "cn-chengdu",
-    "sign_name": "",
-    "template_code": ""
+    "sign_name": "{{ZCHAT_SMS_SIGN_NAME}}",
+    "template_code": "{{ZCHAT_SMS_TEMPLATE_CODE}}"
   }
 }

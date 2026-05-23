@@ -7,3 +7,4 @@ build/
 .codex/
 AGENTS.md
 .clangd
+.env

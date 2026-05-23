@@ -15,6 +15,7 @@ find_package(Drogon REQUIRED)
 find_package(c-ares CONFIG REQUIRED)
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
+find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(spdlog REQUIRED)
 find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin REQUIRED)
@@ -74,6 +75,7 @@ target_include_directories(zchat_proto
 
 set(SERVICE_CORE_SOURCES
     src/common/config.cc
+    src/common/crypto.cc
     src/common/logger.cc
     src/common/notify_publisher.cc
     src/common/proto_mapper.cc
@@ -89,13 +91,15 @@ set(SERVICE_CORE_SOURCES
     src/message/message_service.cc
     src/message/orm_message_repository.cc
     src/repository/orm_helpers.cc
+    src/speech/baidu_speech_recognizer.cc
     src/speech/speech_service.cc
     src/speech/speech_recognizer.cc
     src/transmite/message_queue.cc
     src/transmite/transmite_service.cc
     src/transmite/orm_transmite_repository.cc
-    src/user/sms_client.cc
+    src/user/alibaba_sms_client.cc
     src/user/orm_user_repository.cc
+    src/user/sms_client.cc
     src/user/user_service.cc)
 
 add_library(zchat_service_core STATIC ${SERVICE_CORE_SOURCES})
@@ -104,6 +108,7 @@ target_link_libraries(zchat_service_core
     Drogon::Drogon
     zchat_proto
     spdlog::spdlog
+    OpenSSL::Crypto
     PkgConfig::AMQPCPP
     PkgConfig::LIBEVENT
     PkgConfig::LIBEVENT_PTHREADS)
