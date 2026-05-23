@@ -55,6 +55,7 @@ void ZchatWebSocketController::handleConnectionClosed(
     const drogon::WebSocketConnectionPtr &connection) {
     auto context = context_.lock();
     if (context == nullptr) {
+        ZCHAT_LOG_WARN("websocket closed but gateway context expired");
         return;
     }
     std::string user_id;

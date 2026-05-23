@@ -2,6 +2,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include "common/logger.h"
 #include "common/protobuf_http.h"
 
 namespace zchat {
@@ -26,6 +27,7 @@ void CallUnaryGrpc(
     std::function<void(const drogon::HttpResponsePtr &)> &&callback, Rpc rpc) {
     Request request;
     if (!request.ParseFromString(body)) {
+        ZCHAT_LOG_WARN("grpc protobuf parse failed, body size={}B", body.size());
         callback(GrpcErrorResponse<Response>("请求正文反序列化失败"));
         return;
     }
@@ -55,6 +57,7 @@ void CallTransmite(
     std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
     zchat::NewMessageReq request;
     if (!request.ParseFromString(body)) {
+        ZCHAT_LOG_WARN("grpc protobuf parse failed, body size={}B", body.size());
         callback(
             GrpcErrorResponse<zchat::NewMessageRsp>("请求正文反序列化失败"));
         return;
@@ -64,6 +67,8 @@ void CallTransmite(
     const grpc::Status status =
         stub->GetTransmitTarget(&context, request, &target_response);
     if (!status.ok()) {
+        ZCHAT_LOG_ERROR("GetTransmitTarget rpc failed: error_code={}, error_message={}",
+                        status.error_code(), status.error_message());
         callback(
             GrpcErrorResponse<zchat::NewMessageRsp>(status.error_message()));
         return;
@@ -262,6 +267,7 @@ void GrpcServiceClients::Forward(
             speech_.get(), &zchat::SpeechService::Stub::SpeechRecognition, body,
             std::move(callback));
     }
+    ZCHAT_LOG_WARN("unknown service path: {}", path);
     callback(GrpcErrorResponse<zchat::NewMessageRsp>("未知内部服务路径"));
 }
 
