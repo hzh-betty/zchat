@@ -33,7 +33,7 @@ class UserContext : public NonCopyable {
     OrmUserRepository user_repository_;
     OrmFileRepository file_repository_;
     SessionStore sessions_;
-    ConfiguredSmsClient sms_;
+    std::unique_ptr<SmsClient> sms_;
     std::shared_ptr<UserApplicationService> user_service_;
     UserGrpcService grpc_service_;
 };

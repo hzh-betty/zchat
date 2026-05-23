@@ -4,6 +4,7 @@
 #include <cctype>
 #include <vector>
 
+#include "common/logger.h"
 #include "common/proto_mapper.h"
 #include "common/uuid.h"
 
@@ -37,6 +38,7 @@ UserApplicationService::UserApplicationService(UserRepository &users,
 
 zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
     const zchat::UserRegisterReq &request) {
+    ZCHAT_LOG_INFO("RegisterByNickname request_id={}", request.request_id());
     if (request.nickname().empty()) {
         return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
                                                      "用户名不能为空");
@@ -61,17 +63,20 @@ zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
     user.password = request.password();
     const auto inserted = users_.InsertUser(user);
     if (!inserted.ok()) {
+        ZCHAT_LOG_ERROR("RegisterByNickname db failed: {}", inserted.error().message);
         return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
                                                      inserted.error().message);
     }
 
     zchat::UserRegisterRsp response;
     MarkOk(request.request_id(), &response);
+    ZCHAT_LOG_INFO("RegisterByNickname success: request_id={}", request.request_id());
     return response;
 }
 
 zchat::UserLoginRsp
 UserApplicationService::LoginByNickname(const zchat::UserLoginReq &request) {
+    ZCHAT_LOG_INFO("LoginByNickname request_id={}", request.request_id());
     auto user = users_.FindUserByNickname(request.nickname());
     if (!user.ok()) {
         return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
@@ -79,6 +84,7 @@ UserApplicationService::LoginByNickname(const zchat::UserLoginReq &request) {
     }
     if (!user.value().has_value() ||
         user.value()->password != request.password()) {
+        ZCHAT_LOG_WARN("LoginByNickname rejected: request_id={} reason={}", request.request_id(), "用户名或密码错误");
         return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
                                                   "用户名或密码错误");
     }
@@ -86,34 +92,41 @@ UserApplicationService::LoginByNickname(const zchat::UserLoginReq &request) {
     zchat::UserLoginRsp response;
     MarkOk(request.request_id(), &response);
     response.set_login_session_id(LoginUser(user.value()->user_id));
+    ZCHAT_LOG_INFO("LoginByNickname success: request_id={} user_id={}", request.request_id(), user.value()->user_id);
     return response;
 }
 
 zchat::PhoneVerifyCodeRsp UserApplicationService::GetPhoneVerifyCode(
     const zchat::PhoneVerifyCodeReq &request) {
+    ZCHAT_LOG_INFO("GetPhoneVerifyCode request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
         return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
-                                                        "手机号码格式错误");
+                                                         "手机号码格式错误");
     }
     const std::string verify_code_id = NewId();
-    const auto saved = sessions_.SaveVerifyCode(verify_code_id, "000000");
+    const auto saved =
+        sessions_.SaveVerifyCode(verify_code_id, request.phone_number());
     if (!saved.ok()) {
+        ZCHAT_LOG_ERROR("GetPhoneVerifyCode redis failed: {}", saved.error().message);
         return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
-                                                        saved.error().message);
+                                                         saved.error().message);
     }
-    const auto sent = sms_.SendVerifyCode(request.phone_number(), "000000");
+    const auto sent = sms_.SendVerificationCode(request.phone_number());
     if (!sent.ok()) {
+        ZCHAT_LOG_ERROR("GetPhoneVerifyCode sms failed: {}", sent.error().message);
         return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
-                                                        sent.error().message);
+                                                         sent.error().message);
     }
     zchat::PhoneVerifyCodeRsp response;
     MarkOk(request.request_id(), &response);
     response.set_verify_code_id(verify_code_id);
+    ZCHAT_LOG_INFO("GetPhoneVerifyCode success: request_id={} phone={}", request.request_id(), request.phone_number());
     return response;
 }
 
 zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     const zchat::PhoneRegisterReq &request) {
+    ZCHAT_LOG_INFO("RegisterByPhone request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
         return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
                                                       "手机号码格式错误");
@@ -121,6 +134,7 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     const auto code =
         ValidateVerifyCode(request.verify_code_id(), request.verify_code());
     if (!code.ok()) {
+        ZCHAT_LOG_WARN("RegisterByPhone rejected: request_id={} reason={}", request.request_id(), "验证码失败");
         return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
                                                       code.error().message);
     }
@@ -139,19 +153,23 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     user.phone = request.phone_number();
     const auto inserted = users_.InsertUser(user);
     if (!inserted.ok()) {
+        ZCHAT_LOG_ERROR("RegisterByPhone db failed: {}", inserted.error().message);
         return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
                                                       inserted.error().message);
     }
     zchat::PhoneRegisterRsp response;
     MarkOk(request.request_id(), &response);
+    ZCHAT_LOG_INFO("RegisterByPhone success: request_id={}", request.request_id());
     return response;
 }
 
 zchat::PhoneLoginRsp
 UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
+    ZCHAT_LOG_INFO("LoginByPhone request_id={}", request.request_id());
     const auto code =
         ValidateVerifyCode(request.verify_code_id(), request.verify_code());
     if (!code.ok()) {
+        ZCHAT_LOG_WARN("LoginByPhone rejected: request_id={} reason={}", request.request_id(), "验证码失败");
         return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
                                                    code.error().message);
     }
@@ -167,11 +185,13 @@ UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
     zchat::PhoneLoginRsp response;
     MarkOk(request.request_id(), &response);
     response.set_login_session_id(LoginUser(user.value()->user_id));
+    ZCHAT_LOG_INFO("LoginByPhone success: request_id={}", request.request_id());
     return response;
 }
 
 zchat::GetUserInfoRsp
 UserApplicationService::GetUserInfo(const zchat::GetUserInfoReq &request) {
+    ZCHAT_LOG_INFO("GetUserInfo request_id={}", request.request_id());
     const auto user_id = UserIdFromSession(request.session_id());
     if (!user_id.ok()) {
         return ErrorResponse<zchat::GetUserInfoRsp>(request.request_id(),
@@ -179,6 +199,7 @@ UserApplicationService::GetUserInfo(const zchat::GetUserInfoReq &request) {
     }
     auto user = users_.FindUserById(user_id.value());
     if (!user.ok()) {
+        ZCHAT_LOG_ERROR("GetUserInfo db failed: {}", user.error().message);
         return ErrorResponse<zchat::GetUserInfoRsp>(request.request_id(),
                                                     user.error().message);
     }
@@ -196,6 +217,7 @@ UserApplicationService::GetUserInfo(const zchat::GetUserInfoReq &request) {
     zchat::GetUserInfoRsp response;
     MarkOk(request.request_id(), &response);
     *response.mutable_user_info() = ToProtoUser(user.value().value(), avatar);
+    ZCHAT_LOG_INFO("GetUserInfo success: request_id={} user_id={}", request.request_id(), user_id.value());
     return response;
 }
 
@@ -228,6 +250,7 @@ zchat::GetMultiUserInfoRsp UserApplicationService::GetMultiUserInfo(
 
 zchat::SetUserAvatarRsp
 UserApplicationService::SetAvatar(const zchat::SetUserAvatarReq &request) {
+    ZCHAT_LOG_INFO("SetAvatar request_id={}", request.request_id());
     const auto user_id = UserIdFromSession(request.session_id());
     if (!user_id.ok()) {
         return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
@@ -237,21 +260,25 @@ UserApplicationService::SetAvatar(const zchat::SetUserAvatarReq &request) {
     const auto file_result = files_.PutFile(FileRecord{
         file_id, "avatar", request.avatar().size(), request.avatar()});
     if (!file_result.ok()) {
+        ZCHAT_LOG_ERROR("SetAvatar db failed: {}", file_result.error().message);
         return ErrorResponse<zchat::SetUserAvatarRsp>(
             request.request_id(), file_result.error().message);
     }
     const auto updated = users_.UpdateUserAvatar(user_id.value(), file_id);
     if (!updated.ok()) {
+        ZCHAT_LOG_ERROR("SetAvatar db failed: {}", updated.error().message);
         return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
                                                       updated.error().message);
     }
     zchat::SetUserAvatarRsp response;
     MarkOk(request.request_id(), &response);
+    ZCHAT_LOG_INFO("SetAvatar success: request_id={}", request.request_id());
     return response;
 }
 
 zchat::SetUserNicknameRsp
 UserApplicationService::SetNickname(const zchat::SetUserNicknameReq &request) {
+    ZCHAT_LOG_INFO("SetNickname request_id={}", request.request_id());
     const auto user_id = UserIdFromSession(request.session_id());
     if (!user_id.ok()) {
         return ErrorResponse<zchat::SetUserNicknameRsp>(
@@ -260,16 +287,19 @@ UserApplicationService::SetNickname(const zchat::SetUserNicknameReq &request) {
     const auto updated =
         users_.UpdateUserNickname(user_id.value(), request.nickname());
     if (!updated.ok()) {
+        ZCHAT_LOG_ERROR("SetNickname db failed: {}", updated.error().message);
         return ErrorResponse<zchat::SetUserNicknameRsp>(
             request.request_id(), updated.error().message);
     }
     zchat::SetUserNicknameRsp response;
     MarkOk(request.request_id(), &response);
+    ZCHAT_LOG_INFO("SetNickname success: request_id={}", request.request_id());
     return response;
 }
 
 zchat::SetUserDescriptionRsp UserApplicationService::SetDescription(
     const zchat::SetUserDescriptionReq &request) {
+    ZCHAT_LOG_INFO("SetDescription request_id={}", request.request_id());
     const auto user_id = UserIdFromSession(request.session_id());
     if (!user_id.ok()) {
         return ErrorResponse<zchat::SetUserDescriptionRsp>(
@@ -278,16 +308,19 @@ zchat::SetUserDescriptionRsp UserApplicationService::SetDescription(
     const auto updated =
         users_.UpdateUserDescription(user_id.value(), request.description());
     if (!updated.ok()) {
+        ZCHAT_LOG_ERROR("SetDescription db failed: {}", updated.error().message);
         return ErrorResponse<zchat::SetUserDescriptionRsp>(
             request.request_id(), updated.error().message);
     }
     zchat::SetUserDescriptionRsp response;
     MarkOk(request.request_id(), &response);
+    ZCHAT_LOG_INFO("SetDescription success: request_id={}", request.request_id());
     return response;
 }
 
 zchat::SetUserPhoneNumberRsp
 UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
+    ZCHAT_LOG_INFO("SetPhone request_id={}", request.request_id());
     const auto user_id = UserIdFromSession(request.session_id());
     if (!user_id.ok()) {
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
@@ -296,30 +329,36 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
     const auto code = ValidateVerifyCode(request.phone_verify_code_id(),
                                          request.phone_verify_code());
     if (!code.ok()) {
+        ZCHAT_LOG_WARN("SetPhone rejected: request_id={} reason={}", request.request_id(), "验证码失败");
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
             request.request_id(), code.error().message);
     }
     const auto updated =
         users_.UpdateUserPhone(user_id.value(), request.phone_number());
     if (!updated.ok()) {
+        ZCHAT_LOG_ERROR("SetPhone db failed: {}", updated.error().message);
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
             request.request_id(), updated.error().message);
     }
     zchat::SetUserPhoneNumberRsp response;
     MarkOk(request.request_id(), &response);
+    ZCHAT_LOG_INFO("SetPhone success: request_id={}", request.request_id());
     return response;
 }
 
 Result<std::string>
 UserApplicationService::UserIdFromSession(const std::string &session_id) {
     if (session_id.empty()) {
+        ZCHAT_LOG_WARN("session invalid: session_id is empty");
         return Result<std::string>::Fail("登录会话为空");
     }
     auto user_id = sessions_.GetUserId(session_id);
     if (!user_id.ok()) {
+        ZCHAT_LOG_ERROR("UserIdFromSession redis failed: {}", user_id.error().message);
         return Result<std::string>::Fail(user_id.error().message);
     }
     if (!user_id.value().has_value()) {
+        ZCHAT_LOG_WARN("session invalid: session_id={}", session_id);
         return Result<std::string>::Fail("登录会话已失效");
     }
     return Result<std::string>::Ok(user_id.value().value());
@@ -328,6 +367,17 @@ UserApplicationService::UserIdFromSession(const std::string &session_id) {
 Result<std::string>
 UserApplicationService::ValidateVerifyCode(const std::string &verify_code_id,
                                            const std::string &verify_code) {
+    if (verify_code == "000000") {
+        auto saved = sessions_.GetVerifyCode(verify_code_id);
+        if (!saved.ok()) {
+            return Result<std::string>::Fail(saved.error().message);
+        }
+        if (!saved.value().has_value()) {
+            return Result<std::string>::Fail("验证码已失效");
+        }
+        sessions_.RemoveVerifyCode(verify_code_id);
+        return Result<std::string>::Ok(saved.value().value());
+    }
     auto saved = sessions_.GetVerifyCode(verify_code_id);
     if (!saved.ok()) {
         return Result<std::string>::Fail(saved.error().message);
@@ -335,11 +385,13 @@ UserApplicationService::ValidateVerifyCode(const std::string &verify_code_id,
     if (!saved.value().has_value()) {
         return Result<std::string>::Fail("验证码已失效");
     }
-    if (saved.value().value() != verify_code && verify_code != "000000") {
-        return Result<std::string>::Fail("验证码错误");
+    const std::string &phone = saved.value().value();
+    auto checked = sms_.CheckVerificationCode(phone, verify_code);
+    if (!checked.ok()) {
+        return Result<std::string>::Fail(checked.error().message);
     }
     sessions_.RemoveVerifyCode(verify_code_id);
-    return Result<std::string>::Ok(saved.value().value());
+    return Result<std::string>::Ok(phone);
 }
 
 bool UserApplicationService::IsValidPhone(const std::string &phone) const {

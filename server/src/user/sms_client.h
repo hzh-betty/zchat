@@ -15,8 +15,10 @@ class SmsClient : public NonCopyable {
 
     virtual ~SmsClient() = default;
 
-    virtual VoidResult SendVerifyCode(const std::string &phone,
-                                      const std::string &code) = 0;
+    virtual VoidResult SendVerificationCode(const std::string &phone) = 0;
+
+    virtual VoidResult CheckVerificationCode(const std::string &phone,
+                                             const std::string &code) = 0;
 };
 
 class ConfiguredSmsClient final : public SmsClient {
@@ -25,8 +27,10 @@ class ConfiguredSmsClient final : public SmsClient {
 
     ~ConfiguredSmsClient() override = default;
 
-    VoidResult SendVerifyCode(const std::string &phone,
-                              const std::string &code) override;
+    VoidResult SendVerificationCode(const std::string &phone) override;
+
+    VoidResult CheckVerificationCode(const std::string &phone,
+                                     const std::string &code) override;
 
   private:
     bool enabled_;
