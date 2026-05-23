@@ -82,13 +82,9 @@ MessageRecord ToMessageRecord(const zchat::NewMessageReq &request,
             !request.message().file_message().file_id().empty()) {
             record.file_id = request.message().file_message().file_id();
         }
-        if (request.message().file_message().has_file_name()) {
-            record.file_name = request.message().file_message().file_name();
-        }
-        if (request.message().file_message().has_file_size()) {
-            record.file_size = static_cast<std::uint64_t>(
-                request.message().file_message().file_size());
-        }
+        record.file_name = request.message().file_message().file_name();
+        record.file_size = static_cast<std::uint64_t>(
+            request.message().file_message().file_size());
         if (request.message().file_message().has_file_contents()) {
             *file_content = request.message().file_message().file_contents();
             record.file_size = file_content->size();

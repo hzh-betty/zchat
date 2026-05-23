@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "common/logger.h"
 #include <drogon/HttpRequest.h>
 
 namespace zchat {
@@ -31,7 +32,11 @@ bool ParseProtobufRequest(const drogon::HttpRequestPtr &request,
         return false;
     }
     const std::string body(request->body());
-    return message->ParseFromString(body);
+    if (!message->ParseFromString(body)) {
+        ZCHAT_LOG_WARN("protobuf parse failed, body size={}", body.size());
+        return false;
+    }
+    return true;
 }
 
 } // namespace zchat

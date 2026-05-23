@@ -1,5 +1,6 @@
 #include "common/config.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -23,12 +24,25 @@ Json::Value ReadJsonFile(const std::string &path) {
     return root;
 }
 
+std::string ResolveEnv(const std::string &value) {
+    if (value.size() >= 4 && value.front() == '{' && value[1] == '{' &&
+        value[value.size() - 2] == '}' && value[value.size() - 1] == '}') {
+        std::string env_name = value.substr(2, value.size() - 4);
+        const char *env_value = std::getenv(env_name.c_str());
+        if (env_value != nullptr) {
+            return std::string(env_value);
+        }
+        return std::string();
+    }
+    return value;
+}
+
 std::string GetString(const Json::Value &value, const char *key,
                       const std::string &fallback) {
     if (!value.isObject() || !value.isMember(key)) {
         return fallback;
     }
-    return value[key].asString();
+    return ResolveEnv(value[key].asString());
 }
 
 int GetInt(const Json::Value &value, const char *key, int fallback) {

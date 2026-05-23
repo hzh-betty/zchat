@@ -3,6 +3,7 @@
 #include <exception>
 #include <utility>
 
+#include "common/logger.h"
 #include <drogon/nosql/RedisException.h>
 #include <drogon/nosql/RedisResult.h>
 
@@ -13,9 +14,11 @@ template <typename Func> auto RunRedis(Func function) -> decltype(function()) {
     try {
         return function();
     } catch (const drogon::nosql::RedisException &error) {
+        ZCHAT_LOG_ERROR("redis operation failed: {}", error.what());
         using ReturnType = decltype(function());
         return ReturnType::Fail(error.what());
     } catch (const std::exception &error) {
+        ZCHAT_LOG_ERROR("redis operation failed: {}", error.what());
         using ReturnType = decltype(function());
         return ReturnType::Fail(error.what());
     }
