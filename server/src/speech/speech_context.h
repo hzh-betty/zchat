@@ -22,7 +22,7 @@ class SpeechContext : public NonCopyable {
 
   private:
     AppConfig config_;
-    ConfiguredSpeechRecognizer recognizer_;
+    std::unique_ptr<SpeechRecognizer> recognizer_;
     std::shared_ptr<SpeechApplicationService> speech_service_;
     SpeechGrpcService grpc_service_;
 };
