@@ -126,6 +126,10 @@ AppConfig LoadConfig(const std::string &path) {
         GetBool(elasticsearch, "enabled", config.elasticsearch.enabled);
     config.elasticsearch.hosts =
         GetString(elasticsearch, "hosts", config.elasticsearch.hosts);
+    config.elasticsearch.user =
+        GetString(elasticsearch, "user", config.elasticsearch.user);
+    config.elasticsearch.password =
+        GetString(elasticsearch, "password", config.elasticsearch.password);
 
     const Json::Value rabbitmq = root["rabbitmq"];
     config.rabbitmq.enabled =

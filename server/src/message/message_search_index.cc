@@ -6,6 +6,9 @@
 #include <drogon/HttpRequest.h>
 #include <json/json.h>
 
+#include "common/crypto.h"
+#include "common/logger.h"
+
 namespace zchat {
 namespace {
 
@@ -73,7 +76,8 @@ bool IsSuccessStatus(drogon::HttpStatusCode status) {
 
 ConfiguredMessageSearchIndex::ConfiguredMessageSearchIndex(
     const ElasticsearchConfig &config)
-    : enabled_(config.enabled), host_(FirstHost(config.hosts)) {
+    : enabled_(config.enabled), host_(FirstHost(config.hosts)),
+      user_(config.user), password_(config.password) {
     if (!enabled_) {
         return;
     }
@@ -97,6 +101,7 @@ ConfiguredMessageSearchIndex::IndexMessage(const MessageRecord &message) {
     request->setPath(std::string(kIndexPath) + "/_doc/" + message.message_id);
     request->setContentTypeCode(drogon::CT_APPLICATION_JSON);
     request->setBody(BuildElasticsearchMessageDocument(message));
+    AddAuthHeader(request);
 
     const auto [result, response] =
         client_->sendRequest(request, kRequestTimeoutSeconds);
@@ -127,6 +132,7 @@ ConfiguredMessageSearchIndex::SearchMessages(const std::string &session_id,
     request->setPath(std::string(kIndexPath) + "/_search");
     request->setContentTypeCode(drogon::CT_APPLICATION_JSON);
     request->setBody(BuildElasticsearchSearchRequest(session_id, keyword));
+    AddAuthHeader(request);
 
     const auto [result, response] =
         client_->sendRequest(request, kRequestTimeoutSeconds);
@@ -173,6 +179,14 @@ std::string BuildElasticsearchSearchRequest(const std::string &session_id,
     root["query"]["bool"]["filter"] = filters;
     root["query"]["bool"]["must"]["match"]["content"] = keyword;
     return CompactJson(root);
+}
+
+void ConfiguredMessageSearchIndex::AddAuthHeader(
+    const drogon::HttpRequestPtr &request) const {
+    if (!user_.empty()) {
+        request->addHeader("Authorization",
+                           "Basic " + Base64Encode(user_ + ":" + password_));
+    }
 }
 
 } // namespace zchat

@@ -53,6 +53,8 @@ struct SpeechConfig {
 struct ElasticsearchConfig {
     bool enabled = false;
     std::string hosts = "http://127.0.0.1:9200/";
+    std::string user = "elastic";
+    std::string password;
 };
 
 struct RabbitmqConfig {

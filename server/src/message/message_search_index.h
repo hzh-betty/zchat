@@ -40,8 +40,12 @@ class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
     bool enabled() const override { return enabled_; }
 
   private:
+    void AddAuthHeader(const drogon::HttpRequestPtr &request) const;
+
     bool enabled_;
     std::string host_;
+    std::string user_;
+    std::string password_;
     std::unique_ptr<trantor::EventLoopThread> loop_thread_;
     drogon::HttpClientPtr client_;
 };
