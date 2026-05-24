@@ -31,6 +31,7 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     body["channel"] = 1;
     body["cuid"] = app_id_.empty() ? std::string("zchat") : app_id_;
     body["token"] = token_result.value();
+    body["dev_pid"] = 1537;
     body["speech"] = Base64Encode(speech_data);
     body["len"] = Json::Value::Int64(static_cast<Json::Int64>(speech_data.size()));
 
@@ -80,10 +81,8 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
 Result<std::string> BaiduSpeechRecognizer::FetchAccessToken() {
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Post);
-    request->setPath("/oauth/2.0/token");
-    request->setParameter("grant_type", "client_credentials");
-    request->setParameter("client_id", api_key_);
-    request->setParameter("client_secret", secret_key_);
+    request->setPath(std::string("/oauth/2.0/token?grant_type=client_credentials&client_id=") +
+                     UrlEncode(api_key_) + "&client_secret=" + UrlEncode(secret_key_));
 
     auto token_client = drogon::HttpClient::newHttpClient(
         "https://aip.baidubce.com", loop_thread_->getLoop());

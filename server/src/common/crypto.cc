@@ -3,6 +3,7 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
+#include <algorithm>
 #include <cctype>
 #include <iomanip>
 #include <sstream>
@@ -14,6 +15,8 @@ std::string Base64Encode(const unsigned char *data, std::size_t length) {
     std::string result(encoded_length, '\0');
     EVP_EncodeBlock(reinterpret_cast<unsigned char *>(&result[0]), data,
                     static_cast<int>(length));
+    result.erase(std::remove(result.begin(), result.end(), '\n'), result.end());
+    result.erase(std::remove(result.begin(), result.end(), '\r'), result.end());
     return result;
 }
 
