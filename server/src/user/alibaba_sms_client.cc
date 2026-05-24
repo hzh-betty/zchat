@@ -17,16 +17,17 @@ AlibabaSmsClient::AlibabaSmsClient(const SmsConfig &config)
     : access_key_id_(config.access_key_id),
       access_key_secret_(config.access_key_secret),
       sign_name_(config.sign_name),
-      template_code_(config.template_code) {
+      template_code_(config.template_code),
+      template_param_(config.template_param) {
     loop_thread_ = std::make_unique<trantor::EventLoopThread>("zchat-alibaba-sms");
     loop_thread_->run();
-    client_ = drogon::HttpClient::newHttpClient("https://dysmsapi.aliyuncs.com",
+    client_ = drogon::HttpClient::newHttpClient("https://dypnsapi.aliyuncs.com",
                                                 loop_thread_->getLoop());
 }
 
 VoidResult AlibabaSmsClient::SendVerificationCode(const std::string &phone) {
     std::map<std::string, std::string> params;
-    params["Action"] = "SendVerificationCode";
+    params["Action"] = "SendSmsVerifyCode";
     params["Format"] = "JSON";
     params["Version"] = "2017-05-25";
     params["AccessKeyId"] = access_key_id_;
@@ -34,13 +35,16 @@ VoidResult AlibabaSmsClient::SendVerificationCode(const std::string &phone) {
     params["SignatureVersion"] = "1.0";
     params["SignatureNonce"] = NewId();
     params["Timestamp"] = FormatUtcTimestamp();
-    params["PhoneNumbers"] = phone;
+    params["PhoneNumber"] = phone;
 
     if (!sign_name_.empty()) {
         params["SignName"] = sign_name_;
     }
     if (!template_code_.empty()) {
         params["TemplateCode"] = template_code_;
+    }
+    if (!template_param_.empty()) {
+        params["TemplateParam"] = template_param_;
     }
 
     return SendRequest(params);
@@ -49,7 +53,7 @@ VoidResult AlibabaSmsClient::SendVerificationCode(const std::string &phone) {
 VoidResult AlibabaSmsClient::CheckVerificationCode(const std::string &phone,
                                                    const std::string &code) {
     std::map<std::string, std::string> params;
-    params["Action"] = "CheckVerificationCode";
+    params["Action"] = "CheckSmsVerifyCode";
     params["Format"] = "JSON";
     params["Version"] = "2017-05-25";
     params["AccessKeyId"] = access_key_id_;
@@ -57,14 +61,14 @@ VoidResult AlibabaSmsClient::CheckVerificationCode(const std::string &phone,
     params["SignatureVersion"] = "1.0";
     params["SignatureNonce"] = NewId();
     params["Timestamp"] = FormatUtcTimestamp();
-    params["PhoneNumbers"] = phone;
-    params["Code"] = code;
+    params["PhoneNumber"] = phone;
+    params["VerifyCode"] = code;
 
-    return SendRequest(params);
+    return SendRequest(params, true);
 }
 
 VoidResult AlibabaSmsClient::SendRequest(
-    const std::map<std::string, std::string> &params) {
+    const std::map<std::string, std::string> &params, bool check_verify_result) {
     std::string signature = ComputeSignature(params, access_key_secret_);
     std::map<std::string, std::string> all_params = params;
     all_params["Signature"] = signature;
@@ -72,7 +76,7 @@ VoidResult AlibabaSmsClient::SendRequest(
     std::string query = BuildQueryString(all_params);
 
     auto request = drogon::HttpRequest::newHttpRequest();
-    request->setMethod(drogon::Get);
+    request->setMethod(drogon::Post);
     request->setPath("/?" + query);
 
     const auto [result, response] = client_->sendRequest(request, 10.0);
@@ -97,6 +101,18 @@ VoidResult AlibabaSmsClient::SendRequest(
     if (code_resp != "OK") {
         std::string message = root.get("Message", "unknown error").asString();
         return VoidResult::Fail("阿里云短信操作失败: " + message);
+    }
+
+    if (check_verify_result) {
+        const Json::Value &model = root["Model"];
+        if (model.isObject()) {
+            std::string verify_result = model.get("VerifyResult", "").asString();
+            if (verify_result != "PASS") {
+                return VoidResult::Fail("短信验证码校验失败");
+            }
+        } else {
+            return VoidResult::Fail("短信验证码校验响应数据缺失");
+        }
     }
 
     return VoidResult::Ok();
@@ -125,7 +141,7 @@ std::string AlibabaSmsClient::ComputeSignature(
     }
 
     std::string string_to_sign =
-        "GET&" + UrlEncode("/") + "&" + UrlEncode(canonical.str());
+        "POST&" + UrlEncode("/") + "&" + UrlEncode(canonical.str());
     std::string key = secret + "&";
     return UrlEncode(HmacSha1(key, string_to_sign));
 }

@@ -33,12 +33,14 @@ class AlibabaSmsClient final : public SmsClient {
         const std::string &secret) const;
     std::string BuildQueryString(
         const std::map<std::string, std::string> &params) const;
-    VoidResult SendRequest(const std::map<std::string, std::string> &params);
+    VoidResult SendRequest(const std::map<std::string, std::string> &params,
+                           bool check_verify_result = false);
 
     std::string access_key_id_;
     std::string access_key_secret_;
     std::string sign_name_;
     std::string template_code_;
+    std::string template_param_;
 
     std::unique_ptr<trantor::EventLoopThread> loop_thread_;
     drogon::HttpClientPtr client_;

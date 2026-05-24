@@ -154,6 +154,8 @@ AppConfig LoadConfig(const std::string &path) {
     config.sms.sign_name = GetString(sms, "sign_name", config.sms.sign_name);
     config.sms.template_code =
         GetString(sms, "template_code", config.sms.template_code);
+    config.sms.template_param =
+        GetString(sms, "template_param", config.sms.template_param);
     return config;
 }
 
