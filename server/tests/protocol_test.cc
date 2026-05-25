@@ -5,11 +5,13 @@
 #include "common/config.h"
 #include "common/domain_records.h"
 #include "common/noncopyable.h"
+#include "common/proto_mapper.h"
 #include "common/protobuf_http.h"
 #include "common/result.h"
 #include "common/uuid.h"
 #include "message/message_search_index.h"
 #include "transmite/message_queue.h"
+#include "user/user_search_index.h"
 #include "user.pb.h"
 
 int main() {
@@ -67,5 +69,30 @@ int main() {
     rabbitmq.password = "guest";
     assert(zchat::BuildRabbitmqAddress(rabbitmq) ==
            "amqp://guest:guest@127.0.0.1:5673/");
+
+    zchat::UserRecord sender;
+    sender.user_id = "user-1";
+    sender.nickname = "sender";
+    const std::string user_document =
+        zchat::BuildElasticsearchUserDocument(sender);
+    assert(user_document.find("\"user_id\":\"user-1\"") != std::string::npos);
+    const std::string user_search =
+        zchat::BuildElasticsearchUserSearchRequest("sender", {"user-1"});
+    assert(user_search.find("\"minimum_should_match\":1") !=
+           std::string::npos);
+    assert(user_search.find("\"user_id.keyword\":[\"user-1\"]") !=
+           std::string::npos);
+
+    const zchat::MessageInfo queued =
+        zchat::ToProtoMessage(message, sender, "file-body");
+    std::string queued_file_content;
+    const zchat::MessageRecord parsed_message =
+        zchat::FromProtoMessage(queued, &queued_file_content);
+    assert(parsed_message.message_id == message.message_id);
+    assert(parsed_message.session_id == message.session_id);
+    assert(parsed_message.user_id == message.user_id);
+    assert(parsed_message.message_type == message.message_type);
+    assert(parsed_message.content == message.content);
+    assert(queued_file_content.empty());
     return 0;
 }
