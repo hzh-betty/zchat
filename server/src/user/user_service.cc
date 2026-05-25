@@ -33,8 +33,10 @@ void MarkOk(const std::string &request_id, Response *response) {
 UserApplicationService::UserApplicationService(UserRepository &users,
                                                FileRepository &files,
                                                SmsClient &sms,
-                                               SessionStore &sessions)
-    : users_(users), files_(files), sms_(sms), sessions_(sessions) {}
+                                               SessionStore &sessions,
+                                               UserSearchIndex &search_index)
+    : users_(users), files_(files), sms_(sms), sessions_(sessions),
+      search_index_(search_index) {}
 
 zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
     const zchat::UserRegisterReq &request) {
@@ -67,6 +69,7 @@ zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
         return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
                                                      inserted.error().message);
     }
+    IndexUser(user);
 
     zchat::UserRegisterRsp response;
     MarkOk(request.request_id(), &response);
@@ -172,6 +175,7 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
         return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
                                                       inserted.error().message);
     }
+    IndexUser(user);
     sessions_.RemoveVerifyCode(request.verify_code_id());
     zchat::PhoneRegisterRsp response;
     MarkOk(request.request_id(), &response);
@@ -305,6 +309,7 @@ UserApplicationService::SetAvatar(const zchat::SetUserAvatarReq &request) {
         return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
                                                       updated.error().message);
     }
+    IndexUserById(user_id.value());
     zchat::SetUserAvatarRsp response;
     MarkOk(request.request_id(), &response);
     ZCHAT_LOG_INFO("SetAvatar success: request_id={}", request.request_id());
@@ -326,6 +331,7 @@ UserApplicationService::SetNickname(const zchat::SetUserNicknameReq &request) {
         return ErrorResponse<zchat::SetUserNicknameRsp>(
             request.request_id(), updated.error().message);
     }
+    IndexUserById(user_id.value());
     zchat::SetUserNicknameRsp response;
     MarkOk(request.request_id(), &response);
     ZCHAT_LOG_INFO("SetNickname success: request_id={}", request.request_id());
@@ -347,6 +353,7 @@ zchat::SetUserDescriptionRsp UserApplicationService::SetDescription(
         return ErrorResponse<zchat::SetUserDescriptionRsp>(
             request.request_id(), updated.error().message);
     }
+    IndexUserById(user_id.value());
     zchat::SetUserDescriptionRsp response;
     MarkOk(request.request_id(), &response);
     ZCHAT_LOG_INFO("SetDescription success: request_id={}", request.request_id());
@@ -380,6 +387,7 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
             request.request_id(), updated.error().message);
     }
+    IndexUserById(user_id.value());
     sessions_.RemoveVerifyCode(request.phone_verify_code_id());
     zchat::SetUserPhoneNumberRsp response;
     MarkOk(request.request_id(), &response);
@@ -437,6 +445,23 @@ bool UserApplicationService::IsValidPassword(
     return std::all_of(password.begin(), password.end(), [](unsigned char c) {
         return std::isalnum(c) != 0 || c == '_' || c == '-';
     });
+}
+
+void UserApplicationService::IndexUser(const UserRecord &user) {
+    const auto indexed = search_index_.IndexUser(user);
+    if (!indexed.ok()) {
+        ZCHAT_LOG_WARN("user es index failed: user_id={} error={}",
+                       user.user_id, indexed.error().message);
+    }
+}
+
+void UserApplicationService::IndexUserById(const std::string &user_id) {
+    auto user = users_.FindUserById(user_id);
+    if (!user.ok() || !user.value().has_value()) {
+        ZCHAT_LOG_WARN("user es index skipped: user_id={}", user_id);
+        return;
+    }
+    IndexUser(user.value().value());
 }
 
 std::string UserApplicationService::LoginUser(const std::string &user_id) {

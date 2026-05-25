@@ -11,13 +11,15 @@
 #include "user.pb.h"
 #include "user/sms_client.h"
 #include "user/user_repository.h"
+#include "user/user_search_index.h"
 
 namespace zchat {
 
 class UserApplicationService : public NonCopyable {
   public:
     UserApplicationService(UserRepository &users, FileRepository &files,
-                           SmsClient &sms, SessionStore &sessions);
+                           SmsClient &sms, SessionStore &sessions,
+                           UserSearchIndex &search_index);
 
     ~UserApplicationService() = default;
 
@@ -47,12 +49,15 @@ class UserApplicationService : public NonCopyable {
                                            const std::string &verify_code);
     bool IsValidPhone(const std::string &phone) const;
     bool IsValidPassword(const std::string &password) const;
+    void IndexUser(const UserRecord &user);
+    void IndexUserById(const std::string &user_id);
     std::string LoginUser(const std::string &user_id);
 
     UserRepository &users_;
     FileRepository &files_;
     SmsClient &sms_;
     SessionStore &sessions_;
+    UserSearchIndex &search_index_;
 };
 
 } // namespace zchat

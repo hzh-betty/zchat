@@ -14,6 +14,7 @@
 #include "user/sms_client.h"
 #include "user/user_grpc_service.h"
 #include "user/user_repository.h"
+#include "user/user_search_index.h"
 #include "user/user_service.h"
 
 namespace zchat {
@@ -32,6 +33,7 @@ class UserContext : public NonCopyable {
     drogon::nosql::RedisClientPtr redis_;
     OrmUserRepository user_repository_;
     OrmFileRepository file_repository_;
+    ConfiguredUserSearchIndex search_index_;
     SessionStore sessions_;
     std::unique_ptr<SmsClient> sms_;
     std::shared_ptr<UserApplicationService> user_service_;
