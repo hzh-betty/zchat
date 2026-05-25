@@ -48,44 +48,54 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
     MessageRecord message =
         ToMessageRecord(request, NewId(), user_id.value().value(),
                         UnixTimeSeconds(), &file_content);
-    if (!file_content.empty()) {
-        const auto saved =
-            repository_.PutFile(FileRecord{message.file_id, message.file_name,
-                                           file_content.size(), file_content});
-        if (!saved.ok()) {
-            ZCHAT_LOG_ERROR("save message file failed request={} error={}",
-                            request.request_id(), saved.error().message);
-            return ErrorResponse(request.request_id(), saved.error().message);
-        }
-    }
-    const auto inserted = repository_.InsertMessage(message);
-    if (!inserted.ok()) {
-        ZCHAT_LOG_ERROR("insert message failed request={} chat={} error={}",
-                        request.request_id(), request.chat_session_id(),
-                        inserted.error().message);
-        return ErrorResponse(request.request_id(), inserted.error().message);
-    }
-    const auto indexed = search_index_.IndexMessage(message);
-    if (!indexed.ok()) {
-        ZCHAT_LOG_ERROR("index message failed request={} message={} error={}",
-                        request.request_id(), message.message_id,
-                        indexed.error().message);
-        return ErrorResponse(request.request_id(), indexed.error().message);
-    }
-    std::string queue_payload;
-    request.SerializeToString(&queue_payload);
-    const auto published = queue_.Publish(queue_payload);
-    if (!published.ok()) {
-        ZCHAT_LOG_ERROR("queue publish failed request={} message={} error={}",
-                        request.request_id(), message.message_id,
-                        published.error().message);
-        return ErrorResponse(request.request_id(), published.error().message);
+    auto sender = users_.FindUserById(user_id.value().value());
+    if (!sender.ok() || !sender.value().has_value()) {
+        ZCHAT_LOG_ERROR("new message sender lookup failed request={} sender={}",
+                        request.request_id(), user_id.value().value());
+        return ErrorResponse(request.request_id(), "发送者信息不存在");
     }
 
-    auto sender = users_.FindUserById(user_id.value().value());
+    if (queue_.enabled()) {
+        std::string queue_payload;
+        ToProtoMessage(message, sender.value().value(), file_content)
+            .SerializeToString(&queue_payload);
+        const auto published = queue_.Publish(queue_payload);
+        if (!published.ok()) {
+            ZCHAT_LOG_ERROR("queue publish failed request={} message={} error={}",
+                            request.request_id(), message.message_id,
+                            published.error().message);
+            return ErrorResponse(request.request_id(), published.error().message);
+        }
+    } else {
+        if (!file_content.empty()) {
+            const auto saved = repository_.PutFile(FileRecord{
+                message.file_id, message.file_name, file_content.size(),
+                file_content});
+            if (!saved.ok()) {
+                ZCHAT_LOG_ERROR("save message file failed request={} error={}",
+                                request.request_id(), saved.error().message);
+                return ErrorResponse(request.request_id(), saved.error().message);
+            }
+        }
+        const auto inserted = repository_.InsertMessage(message);
+        if (!inserted.ok()) {
+            ZCHAT_LOG_ERROR("insert message failed request={} chat={} error={}",
+                            request.request_id(), request.chat_session_id(),
+                            inserted.error().message);
+            return ErrorResponse(request.request_id(), inserted.error().message);
+        }
+        const auto indexed = search_index_.IndexMessage(message);
+        if (!indexed.ok()) {
+            ZCHAT_LOG_ERROR("index message failed request={} message={} error={}",
+                            request.request_id(), message.message_id,
+                            indexed.error().message);
+            return ErrorResponse(request.request_id(), indexed.error().message);
+        }
+    }
+
     auto members =
         repository_.ListChatSessionMembers(request.chat_session_id());
-    if (sender.ok() && sender.value().has_value() && members.ok()) {
+    if (members.ok()) {
         zchat::NotifyMessage notify;
         notify.set_notify_type(zchat::CHAT_MESSAGE_NOTIFY);
         *notify.mutable_new_message_info()->mutable_message_info() =
@@ -103,9 +113,8 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
                        request.chat_session_id(), user_id.value().value(),
                        members.value().size() - 1);
     } else {
-        ZCHAT_LOG_WARN("new message notify skipped request={} sender_ok={} "
-                       "members_ok={}",
-                       request.request_id(), sender.ok(), members.ok());
+        ZCHAT_LOG_WARN("new message notify skipped request={} members_ok={}",
+                       request.request_id(), members.ok());
     }
 
     zchat::NewMessageRsp response;

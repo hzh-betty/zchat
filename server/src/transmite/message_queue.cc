@@ -13,6 +13,8 @@
 #include <event2/event.h>
 #include <event2/thread.h>
 
+#include "common/logger.h"
+
 namespace zchat {
 namespace {
 
@@ -182,6 +184,70 @@ class AmqpPublisherRuntime {
     std::string error_;
 };
 
+class AmqpConsumerRuntime {
+  public:
+    using MessageHandler = ConfiguredMessageQueueConsumer::MessageHandler;
+
+    AmqpConsumerRuntime(const RabbitmqConfig &config, MessageHandler handler)
+        : base_(CreateEventBase()), handler_(base_.get()),
+          address_(BuildRabbitmqAddress(config)),
+          connection_(&handler_, address_), channel_(&connection_),
+          exchange_(config.exchange), queue_(config.queue),
+          routing_key_(config.routing_key),
+          message_handler_(std::move(handler)) {
+        if (!base_) {
+            return;
+        }
+        channel_.onError([](const char *message) {
+            ZCHAT_LOG_ERROR("RabbitMQ consumer channel error: {}",
+                            message == nullptr ? "unknown" : message);
+        });
+        channel_.declareExchange(exchange_, AMQP::direct, AMQP::durable);
+        channel_.declareQueue(queue_, AMQP::durable);
+        channel_.bindQueue(exchange_, queue_, routing_key_);
+        channel_.consume(queue_).onReceived(
+            [this](const AMQP::Message &message, std::uint64_t delivery_tag,
+                   bool) {
+                const std::string payload(message.body(), message.bodySize());
+                const auto handled = message_handler_(payload);
+                if (!handled.ok()) {
+                    ZCHAT_LOG_ERROR("RabbitMQ message handling failed: {}",
+                                    handled.error().message);
+                }
+                channel_.ack(delivery_tag);
+            });
+        thread_ = std::thread([this]() { event_base_dispatch(base_.get()); });
+    }
+
+    AmqpConsumerRuntime(const AmqpConsumerRuntime &) = delete;
+    AmqpConsumerRuntime &operator=(const AmqpConsumerRuntime &) = delete;
+    AmqpConsumerRuntime(AmqpConsumerRuntime &&) = delete;
+    AmqpConsumerRuntime &operator=(AmqpConsumerRuntime &&) = delete;
+
+    ~AmqpConsumerRuntime() {
+        if (!base_) {
+            return;
+        }
+        connection_.close();
+        event_base_loopbreak(base_.get());
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+  private:
+    std::unique_ptr<event_base, EventBaseDeleter> base_;
+    RuntimeHandler handler_;
+    AMQP::Address address_;
+    AMQP::TcpConnection connection_;
+    AMQP::TcpChannel channel_;
+    std::string exchange_;
+    std::string queue_;
+    std::string routing_key_;
+    MessageHandler message_handler_;
+    std::thread thread_;
+};
+
 ConfiguredMessageQueuePublisher::ConfiguredMessageQueuePublisher(
     const RabbitmqConfig &config)
     : enabled_(config.enabled), exchange_(config.exchange),
@@ -203,6 +269,17 @@ ConfiguredMessageQueuePublisher::Publish(const std::string &payload) {
     }
     return runtime_->Publish(payload);
 }
+
+ConfiguredMessageQueueConsumer::ConfiguredMessageQueueConsumer(
+    const RabbitmqConfig &config, MessageHandler handler)
+    : enabled_(config.enabled) {
+    if (enabled_) {
+        runtime_ =
+            std::make_unique<AmqpConsumerRuntime>(config, std::move(handler));
+    }
+}
+
+ConfiguredMessageQueueConsumer::~ConfiguredMessageQueueConsumer() = default;
 
 std::string BuildRabbitmqAddress(const RabbitmqConfig &config) {
     const auto [host, port] = ParseRabbitmqHost(config.host);
