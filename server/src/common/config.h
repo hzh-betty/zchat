@@ -71,10 +71,8 @@ struct SmsConfig {
     bool enabled = false;
     std::string access_key_id;
     std::string access_key_secret;
-    std::string region = "cn-chengdu";
     std::string sign_name;
     std::string template_code;
-    std::string template_param = R"({"code":"##code##"})";
 };
 
 struct AppConfig {

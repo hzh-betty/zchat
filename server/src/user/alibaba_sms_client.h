@@ -28,6 +28,7 @@ class AlibabaSmsClient final : public SmsClient {
 
   private:
     std::string FormatUtcTimestamp() const;
+    bool HasRequiredConfig(std::string *message) const;
     std::string ComputeSignature(
         const std::map<std::string, std::string> &params,
         const std::string &secret) const;
@@ -40,7 +41,6 @@ class AlibabaSmsClient final : public SmsClient {
     std::string access_key_secret_;
     std::string sign_name_;
     std::string template_code_;
-    std::string template_param_;
 
     std::unique_ptr<trantor::EventLoopThread> loop_thread_;
     drogon::HttpClientPtr client_;

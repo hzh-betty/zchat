@@ -114,6 +114,7 @@ zchat::PhoneVerifyCodeRsp UserApplicationService::GetPhoneVerifyCode(
     const auto sent = sms_.SendVerificationCode(request.phone_number());
     if (!sent.ok()) {
         ZCHAT_LOG_ERROR("GetPhoneVerifyCode sms failed: {}", sent.error().message);
+        sessions_.RemoveVerifyCode(verify_code_id);
         return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
                                                          sent.error().message);
     }
@@ -131,12 +132,26 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
         return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
                                                       "手机号码格式错误");
     }
+    auto existing_user = users_.FindUserByPhone(request.phone_number());
+    if (!existing_user.ok()) {
+        return ErrorResponse<zchat::PhoneRegisterRsp>(
+            request.request_id(), existing_user.error().message);
+    }
+    if (existing_user.value().has_value()) {
+        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
+                                                      "手机号已注册");
+    }
     const auto code =
         ValidateVerifyCode(request.verify_code_id(), request.verify_code());
     if (!code.ok()) {
         ZCHAT_LOG_WARN("RegisterByPhone rejected: request_id={} reason={}", request.request_id(), "验证码失败");
         return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
                                                       code.error().message);
+    }
+    if (code.value() != request.phone_number()) {
+        ZCHAT_LOG_WARN("RegisterByPhone rejected: request_id={} reason=phone mismatch", request.request_id());
+        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
+                                                      "验证码与手机号不匹配");
     }
     auto existing = users_.FindUserByPhone(request.phone_number());
     if (!existing.ok()) {
@@ -157,6 +172,7 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
         return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
                                                       inserted.error().message);
     }
+    sessions_.RemoveVerifyCode(request.verify_code_id());
     zchat::PhoneRegisterRsp response;
     MarkOk(request.request_id(), &response);
     ZCHAT_LOG_INFO("RegisterByPhone success: request_id={}", request.request_id());
@@ -166,12 +182,30 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
 zchat::PhoneLoginRsp
 UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
     ZCHAT_LOG_INFO("LoginByPhone request_id={}", request.request_id());
+    if (!IsValidPhone(request.phone_number())) {
+        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                   "手机号码格式错误");
+    }
+    auto existing_user = users_.FindUserByPhone(request.phone_number());
+    if (!existing_user.ok()) {
+        return ErrorResponse<zchat::PhoneLoginRsp>(
+            request.request_id(), existing_user.error().message);
+    }
+    if (!existing_user.value().has_value()) {
+        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                   "手机号未注册");
+    }
     const auto code =
         ValidateVerifyCode(request.verify_code_id(), request.verify_code());
     if (!code.ok()) {
         ZCHAT_LOG_WARN("LoginByPhone rejected: request_id={} reason={}", request.request_id(), "验证码失败");
         return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
                                                    code.error().message);
+    }
+    if (code.value() != request.phone_number()) {
+        ZCHAT_LOG_WARN("LoginByPhone rejected: request_id={} reason=phone mismatch", request.request_id());
+        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                   "验证码与手机号不匹配");
     }
     auto user = users_.FindUserByPhone(request.phone_number());
     if (!user.ok()) {
@@ -185,6 +219,7 @@ UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
     zchat::PhoneLoginRsp response;
     MarkOk(request.request_id(), &response);
     response.set_login_session_id(LoginUser(user.value()->user_id));
+    sessions_.RemoveVerifyCode(request.verify_code_id());
     ZCHAT_LOG_INFO("LoginByPhone success: request_id={}", request.request_id());
     return response;
 }
@@ -333,6 +368,11 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
             request.request_id(), code.error().message);
     }
+    if (code.value() != request.phone_number()) {
+        ZCHAT_LOG_WARN("SetPhone rejected: request_id={} reason=phone mismatch", request.request_id());
+        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
+            request.request_id(), "验证码与手机号不匹配");
+    }
     const auto updated =
         users_.UpdateUserPhone(user_id.value(), request.phone_number());
     if (!updated.ok()) {
@@ -340,6 +380,7 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
             request.request_id(), updated.error().message);
     }
+    sessions_.RemoveVerifyCode(request.phone_verify_code_id());
     zchat::SetUserPhoneNumberRsp response;
     MarkOk(request.request_id(), &response);
     ZCHAT_LOG_INFO("SetPhone success: request_id={}", request.request_id());
@@ -367,17 +408,6 @@ UserApplicationService::UserIdFromSession(const std::string &session_id) {
 Result<std::string>
 UserApplicationService::ValidateVerifyCode(const std::string &verify_code_id,
                                            const std::string &verify_code) {
-    if (verify_code == "000000") {
-        auto saved = sessions_.GetVerifyCode(verify_code_id);
-        if (!saved.ok()) {
-            return Result<std::string>::Fail(saved.error().message);
-        }
-        if (!saved.value().has_value()) {
-            return Result<std::string>::Fail("验证码已失效");
-        }
-        sessions_.RemoveVerifyCode(verify_code_id);
-        return Result<std::string>::Ok(saved.value().value());
-    }
     auto saved = sessions_.GetVerifyCode(verify_code_id);
     if (!saved.ok()) {
         return Result<std::string>::Fail(saved.error().message);
@@ -390,7 +420,6 @@ UserApplicationService::ValidateVerifyCode(const std::string &verify_code_id,
     if (!checked.ok()) {
         return Result<std::string>::Fail(checked.error().message);
     }
-    sessions_.RemoveVerifyCode(verify_code_id);
     return Result<std::string>::Ok(phone);
 }
 

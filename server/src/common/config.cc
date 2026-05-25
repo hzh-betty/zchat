@@ -150,12 +150,9 @@ AppConfig LoadConfig(const std::string &path) {
         GetString(sms, "access_key_id", config.sms.access_key_id);
     config.sms.access_key_secret =
         GetString(sms, "access_key_secret", config.sms.access_key_secret);
-    config.sms.region = GetString(sms, "region", config.sms.region);
     config.sms.sign_name = GetString(sms, "sign_name", config.sms.sign_name);
     config.sms.template_code =
         GetString(sms, "template_code", config.sms.template_code);
-    config.sms.template_param =
-        GetString(sms, "template_param", config.sms.template_param);
     return config;
 }
 
