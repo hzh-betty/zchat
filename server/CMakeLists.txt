@@ -100,6 +100,7 @@ set(SERVICE_CORE_SOURCES
     src/user/alibaba_sms_client.cc
     src/user/orm_user_repository.cc
     src/user/sms_client.cc
+    src/user/user_search_index.cc
     src/user/user_service.cc)
 
 add_library(zchat_service_core STATIC ${SERVICE_CORE_SOURCES})

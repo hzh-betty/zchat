@@ -53,6 +53,45 @@ zchat::MessageInfo ToProtoMessage(const MessageRecord &message,
     return proto;
 }
 
+MessageRecord FromProtoMessage(const zchat::MessageInfo &message,
+                               std::string *file_content) {
+    MessageRecord record;
+    record.message_id = message.message_id();
+    record.session_id = message.chat_session_id();
+    record.user_id = message.sender().user_id();
+    record.message_type = static_cast<int>(message.message().message_type());
+    record.create_time = message.timestamp();
+
+    if (message.message().message_type() == zchat::STRING) {
+        record.content = message.message().string_message().content();
+    } else if (message.message().message_type() == zchat::IMAGE) {
+        record.file_id = message.message().image_message().file_id();
+        if (file_content != nullptr &&
+            message.message().image_message().has_image_content()) {
+            *file_content = message.message().image_message().image_content();
+            record.file_size = file_content->size();
+        }
+    } else if (message.message().message_type() == zchat::FILE) {
+        record.file_id = message.message().file_message().file_id();
+        record.file_name = message.message().file_message().file_name();
+        record.file_size = static_cast<std::uint64_t>(
+            message.message().file_message().file_size());
+        if (file_content != nullptr &&
+            message.message().file_message().has_file_contents()) {
+            *file_content = message.message().file_message().file_contents();
+            record.file_size = file_content->size();
+        }
+    } else if (message.message().message_type() == zchat::SPEECH) {
+        record.file_id = message.message().speech_message().file_id();
+        if (file_content != nullptr &&
+            message.message().speech_message().has_file_contents()) {
+            *file_content = message.message().speech_message().file_contents();
+            record.file_size = file_content->size();
+        }
+    }
+    return record;
+}
+
 MessageRecord ToMessageRecord(const zchat::NewMessageReq &request,
                               const std::string &message_id,
                               const std::string &user_id,
