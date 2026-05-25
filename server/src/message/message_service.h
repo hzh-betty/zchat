@@ -20,6 +20,7 @@ class MessageService : public NonCopyable {
     zchat::GetRecentMsgRsp GetRecent(const zchat::GetRecentMsgReq &request);
     zchat::GetHistoryMsgRsp GetHistory(const zchat::GetHistoryMsgReq &request);
     zchat::MsgSearchRsp Search(const zchat::MsgSearchReq &request);
+    VoidResult StoreQueuedMessage(const zchat::MessageInfo &message);
 
   private:
     template <typename Response, typename Messages>

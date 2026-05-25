@@ -76,6 +76,35 @@ zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
     return response;
 }
 
+VoidResult MessageService::StoreQueuedMessage(const zchat::MessageInfo &message) {
+    std::string file_content;
+    MessageRecord record = FromProtoMessage(message, &file_content);
+    if (!file_content.empty()) {
+        const auto saved = files_.PutFile(FileRecord{
+            record.file_id, record.file_name, record.file_size, file_content});
+        if (!saved.ok()) {
+            ZCHAT_LOG_ERROR("MessageService::StoreQueuedMessage file failed: {}",
+                            saved.error().message);
+            return saved;
+        }
+    }
+    const auto inserted = messages_.InsertMessage(record);
+    if (!inserted.ok()) {
+        ZCHAT_LOG_ERROR("MessageService::StoreQueuedMessage db failed: {}",
+                        inserted.error().message);
+        return inserted;
+    }
+    const auto indexed = search_index_.IndexMessage(record);
+    if (!indexed.ok()) {
+        ZCHAT_LOG_ERROR("MessageService::StoreQueuedMessage es failed: {}",
+                        indexed.error().message);
+        return indexed;
+    }
+    ZCHAT_LOG_INFO("MessageService::StoreQueuedMessage success: message_id={}",
+                   record.message_id);
+    return VoidResult::Ok();
+}
+
 template <typename Response, typename Messages>
 Response MessageService::BuildMessageListResponse(const std::string &request_id,
                                                   const Messages &messages) {

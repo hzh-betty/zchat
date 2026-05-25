@@ -13,6 +13,7 @@
 #include "message/message_repository.h"
 #include "message/message_search_index.h"
 #include "message/message_service.h"
+#include "transmite/message_queue.h"
 #include "user/user_repository.h"
 
 namespace zchat {
@@ -32,6 +33,7 @@ class MessageContext : public NonCopyable {
     OrmFileRepository file_repository_;
     ConfiguredMessageSearchIndex search_index_;
     std::shared_ptr<MessageService> message_service_;
+    ConfiguredMessageQueueConsumer queue_consumer_;
     MessageGrpcService grpc_service_;
 };
 
