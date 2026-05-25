@@ -35,9 +35,10 @@ FriendApplicationService::FriendApplicationService(FriendRepository &friends,
                                                    FileRepository &files,
                                                    MessageRepository &messages,
                                                    SessionStore &sessions,
-                                                   NotifyPublisher &notifier)
+                                                   NotifyPublisher &notifier,
+                                                   UserSearchIndex &search_index)
     : friends_(friends), users_(users), files_(files), messages_(messages),
-      sessions_(sessions), notifier_(notifier) {}
+      sessions_(sessions), notifier_(notifier), search_index_(search_index) {}
 
 zchat::GetFriendListRsp FriendApplicationService::GetFriendList(
     const zchat::GetFriendListReq &request) {
@@ -338,9 +339,20 @@ FriendApplicationService::SearchFriend(const zchat::FriendSearchReq &request) {
         return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
                                                      "登录会话已失效");
     }
-    auto users = users_.SearchUsers(request.search_key(), user_id);
+    auto excluded = friends_.ListFriendIds(user_id);
+    if (!excluded.ok()) {
+        ZCHAT_LOG_ERROR("FriendService::SearchFriend friend list failed: {}",
+                        excluded.error().message);
+        return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
+                                                     excluded.error().message);
+    }
+    excluded.value().push_back(user_id);
+    auto users = search_index_.enabled()
+                     ? search_index_.SearchUsers(request.search_key(),
+                                                 excluded.value())
+                     : users_.SearchUsers(request.search_key(), user_id);
     if (!users.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::SearchFriend db failed: {}", users.error().message);
+        ZCHAT_LOG_ERROR("FriendService::SearchFriend failed: {}", users.error().message);
         return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
                                                      users.error().message);
     }

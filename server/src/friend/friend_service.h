@@ -11,6 +11,7 @@
 #include "message/message_repository.h"
 #include "notify.pb.h"
 #include "user/user_repository.h"
+#include "user/user_search_index.h"
 
 namespace zchat {
 
@@ -18,7 +19,8 @@ class FriendApplicationService : public NonCopyable {
   public:
     FriendApplicationService(FriendRepository &friends, UserRepository &users,
                              FileRepository &files, MessageRepository &messages,
-                             SessionStore &sessions, NotifyPublisher &notifier);
+                             SessionStore &sessions, NotifyPublisher &notifier,
+                             UserSearchIndex &search_index);
 
     ~FriendApplicationService() = default;
 
@@ -54,6 +56,7 @@ class FriendApplicationService : public NonCopyable {
     MessageRepository &messages_;
     SessionStore &sessions_;
     NotifyPublisher &notifier_;
+    UserSearchIndex &search_index_;
 };
 
 } // namespace zchat

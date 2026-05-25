@@ -17,6 +17,7 @@
 #include "friend/friend_service.h"
 #include "message/message_repository.h"
 #include "user/user_repository.h"
+#include "user/user_search_index.h"
 
 namespace zchat {
 
@@ -36,6 +37,7 @@ class FriendContext : public NonCopyable {
     OrmUserRepository user_repository_;
     OrmFileRepository file_repository_;
     OrmMessageRepository message_repository_;
+    ConfiguredUserSearchIndex search_index_;
     SessionStore sessions_;
     NotifyPublisher notifier_;
     std::shared_ptr<FriendApplicationService> friend_service_;
