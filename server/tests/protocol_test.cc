@@ -1,6 +1,7 @@
 #include <cassert>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "common/config.h"
 #include "common/domain_records.h"
@@ -9,10 +10,190 @@
 #include "common/protobuf_http.h"
 #include "common/result.h"
 #include "common/uuid.h"
+#include "file/file_repository.h"
+#include "friend/friend_repository.h"
+#include "message/message_repository.h"
 #include "message/message_search_index.h"
+#include "message/message_service.h"
 #include "transmite/message_queue.h"
+#include "user/user_repository.h"
 #include "user/user_search_index.h"
 #include "user.pb.h"
+
+namespace {
+
+class FakeMessageRepository final : public zchat::MessageRepository {
+  public:
+    zchat::VoidResult InsertMessage(const zchat::MessageRecord &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::Result<std::vector<zchat::MessageRecord>>
+    ListRecentMessages(const std::string &session_id, int) override {
+        zchat::MessageRecord message;
+        message.message_id = "msg-1";
+        message.session_id = session_id;
+        message.user_id = "member-1";
+        message.message_type = 0;
+        message.content = "secret";
+        return zchat::Result<std::vector<zchat::MessageRecord>>::Ok({message});
+    }
+    zchat::Result<std::vector<zchat::MessageRecord>>
+    ListMessagesByTime(const std::string &session_id, std::int64_t,
+                       std::int64_t) override {
+        return ListRecentMessages(session_id, 1);
+    }
+    zchat::Result<std::vector<zchat::MessageRecord>>
+    SearchMessages(const std::string &session_id,
+                   const std::string &) override {
+        return ListRecentMessages(session_id, 1);
+    }
+    zchat::Result<std::optional<zchat::MessageRecord>>
+    LastMessage(const std::string &session_id) override {
+        return zchat::Result<std::optional<zchat::MessageRecord>>::Ok(
+            ListRecentMessages(session_id, 1).value().front());
+    }
+};
+
+class FakeUserRepository final : public zchat::UserRepository {
+  public:
+    zchat::Result<std::optional<zchat::UserRecord>>
+    FindUserById(const std::string &user_id) override {
+        zchat::UserRecord user;
+        user.user_id = user_id;
+        user.nickname = user_id;
+        return zchat::Result<std::optional<zchat::UserRecord>>::Ok(user);
+    }
+    zchat::Result<std::optional<zchat::UserRecord>>
+    FindUserByNickname(const std::string &) override {
+        return zchat::Result<std::optional<zchat::UserRecord>>::Ok(
+            std::nullopt);
+    }
+    zchat::Result<std::optional<zchat::UserRecord>>
+    FindUserByPhone(const std::string &) override {
+        return zchat::Result<std::optional<zchat::UserRecord>>::Ok(
+            std::nullopt);
+    }
+    zchat::Result<std::vector<zchat::UserRecord>>
+    FindUsersByIds(const std::vector<std::string> &user_ids) override {
+        std::vector<zchat::UserRecord> users;
+        for (const auto &id : user_ids) {
+            zchat::UserRecord user;
+            user.user_id = id;
+            user.nickname = id;
+            users.push_back(user);
+        }
+        return zchat::Result<std::vector<zchat::UserRecord>>::Ok(users);
+    }
+    zchat::Result<std::vector<zchat::UserRecord>>
+    SearchUsers(const std::string &, const std::string &) override {
+        return zchat::Result<std::vector<zchat::UserRecord>>::Ok({});
+    }
+    zchat::VoidResult InsertUser(const zchat::UserRecord &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::VoidResult UpdateUserNickname(const std::string &,
+                                         const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::VoidResult UpdateUserDescription(const std::string &,
+                                            const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::VoidResult UpdateUserPhone(const std::string &,
+                                      const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::VoidResult UpdateUserAvatar(const std::string &,
+                                       const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+};
+
+class FakeFileRepository final : public zchat::FileRepository {
+  public:
+    zchat::VoidResult PutFile(const zchat::FileRecord &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::Result<std::optional<zchat::FileRecord>>
+    GetFile(const std::string &) override {
+        return zchat::Result<std::optional<zchat::FileRecord>>::Ok(
+            std::nullopt);
+    }
+};
+
+class FakeFriendRepository final : public zchat::FriendRepository {
+  public:
+    zchat::VoidResult InsertRelation(const std::string &,
+                                     const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::VoidResult DeleteRelation(const std::string &,
+                                     const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::Result<bool> RelationExists(const std::string &,
+                                       const std::string &) override {
+        return zchat::Result<bool>::Ok(false);
+    }
+    zchat::Result<std::vector<std::string>>
+    ListFriendIds(const std::string &) override {
+        return zchat::Result<std::vector<std::string>>::Ok({});
+    }
+    zchat::VoidResult
+    InsertFriendApply(const zchat::FriendApplyRecord &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::VoidResult DeleteFriendApply(const std::string &,
+                                        const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::Result<bool> FriendApplyExists(const std::string &,
+                                          const std::string &) override {
+        return zchat::Result<bool>::Ok(false);
+    }
+    zchat::Result<std::vector<zchat::FriendApplyRecord>>
+    ListPendingApplies(const std::string &) override {
+        return zchat::Result<std::vector<zchat::FriendApplyRecord>>::Ok({});
+    }
+    zchat::VoidResult
+    InsertChatSession(const zchat::ChatSessionRecord &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::VoidResult InsertChatSessionMember(const std::string &,
+                                              const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::VoidResult DeleteSingleChatSession(const std::string &,
+                                              const std::string &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::Result<std::vector<zchat::ChatSessionRecord>>
+    ListChatSessions(const std::string &) override {
+        return zchat::Result<std::vector<zchat::ChatSessionRecord>>::Ok({});
+    }
+    zchat::Result<std::vector<std::string>>
+    ListChatSessionMembers(const std::string &) override {
+        return zchat::Result<std::vector<std::string>>::Ok({"member-1"});
+    }
+    zchat::Result<std::optional<std::string>>
+    FindSingleChatPeer(const std::string &, const std::string &) override {
+        return zchat::Result<std::optional<std::string>>::Ok(std::nullopt);
+    }
+};
+
+class DisabledMessageSearchIndex final : public zchat::MessageSearchIndex {
+  public:
+    zchat::VoidResult IndexMessage(const zchat::MessageRecord &) override {
+        return zchat::VoidResult::Ok();
+    }
+    zchat::Result<std::vector<zchat::MessageRecord>>
+    SearchMessages(const std::string &, const std::string &) override {
+        return zchat::Result<std::vector<zchat::MessageRecord>>::Ok({});
+    }
+    bool enabled() const override { return false; }
+};
+
+} // namespace
 
 int main() {
     static_assert(!std::is_copy_constructible_v<zchat::NonCopyable>);
@@ -62,6 +243,12 @@ int main() {
     assert(document.find("\"content\":\"hello \\\"zchat\\\"\"") !=
            std::string::npos);
     assert(document.find("\"file_size\":12") != std::string::npos);
+    const std::string message_index =
+        zchat::BuildElasticsearchMessageIndexDefinition();
+    assert(message_index.find("\"session_id\":{\"type\":\"keyword\"}") !=
+           std::string::npos);
+    assert(message_index.find("\"content\":{\"type\":\"text\"}") !=
+           std::string::npos);
 
     zchat::RabbitmqConfig rabbitmq;
     rabbitmq.host = "127.0.0.1:5673";
@@ -82,6 +269,12 @@ int main() {
            std::string::npos);
     assert(user_search.find("\"user_id.keyword\":[\"user-1\"]") !=
            std::string::npos);
+    const std::string user_index =
+        zchat::BuildElasticsearchUserIndexDefinition();
+    assert(user_index.find("\"phone\":{\"type\":\"keyword\"}") !=
+           std::string::npos);
+    assert(user_index.find("\"nickname\":{\"type\":\"text\"}") !=
+           std::string::npos);
 
     const zchat::MessageInfo queued =
         zchat::ToProtoMessage(message, sender, "file-body");
@@ -94,5 +287,26 @@ int main() {
     assert(parsed_message.message_type == message.message_type);
     assert(parsed_message.content == message.content);
     assert(queued_file_content.empty());
+
+    FakeMessageRepository fake_messages;
+    FakeUserRepository fake_users;
+    FakeFileRepository fake_files;
+    FakeFriendRepository fake_friends;
+    DisabledMessageSearchIndex disabled_search;
+    zchat::MessageService message_service(fake_messages, fake_users,
+                                          fake_files, fake_friends,
+                                          disabled_search);
+    zchat::GetRecentMsgReq recent_request;
+    recent_request.set_request_id("req-authz");
+    recent_request.set_user_id("intruder");
+    recent_request.set_chat_session_id("session-1");
+    recent_request.set_msg_count(10);
+    const auto recent_response = message_service.GetRecent(recent_request);
+    assert(!recent_response.success());
+    recent_request.set_user_id("member-1");
+    const auto allowed_recent_response =
+        message_service.GetRecent(recent_request);
+    assert(allowed_recent_response.success());
+    assert(allowed_recent_response.msg_list_size() == 1);
     return 0;
 }
