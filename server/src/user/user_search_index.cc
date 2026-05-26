@@ -7,6 +7,7 @@
 #include <json/json.h>
 
 #include "common/crypto.h"
+#include "common/logger.h"
 
 namespace zchat {
 namespace {
@@ -78,6 +79,44 @@ ConfiguredUserSearchIndex::ConfiguredUserSearchIndex(
         std::make_unique<trantor::EventLoopThread>("zchat-es-user-client");
     loop_thread_->run();
     client_ = drogon::HttpClient::newHttpClient(host_, loop_thread_->getLoop());
+    const auto ensured = EnsureIndex();
+    if (!ensured.ok()) {
+        ZCHAT_LOG_WARN("Elasticsearch user index init failed: {}",
+                       ensured.error().message);
+    }
+}
+
+VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
+    if (!enabled_) {
+        return VoidResult::Ok();
+    }
+    if (!client_) {
+        return VoidResult::Fail("Elasticsearch 用户客户端未初始化");
+    }
+    auto request = drogon::HttpRequest::newHttpRequest();
+    request->setMethod(drogon::Put);
+    request->setPath(kIndexPath);
+    request->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+    request->setBody(BuildElasticsearchUserIndexDefinition());
+    AddAuthHeader(request);
+
+    const auto [result, response] =
+        client_->sendRequest(request, kRequestTimeoutSeconds);
+    if (result != drogon::ReqResult::Ok || !response) {
+        return VoidResult::Fail("Elasticsearch 用户索引创建请求失败: " +
+                                drogon::to_string(result));
+    }
+    if (IsSuccessStatus(response->statusCode())) {
+        return VoidResult::Ok();
+    }
+    const std::string body(response->body());
+    if (response->statusCode() == drogon::k400BadRequest &&
+        body.find("resource_already_exists_exception") != std::string::npos) {
+        return VoidResult::Ok();
+    }
+    return VoidResult::Fail("Elasticsearch 用户索引创建返回异常状态: " +
+                            std::to_string(response->statusCode()) +
+                            " body=" + body);
 }
 
 VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
@@ -164,6 +203,18 @@ std::string BuildElasticsearchUserSearchRequest(
                 .append(id);
         }
     }
+    return CompactJson(root);
+}
+
+std::string BuildElasticsearchUserIndexDefinition() {
+    Json::Value root(Json::objectValue);
+    Json::Value properties(Json::objectValue);
+    properties["user_id"]["type"] = "keyword";
+    properties["nickname"]["type"] = "text";
+    properties["description"]["type"] = "text";
+    properties["phone"]["type"] = "keyword";
+    properties["avatar_id"]["type"] = "keyword";
+    root["mappings"]["properties"] = properties;
     return CompactJson(root);
 }
 

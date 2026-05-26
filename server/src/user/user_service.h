@@ -51,7 +51,7 @@ class UserApplicationService : public NonCopyable {
     bool IsValidPassword(const std::string &password) const;
     void IndexUser(const UserRecord &user);
     void IndexUserById(const std::string &user_id);
-    std::string LoginUser(const std::string &user_id);
+    Result<std::string> LoginUser(const std::string &user_id);
 
     UserRepository &users_;
     FileRepository &files_;

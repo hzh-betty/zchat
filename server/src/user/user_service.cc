@@ -92,9 +92,16 @@ UserApplicationService::LoginByNickname(const zchat::UserLoginReq &request) {
                                                   "用户名或密码错误");
     }
 
+    auto session_id = LoginUser(user.value()->user_id);
+    if (!session_id.ok()) {
+        ZCHAT_LOG_WARN("LoginByNickname rejected: request_id={} reason={}",
+                       request.request_id(), session_id.error().message);
+        return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
+                                                  session_id.error().message);
+    }
     zchat::UserLoginRsp response;
     MarkOk(request.request_id(), &response);
-    response.set_login_session_id(LoginUser(user.value()->user_id));
+    response.set_login_session_id(session_id.value());
     ZCHAT_LOG_INFO("LoginByNickname success: request_id={} user_id={}", request.request_id(), user.value()->user_id);
     return response;
 }
@@ -220,9 +227,16 @@ UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
         return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
                                                    "手机号未注册");
     }
+    auto session_id = LoginUser(user.value()->user_id);
+    if (!session_id.ok()) {
+        ZCHAT_LOG_WARN("LoginByPhone rejected: request_id={} reason={}",
+                       request.request_id(), session_id.error().message);
+        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                   session_id.error().message);
+    }
     zchat::PhoneLoginRsp response;
     MarkOk(request.request_id(), &response);
-    response.set_login_session_id(LoginUser(user.value()->user_id));
+    response.set_login_session_id(session_id.value());
     sessions_.RemoveVerifyCode(request.verify_code_id());
     ZCHAT_LOG_INFO("LoginByPhone success: request_id={}", request.request_id());
     return response;
@@ -464,11 +478,26 @@ void UserApplicationService::IndexUserById(const std::string &user_id) {
     IndexUser(user.value().value());
 }
 
-std::string UserApplicationService::LoginUser(const std::string &user_id) {
+Result<std::string> UserApplicationService::LoginUser(
+    const std::string &user_id) {
+    auto online = sessions_.IsOnline(user_id);
+    if (!online.ok()) {
+        return Result<std::string>::Fail(online.error().message);
+    }
+    if (online.value()) {
+        return Result<std::string>::Fail("用户已在其他地方登录");
+    }
     const std::string session_id = NewId();
-    sessions_.SaveSession(session_id, user_id);
-    sessions_.SetOnline(user_id);
-    return session_id;
+    auto saved = sessions_.SaveSession(session_id, user_id);
+    if (!saved.ok()) {
+        return Result<std::string>::Fail(saved.error().message);
+    }
+    auto online_set = sessions_.SetOnline(user_id);
+    if (!online_set.ok()) {
+        sessions_.RemoveSession(session_id);
+        return Result<std::string>::Fail(online_set.error().message);
+    }
+    return Result<std::string>::Ok(session_id);
 }
 
 } // namespace zchat

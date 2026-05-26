@@ -40,6 +40,7 @@ class ConfiguredUserSearchIndex final : public UserSearchIndex {
     bool enabled() const override { return enabled_; }
 
   private:
+    VoidResult EnsureIndex();
     void AddAuthHeader(const drogon::HttpRequestPtr &request) const;
 
     bool enabled_;
@@ -54,6 +55,7 @@ std::string BuildElasticsearchUserDocument(const UserRecord &user);
 std::string BuildElasticsearchUserSearchRequest(
     const std::string &keyword,
     const std::vector<std::string> &excluded_user_ids);
+std::string BuildElasticsearchUserIndexDefinition();
 
 } // namespace zchat
 
