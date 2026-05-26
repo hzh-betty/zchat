@@ -1,5 +1,7 @@
 #include "gateway/websocket_controller.h"
 
+#include <chrono>
+
 #include "common/logger.h"
 #include "gateway.pb.h"
 
@@ -41,6 +43,7 @@ void ZchatWebSocketController::handleNewMessage(
     }
     context->connections().Bind(user_id.value().value(), request.session_id(),
                                 connection);
+    connection->setPingMessage("", std::chrono::seconds(60));
     context->sessions().SetOnline(user_id.value().value());
     ZCHAT_LOG_INFO("websocket authenticated user={} session={}",
                    user_id.value().value(), request.session_id());
