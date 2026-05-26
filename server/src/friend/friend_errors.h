@@ -7,16 +7,16 @@ namespace zchat::friend_errors {
 
 inline AppError AlreadyFriends() {
     return AppError::WithCode(ErrorCode::kFriendAlreadyExists,
-                              "两者已经是好友关系");
+                              "friend relation already exists");
 }
 
 inline AppError ApplyAlreadyExists() {
     return AppError::WithCode(ErrorCode::kFriendApplyAlreadyExists,
-                              "已经申请过对方好友");
+                              "friend request already exists");
 }
 
 inline AppError SessionExpired() {
-    return AppError::WithCode(ErrorCode::kUnauthorized, "登录会话已失效");
+    return AppError::WithCode(ErrorCode::kUnauthorized, "session expired");
 }
 
 } // namespace zchat::friend_errors

@@ -6,24 +6,27 @@
 namespace zchat::user_errors {
 
 inline AppError InvalidPhone() {
-    return AppError::WithCode(ErrorCode::kUserInvalidPhone, "手机号码格式错误");
+    return AppError::WithCode(ErrorCode::kUserInvalidPhone,
+                              "invalid phone number");
 }
 
 inline AppError InvalidPassword() {
-    return AppError::WithCode(ErrorCode::kUserInvalidPassword, "密码格式错误");
+    return AppError::WithCode(ErrorCode::kUserInvalidPassword,
+                              "invalid password format");
 }
 
 inline AppError UserAlreadyExists() {
-    return AppError::WithCode(ErrorCode::kUserAlreadyExists, "用户已经存在");
+    return AppError::WithCode(ErrorCode::kUserAlreadyExists,
+                              "user already exists");
 }
 
 inline AppError UserNotFound() {
-    return AppError::WithCode(ErrorCode::kUserNotFound, "用户不存在");
+    return AppError::WithCode(ErrorCode::kUserNotFound, "user not found");
 }
 
 inline AppError VerifyCodeInvalid() {
     return AppError::WithCode(ErrorCode::kUserVerifyCodeInvalid,
-                              "验证码错误或已过期");
+                              "verification code is invalid or expired");
 }
 
 } // namespace zchat::user_errors

@@ -53,7 +53,9 @@ Result<std::vector<UserRecord>> ParseSearchResponse(const std::string &body) {
     std::istringstream input(body);
     if (!Json::parseFromStream(builder, input, &root, &errors)) {
         return Result<std::vector<UserRecord>>::Fail(
-            "Elasticsearch 用户搜索响应解析失败: " + errors);
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user search response parse failed")
+                .WithDetail(errors));
     }
     std::vector<UserRecord> users;
     const Json::Value hits = root["hits"]["hits"];
@@ -91,7 +93,9 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
         return VoidResult::Ok();
     }
     if (!client_) {
-        return VoidResult::Fail("Elasticsearch 用户客户端未初始化");
+        return VoidResult::Fail(AppError::WithCode(
+            ErrorCode::kExternalServiceError,
+            "elasticsearch user client is not initialized"));
     }
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Put);
@@ -103,8 +107,10 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
     const auto [result, response] =
         client_->sendRequest(request, kRequestTimeoutSeconds);
     if (result != drogon::ReqResult::Ok || !response) {
-        return VoidResult::Fail("Elasticsearch 用户索引创建请求失败: " +
-                                drogon::to_string(result));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user index creation request failed")
+                .WithDetail(drogon::to_string(result)));
     }
     if (IsSuccessStatus(response->statusCode())) {
         return VoidResult::Ok();
@@ -114,9 +120,11 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
         body.find("resource_already_exists_exception") != std::string::npos) {
         return VoidResult::Ok();
     }
-    return VoidResult::Fail("Elasticsearch 用户索引创建返回异常状态: " +
-                            std::to_string(response->statusCode()) +
-                            " body=" + body);
+    return VoidResult::Fail(
+        AppError::WithCode(ErrorCode::kExternalServiceError,
+                           "elasticsearch user index creation failed")
+            .WithContext("status", std::to_string(response->statusCode()))
+            .WithDetail(body));
 }
 
 VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
@@ -124,7 +132,9 @@ VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
         return VoidResult::Ok();
     }
     if (!client_) {
-        return VoidResult::Fail("Elasticsearch 用户客户端未初始化");
+        return VoidResult::Fail(AppError::WithCode(
+            ErrorCode::kExternalServiceError,
+            "elasticsearch user client is not initialized"));
     }
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Put);
@@ -136,12 +146,16 @@ VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
     const auto [result, response] =
         client_->sendRequest(request, kRequestTimeoutSeconds);
     if (result != drogon::ReqResult::Ok || !response) {
-        return VoidResult::Fail("Elasticsearch 用户索引请求失败: " +
-                                drogon::to_string(result));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user index request failed")
+                .WithDetail(drogon::to_string(result)));
     }
     if (!IsSuccessStatus(response->statusCode())) {
-        return VoidResult::Fail("Elasticsearch 用户索引返回异常状态: " +
-                                std::to_string(response->statusCode()));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user index failed")
+                .WithContext("status", std::to_string(response->statusCode())));
     }
     return VoidResult::Ok();
 }
@@ -150,11 +164,14 @@ Result<std::vector<UserRecord>> ConfiguredUserSearchIndex::SearchUsers(
     const std::string &keyword,
     const std::vector<std::string> &excluded_user_ids) {
     if (!enabled_) {
-        return Result<std::vector<UserRecord>>::Fail("Elasticsearch 未启用");
+        return Result<std::vector<UserRecord>>::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch is disabled"));
     }
     if (!client_) {
         return Result<std::vector<UserRecord>>::Fail(
-            "Elasticsearch 用户客户端未初始化");
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user client is not initialized"));
     }
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Post);
@@ -168,12 +185,15 @@ Result<std::vector<UserRecord>> ConfiguredUserSearchIndex::SearchUsers(
         client_->sendRequest(request, kRequestTimeoutSeconds);
     if (result != drogon::ReqResult::Ok || !response) {
         return Result<std::vector<UserRecord>>::Fail(
-            "Elasticsearch 用户搜索请求失败: " + drogon::to_string(result));
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user search request failed")
+                .WithDetail(drogon::to_string(result)));
     }
     if (!IsSuccessStatus(response->statusCode())) {
         return Result<std::vector<UserRecord>>::Fail(
-            "Elasticsearch 用户搜索返回异常状态: " +
-            std::to_string(response->statusCode()));
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user search failed")
+                .WithContext("status", std::to_string(response->statusCode())));
     }
     return ParseSearchResponse(std::string(response->body()));
 }

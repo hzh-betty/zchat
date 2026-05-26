@@ -1,7 +1,9 @@
-#include "common/logger.h"
 #include "message/message_grpc_service.h"
 
 #include <utility>
+
+#include "common/error_response.h"
+#include "common/logger.h"
 
 namespace zchat {
 
@@ -14,9 +16,8 @@ MessageGrpcService::GetHistoryMsg(grpc::ServerContext *,
                                    zchat::GetHistoryMsgRsp *response) {
     ZCHAT_LOG_INFO("MsgStorageService::GetHistoryMsg request_id={}", request->request_id());
     *response = service_->GetHistory(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("MsgStorageService::GetHistoryMsg failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("MsgStorageService", "GetHistoryMsg",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -26,9 +27,8 @@ MessageGrpcService::GetRecentMsg(grpc::ServerContext *,
                                   zchat::GetRecentMsgRsp *response) {
     ZCHAT_LOG_INFO("MsgStorageService::GetRecentMsg request_id={}", request->request_id());
     *response = service_->GetRecent(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("MsgStorageService::GetRecentMsg failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("MsgStorageService", "GetRecentMsg",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -37,9 +37,8 @@ grpc::Status MessageGrpcService::MsgSearch(grpc::ServerContext *,
                                            zchat::MsgSearchRsp *response) {
     ZCHAT_LOG_INFO("MsgStorageService::MsgSearch request_id={}", request->request_id());
     *response = service_->Search(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("MsgStorageService::MsgSearch failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("MsgStorageService", "MsgSearch",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 

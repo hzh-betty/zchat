@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "common/error_response.h"
+
 namespace zchat {
 
 TransmiteGrpcService::TransmiteGrpcService(
@@ -16,6 +18,8 @@ TransmiteGrpcService::GetTransmitTarget(grpc::ServerContext *,
     response->set_request_id(result.request_id());
     response->set_success(result.success());
     response->set_errmsg(result.errmsg());
+    LogBoundaryResponseError("MsgTransmitService", "GetTransmitTarget",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 

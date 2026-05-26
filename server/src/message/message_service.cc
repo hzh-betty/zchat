@@ -3,21 +3,12 @@
 #include <algorithm>
 #include <vector>
 
+#include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
 
 namespace zchat {
 namespace {
-
-template <typename Response>
-Response ErrorResponse(const std::string &request_id,
-                       const std::string &message) {
-    Response response;
-    response.set_request_id(request_id);
-    response.set_success(false);
-    response.set_errmsg(message);
-    return response;
-}
 
 } // namespace
 
@@ -34,17 +25,14 @@ MessageService::GetRecent(const zchat::GetRecentMsgReq &request) {
     const auto auth = EnsureCanReadSession(
         request.request_id(), request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
-        ZCHAT_LOG_WARN("MessageService::GetRecent rejected: request_id={} err={}",
-                       request.request_id(), auth.error().message);
-        return ErrorResponse<zchat::GetRecentMsgRsp>(request.request_id(),
-                                                     auth.error().message);
+        return MakeErrorResponse<zchat::GetRecentMsgRsp>(request.request_id(),
+                                                         auth.error());
     }
     auto messages = messages_.ListRecentMessages(
         request.chat_session_id(), static_cast<int>(request.msg_count()));
     if (!messages.ok()) {
-        ZCHAT_LOG_ERROR("MessageService::GetRecent db failed: {}", messages.error().message);
-        return ErrorResponse<zchat::GetRecentMsgRsp>(request.request_id(),
-                                                     messages.error().message);
+        return MakeErrorResponse<zchat::GetRecentMsgRsp>(request.request_id(),
+                                                         messages.error());
     }
     auto response = BuildMessageListResponse<zchat::GetRecentMsgRsp>(
         request.request_id(), messages.value());
@@ -58,17 +46,14 @@ MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
     const auto auth = EnsureCanReadSession(
         request.request_id(), request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
-        ZCHAT_LOG_WARN("MessageService::GetHistory rejected: request_id={} err={}",
-                       request.request_id(), auth.error().message);
-        return ErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
-                                                      auth.error().message);
+        return MakeErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
+                                                          auth.error());
     }
     auto messages = messages_.ListMessagesByTime(
         request.chat_session_id(), request.start_time(), request.over_time());
     if (!messages.ok()) {
-        ZCHAT_LOG_ERROR("MessageService::GetHistory db failed: {}", messages.error().message);
-        return ErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
-                                                      messages.error().message);
+        return MakeErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
+                                                          messages.error());
     }
     auto response = BuildMessageListResponse<zchat::GetHistoryMsgRsp>(
         request.request_id(), messages.value());
@@ -81,10 +66,8 @@ zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
     const auto auth = EnsureCanReadSession(
         request.request_id(), request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
-        ZCHAT_LOG_WARN("MessageService::Search rejected: request_id={} err={}",
-                       request.request_id(), auth.error().message);
-        return ErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
-                                                  auth.error().message);
+        return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
+                                                      auth.error());
     }
     auto messages = search_index_.enabled()
                         ? search_index_.SearchMessages(
@@ -92,9 +75,8 @@ zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
                         : messages_.SearchMessages(request.chat_session_id(),
                                                    request.search_key());
     if (!messages.ok()) {
-        ZCHAT_LOG_ERROR("MessageService::Search failed: {}", messages.error().message);
-        return ErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
-                                                  messages.error().message);
+        return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
+                                                      messages.error());
     }
     auto response = BuildMessageListResponse<zchat::MsgSearchRsp>(request.request_id(),
                                                          messages.value());
@@ -109,21 +91,15 @@ VoidResult MessageService::StoreQueuedMessage(const zchat::MessageInfo &message)
         const auto saved = files_.PutFile(FileRecord{
             record.file_id, record.file_name, record.file_size, file_content});
         if (!saved.ok()) {
-            ZCHAT_LOG_ERROR("MessageService::StoreQueuedMessage file failed: {}",
-                            saved.error().message);
             return saved;
         }
     }
     const auto inserted = messages_.InsertMessage(record);
     if (!inserted.ok()) {
-        ZCHAT_LOG_ERROR("MessageService::StoreQueuedMessage db failed: {}",
-                        inserted.error().message);
         return inserted;
     }
     const auto indexed = search_index_.IndexMessage(record);
     if (!indexed.ok()) {
-        ZCHAT_LOG_ERROR("MessageService::StoreQueuedMessage es failed: {}",
-                        indexed.error().message);
         return indexed;
     }
     ZCHAT_LOG_INFO("MessageService::StoreQueuedMessage success: message_id={}",
@@ -135,15 +111,17 @@ VoidResult MessageService::EnsureCanReadSession(
     const std::string &, const std::string &user_id,
     const std::string &session_id) {
     if (user_id.empty()) {
-        return VoidResult::Fail("登录会话已失效");
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kUnauthorized, "session expired"));
     }
     auto members = friends_.ListChatSessionMembers(session_id);
     if (!members.ok()) {
-        return VoidResult::Fail(members.error().message);
+        return VoidResult::Fail(members.error());
     }
     if (std::find(members.value().begin(), members.value().end(), user_id) ==
         members.value().end()) {
-        return VoidResult::Fail("无权访问该会话消息");
+        return VoidResult::Fail(AppError::WithCode(
+            ErrorCode::kForbidden, "chat session access denied"));
     }
     return VoidResult::Ok();
 }

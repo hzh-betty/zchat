@@ -116,13 +116,17 @@ class AmqpPublisherRuntime {
 
     VoidResult Publish(const std::string &payload) {
         if (!base_) {
-            return VoidResult::Fail("RabbitMQ event_base 初始化失败");
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "rabbitmq event loop initialization failed"));
         }
         if (!handler_.ready()) {
             const std::string handler_error = handler_.error();
             const std::string error =
-                handler_error.empty() ? "RabbitMQ 连接未就绪" : handler_error;
-            return VoidResult::Fail(error);
+                handler_error.empty() ? "rabbitmq connection is not ready"
+                                      : handler_error;
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kExternalServiceError, error));
         }
 
         PublishState state;
@@ -132,7 +136,9 @@ class AmqpPublisherRuntime {
         const int scheduled = event_base_once(base_.get(), -1, EV_TIMEOUT,
                                               PublishOnLoop, &state, &timeout);
         if (scheduled != 0) {
-            return VoidResult::Fail("RabbitMQ 发布任务调度失败");
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "rabbitmq publish scheduling failed"));
         }
         std::unique_lock<std::mutex> lock(state.mutex);
         state.done.wait(lock, [&state]() { return state.completed; });
@@ -162,11 +168,14 @@ class AmqpPublisherRuntime {
     VoidResult PublishOnLoop(const std::string &payload) {
         if (!channel_.publish(exchange_, routing_key_, payload,
                               AMQP::mandatory)) {
-            return VoidResult::Fail("RabbitMQ 发布请求写入失败");
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "rabbitmq publish request write failed"));
         }
         std::lock_guard<std::mutex> error_lock(error_mutex_);
         if (!error_.empty()) {
-            return VoidResult::Fail(error_);
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kExternalServiceError, error_));
         }
         return VoidResult::Ok();
     }
@@ -265,7 +274,9 @@ ConfiguredMessageQueuePublisher::Publish(const std::string &payload) {
         return VoidResult::Ok();
     }
     if (!runtime_) {
-        return VoidResult::Fail("RabbitMQ 发布器未初始化");
+        return VoidResult::Fail(AppError::WithCode(
+            ErrorCode::kExternalServiceError,
+            "rabbitmq publisher is not initialized"));
     }
     return runtime_->Publish(payload);
 }

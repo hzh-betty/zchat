@@ -7,7 +7,7 @@ namespace zchat::speech_errors {
 
 inline AppError RecognitionFailed() {
     return AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
-                              "语音识别失败");
+                              "speech recognition failed");
 }
 
 } // namespace zchat::speech_errors

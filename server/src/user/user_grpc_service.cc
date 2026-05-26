@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "common/error_response.h"
 #include "common/logger.h"
 
 namespace zchat {
@@ -16,9 +17,8 @@ UserGrpcService::UserRegister(grpc::ServerContext *,
                               zchat::UserRegisterRsp *response) {
     ZCHAT_LOG_INFO("UserService::UserRegister request_id={}", request->request_id());
     *response = service_->RegisterByNickname(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::UserRegister failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "UserRegister",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -27,9 +27,8 @@ grpc::Status UserGrpcService::UserLogin(grpc::ServerContext *,
                                         zchat::UserLoginRsp *response) {
     ZCHAT_LOG_INFO("UserService::UserLogin request_id={}", request->request_id());
     *response = service_->LoginByNickname(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::UserLogin failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "UserLogin", request->request_id(),
+                             *response);
     return grpc::Status::OK;
 }
 
@@ -39,9 +38,8 @@ UserGrpcService::GetPhoneVerifyCode(grpc::ServerContext *,
                                     zchat::PhoneVerifyCodeRsp *response) {
     ZCHAT_LOG_INFO("UserService::GetPhoneVerifyCode request_id={}", request->request_id());
     *response = service_->GetPhoneVerifyCode(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::GetPhoneVerifyCode failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "GetPhoneVerifyCode",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -51,9 +49,8 @@ UserGrpcService::PhoneRegister(grpc::ServerContext *,
                                zchat::PhoneRegisterRsp *response) {
     ZCHAT_LOG_INFO("UserService::PhoneRegister request_id={}", request->request_id());
     *response = service_->RegisterByPhone(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::PhoneRegister failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "PhoneRegister",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -62,9 +59,8 @@ grpc::Status UserGrpcService::PhoneLogin(grpc::ServerContext *,
                                          zchat::PhoneLoginRsp *response) {
     ZCHAT_LOG_INFO("UserService::PhoneLogin request_id={}", request->request_id());
     *response = service_->LoginByPhone(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::PhoneLogin failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "PhoneLogin", request->request_id(),
+                             *response);
     return grpc::Status::OK;
 }
 
@@ -73,9 +69,8 @@ grpc::Status UserGrpcService::GetUserInfo(grpc::ServerContext *,
                                           zchat::GetUserInfoRsp *response) {
     ZCHAT_LOG_INFO("UserService::GetUserInfo request_id={}", request->request_id());
     *response = service_->GetUserInfo(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::GetUserInfo failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "GetUserInfo",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -85,9 +80,8 @@ UserGrpcService::GetMultiUserInfo(grpc::ServerContext *,
                                   zchat::GetMultiUserInfoRsp *response) {
     ZCHAT_LOG_INFO("UserService::GetMultiUserInfo request_id={}", request->request_id());
     *response = service_->GetMultiUserInfo(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::GetMultiUserInfo failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "GetMultiUserInfo",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -97,9 +91,8 @@ UserGrpcService::SetUserAvatar(grpc::ServerContext *,
                                zchat::SetUserAvatarRsp *response) {
     ZCHAT_LOG_INFO("UserService::SetUserAvatar request_id={}", request->request_id());
     *response = service_->SetAvatar(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::SetUserAvatar failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "SetUserAvatar",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -109,9 +102,8 @@ UserGrpcService::SetUserNickname(grpc::ServerContext *,
                                  zchat::SetUserNicknameRsp *response) {
     ZCHAT_LOG_INFO("UserService::SetUserNickname request_id={}", request->request_id());
     *response = service_->SetNickname(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::SetUserNickname failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "SetUserNickname",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -121,9 +113,8 @@ UserGrpcService::SetUserDescription(grpc::ServerContext *,
                                     zchat::SetUserDescriptionRsp *response) {
     ZCHAT_LOG_INFO("UserService::SetUserDescription request_id={}", request->request_id());
     *response = service_->SetDescription(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::SetUserDescription failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "SetUserDescription",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 
@@ -133,9 +124,8 @@ UserGrpcService::SetUserPhoneNumber(grpc::ServerContext *,
                                     zchat::SetUserPhoneNumberRsp *response) {
     ZCHAT_LOG_INFO("UserService::SetUserPhoneNumber request_id={}", request->request_id());
     *response = service_->SetPhone(*request);
-    if (!response->success()) {
-        ZCHAT_LOG_WARN("UserService::SetUserPhoneNumber failed: request_id={} errmsg={}", request->request_id(), response->errmsg());
-    }
+    LogBoundaryResponseError("UserService", "SetUserPhoneNumber",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 

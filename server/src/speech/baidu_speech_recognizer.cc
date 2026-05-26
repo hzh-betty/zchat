@@ -6,6 +6,7 @@
 
 #include "common/crypto.h"
 #include "common/logger.h"
+#include "common/result.h"
 
 namespace zchat {
 
@@ -22,7 +23,7 @@ Result<std::string>
 BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     auto token_result = GetAccessToken();
     if (!token_result.ok()) {
-        return Result<std::string>::Fail(token_result.error().message);
+        return Result<std::string>::Fail(token_result.error());
     }
 
     Json::Value body;
@@ -47,13 +48,16 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
 
     const auto [result, response] = client_->sendRequest(request, 10.0);
     if (result != drogon::ReqResult::Ok || !response) {
-        return Result<std::string>::Fail("百度语音识别请求失败: " +
-                                         drogon::to_string(result));
+        return Result<std::string>::Fail(
+            AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
+                               "baidu speech recognition request failed")
+                .WithDetail(drogon::to_string(result)));
     }
     if (response->statusCode() != 200) {
         return Result<std::string>::Fail(
-            "百度语音识别返回异常状态: " +
-            std::to_string(response->statusCode()));
+            AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
+                               "baidu speech recognition request failed")
+                .WithContext("status", std::to_string(response->statusCode())));
     }
 
     Json::Value root;
@@ -61,18 +65,27 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     std::string errors;
     std::istringstream input(std::string(response->body()));
     if (!Json::parseFromStream(reader_builder, input, &root, &errors)) {
-        return Result<std::string>::Fail("百度语音识别响应解析失败");
+        return Result<std::string>::Fail(
+            AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
+                               "baidu speech recognition response parse failed")
+                .WithDetail(errors));
     }
 
     const int err_no = root["err_no"].asInt();
     if (err_no != 0) {
         std::string err_msg = root.get("err_msg", "unknown error").asString();
-        return Result<std::string>::Fail("百度语音识别失败: " + err_msg);
+        return Result<std::string>::Fail(
+            AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
+                               "baidu speech recognition failed")
+                .WithContext("provider_code", std::to_string(err_no))
+                .WithDetail(err_msg));
     }
 
     const Json::Value &result_array = root["result"];
     if (!result_array.isArray() || result_array.empty()) {
-        return Result<std::string>::Fail("百度语音识别返回空结果");
+        return Result<std::string>::Fail(AppError::WithCode(
+            ErrorCode::kSpeechRecognitionFailed,
+            "baidu speech recognition returned empty result"));
     }
 
     return Result<std::string>::Ok(result_array[0].asString());
@@ -89,12 +102,15 @@ Result<std::string> BaiduSpeechRecognizer::FetchAccessToken() {
     const auto [result, response] = token_client->sendRequest(request, 10.0);
     if (result != drogon::ReqResult::Ok || !response) {
         return Result<std::string>::Fail(
-            "百度 OAuth 令牌请求失败: " + drogon::to_string(result));
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "baidu oauth token request failed")
+                .WithDetail(drogon::to_string(result)));
     }
     if (response->statusCode() != 200) {
         return Result<std::string>::Fail(
-            "百度 OAuth 令牌返回异常状态: " +
-            std::to_string(response->statusCode()));
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "baidu oauth token request failed")
+                .WithContext("status", std::to_string(response->statusCode())));
     }
 
     Json::Value root;
@@ -102,12 +118,17 @@ Result<std::string> BaiduSpeechRecognizer::FetchAccessToken() {
     std::string errors;
     std::istringstream input(std::string(response->body()));
     if (!Json::parseFromStream(reader_builder, input, &root, &errors)) {
-        return Result<std::string>::Fail("百度 OAuth 令牌响应解析失败");
+        return Result<std::string>::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "baidu oauth token response parse failed")
+                .WithDetail(errors));
     }
 
     if (root.isMember("error")) {
         return Result<std::string>::Fail(
-            "百度 OAuth 令牌获取失败: " + root["error_description"].asString());
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "baidu oauth token request failed")
+                .WithDetail(root["error_description"].asString()));
     }
 
     access_token_ = root["access_token"].asString();

@@ -6,7 +6,8 @@
 namespace zchat::message_errors {
 
 inline AppError MessageNotFound() {
-    return AppError::WithCode(ErrorCode::kMessageNotFound, "消息不存在");
+    return AppError::WithCode(ErrorCode::kMessageNotFound,
+                              "message not found");
 }
 
 } // namespace zchat::message_errors

@@ -9,6 +9,7 @@
 
 #include "common/crypto.h"
 #include "common/logger.h"
+#include "common/result.h"
 #include "common/uuid.h"
 
 namespace zchat {
@@ -35,7 +36,8 @@ AlibabaSmsClient::AlibabaSmsClient(const SmsConfig &config)
 VoidResult AlibabaSmsClient::SendVerificationCode(const std::string &phone) {
     std::string config_error;
     if (!HasRequiredConfig(&config_error)) {
-        return VoidResult::Fail(config_error);
+        return VoidResult::Fail(AppError::WithCode(
+            ErrorCode::kExternalServiceError, config_error));
     }
     std::map<std::string, std::string> params;
     params["Action"] = "SendSmsVerifyCode";
@@ -59,7 +61,8 @@ VoidResult AlibabaSmsClient::CheckVerificationCode(const std::string &phone,
                                                    const std::string &code) {
     std::string config_error;
     if (!HasRequiredConfig(&config_error)) {
-        return VoidResult::Fail(config_error);
+        return VoidResult::Fail(AppError::WithCode(
+            ErrorCode::kExternalServiceError, config_error));
     }
     std::map<std::string, std::string> params;
     params["Action"] = "CheckSmsVerifyCode";
@@ -80,8 +83,7 @@ bool AlibabaSmsClient::HasRequiredConfig(std::string *message) const {
     if (access_key_id_.empty() || access_key_secret_.empty() ||
         sign_name_.empty() || template_code_.empty()) {
         if (message != nullptr) {
-            *message = "阿里云短信认证配置不完整: 需要 access_key_id/access_key_secret/"
-                       "sign_name/template_code";
+            *message = "alibaba sms configuration is incomplete";
         }
         return false;
     }
@@ -103,8 +105,10 @@ VoidResult AlibabaSmsClient::SendRequest(
 
     const auto [result, response] = client_->sendRequest(request, 10.0);
     if (result != drogon::ReqResult::Ok || !response) {
-        return VoidResult::Fail("阿里云短信请求失败: " +
-                                drogon::to_string(result));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "alibaba sms request failed")
+                .WithDetail(drogon::to_string(result)));
     }
     Json::Value root;
     Json::CharReaderBuilder reader_builder;
@@ -112,20 +116,29 @@ VoidResult AlibabaSmsClient::SendRequest(
     std::istringstream input(std::string(response->body()));
     if (!Json::parseFromStream(reader_builder, input, &root, &errors)) {
         if (response->statusCode() != 200) {
-            return VoidResult::Fail("阿里云短信返回异常状态: " +
-                                    std::to_string(response->statusCode()) +
-                                    " body=" + std::string(response->body()));
+            return VoidResult::Fail(
+                AppError::WithCode(ErrorCode::kExternalServiceError,
+                                   "alibaba sms request failed")
+                    .WithContext("status",
+                                 std::to_string(response->statusCode()))
+                    .WithDetail(std::string(response->body())));
         }
-        return VoidResult::Fail("阿里云短信响应解析失败");
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "alibaba sms response parse failed")
+                .WithDetail(errors));
     }
 
     if (response->statusCode() != 200) {
         std::string code_resp = root.get("Code", root.get("code", "")).asString();
         std::string message =
             root.get("Message", root.get("message", "unknown error")).asString();
-        return VoidResult::Fail("阿里云短信返回异常状态: " +
-                                std::to_string(response->statusCode()) + " " +
-                                code_resp + " " + message);
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "alibaba sms request failed")
+                .WithContext("status", std::to_string(response->statusCode()))
+                .WithContext("provider_code", code_resp)
+                .WithDetail(message));
     }
 
     std::string code_resp = root.get("Code", root.get("code", "")).asString();
@@ -133,12 +146,16 @@ VoidResult AlibabaSmsClient::SendRequest(
         std::string message =
             root.get("Message", root.get("message", "unknown error")).asString();
         if (code_resp.empty() && message == "unknown error") {
-            return VoidResult::Fail("阿里云短信操作失败: " +
-                                    std::string(response->body()));
+            return VoidResult::Fail(
+                AppError::WithCode(ErrorCode::kExternalServiceError,
+                                   "alibaba sms operation failed")
+                    .WithDetail(std::string(response->body())));
         }
-        return VoidResult::Fail("阿里云短信操作失败: " + code_resp + " " +
-                                message + " body=" +
-                                std::string(response->body()));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "alibaba sms operation failed")
+                .WithContext("provider_code", code_resp)
+                .WithDetail(message + " body=" + std::string(response->body())));
     }
 
     if (check_verify_result) {
@@ -148,10 +165,14 @@ VoidResult AlibabaSmsClient::SendRequest(
             std::string verify_result =
                 model.get("VerifyResult", model.get("verifyResult", "")).asString();
             if (verify_result != "PASS") {
-                return VoidResult::Fail("短信验证码校验失败");
+                return VoidResult::Fail(AppError::WithCode(
+                    ErrorCode::kUserVerifyCodeInvalid,
+                    "verification code check failed"));
             }
         } else {
-            return VoidResult::Fail("短信验证码校验响应数据缺失");
+            return VoidResult::Fail(
+                AppError::WithCode(ErrorCode::kExternalServiceError,
+                                   "alibaba sms check response is missing model"));
         }
     }
 

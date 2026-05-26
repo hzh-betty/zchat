@@ -1,5 +1,6 @@
 #include "message/message_context.h"
 
+#include "common/result.h"
 #include "common/runtime.h"
 #include "base.pb.h"
 
@@ -15,7 +16,9 @@ MessageContext::MessageContext(const AppConfig &config)
       queue_consumer_(config.rabbitmq, [this](const std::string &payload) {
           zchat::MessageInfo message;
           if (!message.ParseFromString(payload)) {
-              return VoidResult::Fail("RabbitMQ 消息反序列化失败");
+              return VoidResult::Fail(AppError::WithCode(
+                  ErrorCode::kInvalidArgument,
+                  "rabbitmq message payload parse failed"));
           }
           return message_service_->StoreQueuedMessage(message);
       }),

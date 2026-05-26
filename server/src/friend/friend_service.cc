@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
 #include "common/uuid.h"
@@ -13,12 +14,14 @@ namespace {
 
 template <typename Response>
 Response ErrorResponse(const std::string &request_id,
+                       const AppError &error) {
+    return MakeErrorResponse<Response>(request_id, error);
+}
+
+template <typename Response>
+Response ErrorResponse(const std::string &request_id, ErrorCode code,
                        const std::string &message) {
-    Response response;
-    response.set_request_id(request_id);
-    response.set_success(false);
-    response.set_errmsg(message);
-    return response;
+    return MakeErrorResponse<Response>(request_id, code, message);
 }
 
 template <typename Response>
@@ -47,21 +50,19 @@ zchat::GetFriendListRsp FriendApplicationService::GetFriendList(
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        ZCHAT_LOG_WARN("FriendService::GetFriendList rejected: request_id={} reason={}", request.request_id(), "登录会话已失效");
-        return ErrorResponse<zchat::GetFriendListRsp>(request.request_id(),
-                                                      "登录会话已失效");
+        return ErrorResponse<zchat::GetFriendListRsp>(
+            request.request_id(), ErrorCode::kUnauthorized,
+            "session expired");
     }
     auto ids = friends_.ListFriendIds(user_id);
     if (!ids.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::GetFriendList db failed: {}", ids.error().message);
         return ErrorResponse<zchat::GetFriendListRsp>(request.request_id(),
-                                                      ids.error().message);
+                                                      ids.error());
     }
     auto users = users_.FindUsersByIds(ids.value());
     if (!users.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::GetFriendList db failed: {}", users.error().message);
         return ErrorResponse<zchat::GetFriendListRsp>(request.request_id(),
-                                                      users.error().message);
+                                                      users.error());
     }
     zchat::GetFriendListRsp response;
     MarkOk(request.request_id(), &response);
@@ -79,15 +80,14 @@ zchat::GetChatSessionListRsp FriendApplicationService::GetChatSessionList(
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        ZCHAT_LOG_WARN("FriendService::GetChatSessionList rejected: request_id={} reason={}", request.request_id(), "登录会话已失效");
         return ErrorResponse<zchat::GetChatSessionListRsp>(request.request_id(),
-                                                           "登录会话已失效");
+                                                           ErrorCode::kUnauthorized,
+                                                           "session expired");
     }
     auto sessions = friends_.ListChatSessions(user_id);
     if (!sessions.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::GetChatSessionList db failed: {}", sessions.error().message);
         return ErrorResponse<zchat::GetChatSessionListRsp>(
-            request.request_id(), sessions.error().message);
+            request.request_id(), sessions.error());
     }
     zchat::GetChatSessionListRsp response;
     MarkOk(request.request_id(), &response);
@@ -107,15 +107,13 @@ FriendApplicationService::GetPendingFriendEvents(
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        ZCHAT_LOG_WARN("FriendService::GetPendingFriendEvents rejected: request_id={} reason={}", request.request_id(), "登录会话已失效");
         return ErrorResponse<zchat::GetPendingFriendEventListRsp>(
-            request.request_id(), "登录会话已失效");
+            request.request_id(), ErrorCode::kUnauthorized, "session expired");
     }
     auto applies = friends_.ListPendingApplies(user_id);
     if (!applies.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::GetPendingFriendEvents db failed: {}", applies.error().message);
         return ErrorResponse<zchat::GetPendingFriendEventListRsp>(
-            request.request_id(), applies.error().message);
+            request.request_id(), applies.error());
     }
     zchat::GetPendingFriendEventListRsp response;
     MarkOk(request.request_id(), &response);
@@ -139,9 +137,9 @@ FriendApplicationService::RemoveFriend(const zchat::FriendRemoveReq &request) {
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        ZCHAT_LOG_WARN("FriendService::RemoveFriend rejected: request_id={} reason={}", request.request_id(), "登录会话已失效");
         return ErrorResponse<zchat::FriendRemoveRsp>(request.request_id(),
-                                                     "登录会话已失效");
+                                                     ErrorCode::kUnauthorized,
+                                                     "session expired");
     }
     auto del = friends_.DeleteRelation(user_id, request.peer_id());
     if (!del.ok()) {
@@ -170,29 +168,28 @@ FriendApplicationService::AddFriend(const zchat::FriendAddReq &request) {
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        ZCHAT_LOG_WARN("FriendService::AddFriend rejected: request_id={} reason={}", request.request_id(), "登录会话已失效");
         return ErrorResponse<zchat::FriendAddRsp>(request.request_id(),
-                                                  "登录会话已失效");
+                                                  ErrorCode::kUnauthorized,
+                                                  "session expired");
     }
     auto exists = friends_.RelationExists(user_id, request.respondent_id());
     if (exists.ok() && exists.value()) {
-        ZCHAT_LOG_WARN("FriendService::AddFriend rejected: request_id={} reason={}", request.request_id(), "两者已经是好友关系");
-        return ErrorResponse<zchat::FriendAddRsp>(request.request_id(),
-                                                  "两者已经是好友关系");
+        return ErrorResponse<zchat::FriendAddRsp>(
+            request.request_id(), ErrorCode::kFriendAlreadyExists,
+            "friend relation already exists");
     }
     auto applied = friends_.FriendApplyExists(user_id, request.respondent_id());
     if (applied.ok() && applied.value()) {
-        ZCHAT_LOG_WARN("FriendService::AddFriend rejected: request_id={} reason={}", request.request_id(), "已经申请过对方好友");
-        return ErrorResponse<zchat::FriendAddRsp>(request.request_id(),
-                                                  "已经申请过对方好友");
+        return ErrorResponse<zchat::FriendAddRsp>(
+            request.request_id(), ErrorCode::kFriendApplyAlreadyExists,
+            "friend request already exists");
     }
     const std::string event_id = NewId();
     const auto inserted = friends_.InsertFriendApply(
         FriendApplyRecord{event_id, user_id, request.respondent_id()});
     if (!inserted.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::AddFriend db failed: {}", inserted.error().message);
         return ErrorResponse<zchat::FriendAddRsp>(request.request_id(),
-                                                  inserted.error().message);
+                                                  inserted.error());
     }
 
     auto sender = users_.FindUserById(user_id);
@@ -219,9 +216,9 @@ zchat::FriendAddProcessRsp FriendApplicationService::ProcessFriendApply(
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        ZCHAT_LOG_WARN("FriendService::ProcessFriendApply rejected: request_id={} reason={}", request.request_id(), "登录会话已失效");
         return ErrorResponse<zchat::FriendAddProcessRsp>(request.request_id(),
-                                                         "登录会话已失效");
+                                                         ErrorCode::kUnauthorized,
+                                                         "session expired");
     }
     friends_.DeleteFriendApply(request.apply_user_id(), user_id);
     std::string new_session_id;
@@ -229,16 +226,27 @@ zchat::FriendAddProcessRsp FriendApplicationService::ProcessFriendApply(
         new_session_id = NewId();
         auto ins1 = friends_.InsertRelation(user_id, request.apply_user_id());
         if (!ins1.ok()) {
-            ZCHAT_LOG_ERROR("FriendService::ProcessFriendApply InsertRelation failed: {}", ins1.error().message);
+            return ErrorResponse<zchat::FriendAddProcessRsp>(
+                request.request_id(), ins1.error());
         }
         auto ins2 = friends_.InsertChatSession(
             ChatSessionRecord{new_session_id, "", ChatSessionType::kSingle});
         if (!ins2.ok()) {
-            ZCHAT_LOG_ERROR("FriendService::ProcessFriendApply InsertChatSession failed: {}", ins2.error().message);
+            return ErrorResponse<zchat::FriendAddProcessRsp>(
+                request.request_id(), ins2.error());
         }
-        friends_.InsertChatSessionMember(new_session_id, user_id);
-        friends_.InsertChatSessionMember(new_session_id,
-                                         request.apply_user_id());
+        auto add_self = friends_.InsertChatSessionMember(new_session_id, user_id);
+        if (!add_self.ok()) {
+            return ErrorResponse<zchat::FriendAddProcessRsp>(
+                request.request_id(), add_self.error());
+        }
+        auto add_peer =
+            friends_.InsertChatSessionMember(new_session_id,
+                                             request.apply_user_id());
+        if (!add_peer.ok()) {
+            return ErrorResponse<zchat::FriendAddProcessRsp>(
+                request.request_id(), add_peer.error());
+        }
     }
 
     auto processor = users_.FindUserById(user_id);
@@ -266,9 +274,9 @@ zchat::ChatSessionCreateRsp FriendApplicationService::CreateChatSession(
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        ZCHAT_LOG_WARN("FriendService::CreateChatSession rejected: request_id={} reason={}", request.request_id(), "登录会话已失效");
         return ErrorResponse<zchat::ChatSessionCreateRsp>(request.request_id(),
-                                                          "登录会话已失效");
+                                                          ErrorCode::kUnauthorized,
+                                                          "session expired");
     }
     const std::string session_id = NewId();
     std::vector<std::string> members(request.member_id_list().begin(),
@@ -277,15 +285,20 @@ zchat::ChatSessionCreateRsp FriendApplicationService::CreateChatSession(
         members.push_back(user_id);
     }
     const std::string name = request.chat_session_name().empty()
-                                 ? "新的群聊"
+                                 ? "New group chat"
                                  : request.chat_session_name();
     auto ins = friends_.InsertChatSession(
         ChatSessionRecord{session_id, name, ChatSessionType::kGroup});
     if (!ins.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::CreateChatSession db failed: {}", ins.error().message);
+        return ErrorResponse<zchat::ChatSessionCreateRsp>(request.request_id(),
+                                                          ins.error());
     }
     for (const auto &member : members) {
-        friends_.InsertChatSessionMember(session_id, member);
+        auto inserted_member = friends_.InsertChatSessionMember(session_id, member);
+        if (!inserted_member.ok()) {
+            return ErrorResponse<zchat::ChatSessionCreateRsp>(
+                request.request_id(), inserted_member.error());
+        }
     }
     ChatSessionRecord session{session_id, name, ChatSessionType::kGroup};
     zchat::ChatSessionInfo info = BuildChatSessionInfo(session, user_id);
@@ -308,15 +321,13 @@ zchat::GetChatSessionMemberRsp FriendApplicationService::GetChatSessionMember(
     ZCHAT_LOG_INFO("FriendService::GetChatSessionMember request_id={}", request.request_id());
     auto ids = friends_.ListChatSessionMembers(request.chat_session_id());
     if (!ids.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::GetChatSessionMember db failed: {}", ids.error().message);
         return ErrorResponse<zchat::GetChatSessionMemberRsp>(
-            request.request_id(), ids.error().message);
+            request.request_id(), ids.error());
     }
     auto users = users_.FindUsersByIds(ids.value());
     if (!users.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::GetChatSessionMember db failed: {}", users.error().message);
         return ErrorResponse<zchat::GetChatSessionMemberRsp>(
-            request.request_id(), users.error().message);
+            request.request_id(), users.error());
     }
     zchat::GetChatSessionMemberRsp response;
     MarkOk(request.request_id(), &response);
@@ -335,16 +346,14 @@ FriendApplicationService::SearchFriend(const zchat::FriendSearchReq &request) {
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        ZCHAT_LOG_WARN("FriendService::SearchFriend rejected: request_id={} reason={}", request.request_id(), "登录会话已失效");
         return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
-                                                     "登录会话已失效");
+                                                     ErrorCode::kUnauthorized,
+                                                     "session expired");
     }
     auto excluded = friends_.ListFriendIds(user_id);
     if (!excluded.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::SearchFriend friend list failed: {}",
-                        excluded.error().message);
         return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
-                                                     excluded.error().message);
+                                                     excluded.error());
     }
     excluded.value().push_back(user_id);
     auto users = users_.SearchUsers(request.search_key(), user_id);
@@ -363,9 +372,8 @@ FriendApplicationService::SearchFriend(const zchat::FriendSearchReq &request) {
         }
     }
     if (!users.ok()) {
-        ZCHAT_LOG_ERROR("FriendService::SearchFriend failed: {}", users.error().message);
         return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
-                                                     users.error().message);
+                                                     users.error());
     }
     zchat::FriendSearchRsp response;
     MarkOk(request.request_id(), &response);

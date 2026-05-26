@@ -4,6 +4,7 @@
 
 #include "common/logger.h"
 #include "common/protobuf_http.h"
+#include "common/result.h"
 
 namespace zchat {
 namespace {
@@ -14,10 +15,10 @@ std::shared_ptr<grpc::Channel> LocalChannel(int port) {
 }
 
 template <typename Response>
-drogon::HttpResponsePtr GrpcErrorResponse(const std::string &message) {
+drogon::HttpResponsePtr GrpcErrorResponse(const AppError &error) {
     Response response;
     response.set_success(false);
-    response.set_errmsg(message);
+    response.set_errmsg(FormatErrorForClient(error));
     return ProtobufResponse(response);
 }
 
@@ -28,14 +29,18 @@ void CallUnaryGrpc(
     Request request;
     if (!request.ParseFromString(body)) {
         ZCHAT_LOG_WARN("grpc protobuf parse failed, body size={}B", body.size());
-        callback(GrpcErrorResponse<Response>("请求正文反序列化失败"));
+        callback(GrpcErrorResponse<Response>(AppError::WithCode(
+            ErrorCode::kInvalidArgument, "request body parse failed")));
         return;
     }
     Response response;
     grpc::ClientContext context;
     const grpc::Status status = rpc(&context, request, &response);
     if (!status.ok()) {
-        callback(GrpcErrorResponse<Response>(status.error_message()));
+        callback(GrpcErrorResponse<Response>(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "grpc request failed")
+                .WithDetail(status.error_message())));
         return;
     }
     callback(ProtobufResponse(response));
@@ -58,8 +63,8 @@ void CallTransmite(
     zchat::NewMessageReq request;
     if (!request.ParseFromString(body)) {
         ZCHAT_LOG_WARN("grpc protobuf parse failed, body size={}B", body.size());
-        callback(
-            GrpcErrorResponse<zchat::NewMessageRsp>("请求正文反序列化失败"));
+        callback(GrpcErrorResponse<zchat::NewMessageRsp>(AppError::WithCode(
+            ErrorCode::kInvalidArgument, "request body parse failed")));
         return;
     }
     zchat::GetTransmitTargetRsp target_response;
@@ -69,8 +74,10 @@ void CallTransmite(
     if (!status.ok()) {
         ZCHAT_LOG_ERROR("GetTransmitTarget rpc failed: error_code={}, error_message={}",
                         status.error_code(), status.error_message());
-        callback(
-            GrpcErrorResponse<zchat::NewMessageRsp>(status.error_message()));
+        callback(GrpcErrorResponse<zchat::NewMessageRsp>(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "grpc request failed")
+                .WithDetail(status.error_message())));
         return;
     }
     zchat::NewMessageRsp response;
@@ -268,7 +275,8 @@ void GrpcServiceClients::Forward(
             std::move(callback));
     }
     ZCHAT_LOG_WARN("unknown service path: {}", path);
-    callback(GrpcErrorResponse<zchat::NewMessageRsp>("未知内部服务路径"));
+    callback(GrpcErrorResponse<zchat::NewMessageRsp>(AppError::WithCode(
+        ErrorCode::kNotFound, "unknown service path")));
 }
 
 } // namespace zchat

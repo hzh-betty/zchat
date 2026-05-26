@@ -6,7 +6,7 @@
 namespace zchat::file_errors {
 
 inline AppError FileNotFound() {
-    return AppError::WithCode(ErrorCode::kFileNotFound, "文件不存在");
+    return AppError::WithCode(ErrorCode::kFileNotFound, "file not found");
 }
 
 } // namespace zchat::file_errors

@@ -7,7 +7,7 @@ namespace zchat::transmite_errors {
 
 inline AppError TargetNotFound() {
     return AppError::WithCode(ErrorCode::kTransmitTargetNotFound,
-                              "消息转发目标不存在");
+                              "message transmit target not found");
 }
 
 } // namespace zchat::transmite_errors

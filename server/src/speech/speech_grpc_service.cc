@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "common/error_response.h"
+
 namespace zchat {
 
 SpeechGrpcService::SpeechGrpcService(
@@ -13,6 +15,8 @@ SpeechGrpcService::SpeechRecognition(grpc::ServerContext *,
                                      const zchat::SpeechRecognitionReq *request,
                                      zchat::SpeechRecognitionRsp *response) {
     *response = service_->Recognize(*request);
+    LogBoundaryResponseError("SpeechService", "SpeechRecognition",
+                             request->request_id(), *response);
     return grpc::Status::OK;
 }
 

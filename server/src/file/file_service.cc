@@ -1,5 +1,6 @@
 #include "file/file_service.h"
 
+#include "common/error_response.h"
 #include "common/logger.h"
 #include "common/uuid.h"
 
@@ -7,21 +8,13 @@ namespace zchat {
 namespace {
 
 zchat::GetSingleFileRsp ErrorResponse(const std::string &request_id,
-                                      const std::string &message) {
-    zchat::GetSingleFileRsp response;
-    response.set_request_id(request_id);
-    response.set_success(false);
-    response.set_errmsg(message);
-    return response;
+                                      const AppError &error) {
+    return MakeErrorResponse<zchat::GetSingleFileRsp>(request_id, error);
 }
 
 zchat::PutSingleFileRsp PutErrorResponse(const std::string &request_id,
-                                         const std::string &message) {
-    zchat::PutSingleFileRsp response;
-    response.set_request_id(request_id);
-    response.set_success(false);
-    response.set_errmsg(message);
-    return response;
+                                         const AppError &error) {
+    return MakeErrorResponse<zchat::PutSingleFileRsp>(request_id, error);
 }
 
 } // namespace
@@ -34,12 +27,11 @@ FileApplicationService::GetSingleFile(const zchat::GetSingleFileReq &request) {
     ZCHAT_LOG_INFO("FileService::GetSingleFile request_id={}", request.request_id());
     auto file = repository_.GetFile(request.file_id());
     if (!file.ok()) {
-        ZCHAT_LOG_ERROR("FileService::GetSingleFile db failed: {}", file.error().message);
-        return ErrorResponse(request.request_id(), file.error().message);
+        return ErrorResponse(request.request_id(), file.error());
     }
     if (!file.value().has_value()) {
-        ZCHAT_LOG_WARN("FileService::GetSingleFile file not found: request_id={} file_id={}", request.request_id(), request.file_id());
-        return ErrorResponse(request.request_id(), "文件不存在");
+        return ErrorResponse(request.request_id(), AppError::WithCode(
+            ErrorCode::kFileNotFound, "file not found"));
     }
     zchat::GetSingleFileRsp response;
     response.set_request_id(request.request_id());
@@ -61,9 +53,8 @@ FileApplicationService::GetMultiFile(const zchat::GetMultiFileReq &request) {
     for (const auto &file_id : request.file_id_list()) {
         auto file = repository_.GetFile(file_id);
         if (!file.ok()) {
-            ZCHAT_LOG_ERROR("FileService::GetMultiFile single file failed: file_id={} err={}", file_id, file.error().message);
             response.set_success(false);
-            response.set_errmsg(file.error().message);
+            response.set_errmsg(FormatErrorForClient(file.error()));
             return response;
         }
         if (file.value().has_value()) {
@@ -88,8 +79,7 @@ FileApplicationService::PutSingleFile(const zchat::PutSingleFileReq &request) {
         upload.file_content(),
     });
     if (!stored.ok()) {
-        ZCHAT_LOG_ERROR("FileService::PutSingleFile db failed: {}", stored.error().message);
-        return PutErrorResponse(request.request_id(), stored.error().message);
+        return PutErrorResponse(request.request_id(), stored.error());
     }
     zchat::PutSingleFileRsp response;
     response.set_request_id(request.request_id());
@@ -118,9 +108,8 @@ FileApplicationService::PutMultiFile(const zchat::PutMultiFileReq &request) {
             upload.file_content(),
         });
         if (!stored.ok()) {
-            ZCHAT_LOG_ERROR("FileService::PutMultiFile single file db failed: file_id={} err={}", file_id, stored.error().message);
             response.set_success(false);
-            response.set_errmsg(stored.error().message);
+            response.set_errmsg(FormatErrorForClient(stored.error()));
             return response;
         }
         auto *info = response.add_file_info();

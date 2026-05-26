@@ -6,6 +6,7 @@
 
 #include "common/logger.h"
 #include "common/protobuf_http.h"
+#include "common/result.h"
 #include "file.pb.h"
 #include "friend.pb.h"
 #include "message.pb.h"
@@ -17,10 +18,10 @@ namespace zchat {
 namespace {
 
 template <typename Response>
-drogon::HttpResponsePtr GatewayErrorResponse(const std::string &message) {
+drogon::HttpResponsePtr GatewayErrorResponse(const AppError &error) {
     Response response;
     response.set_success(false);
-    response.set_errmsg(message);
+    response.set_errmsg(FormatErrorForClient(error));
     return ProtobufResponse(response);
 }
 
@@ -33,19 +34,21 @@ bool AuthenticateAndInjectUser(SessionStore &sessions, const std::string &body,
     if (!request.ParseFromString(body)) {
         ZCHAT_LOG_WARN("gateway auth protobuf parse failed, body size={}B",
                        body.size());
-        callback(GatewayErrorResponse<Response>("请求正文反序列化失败"));
+        callback(GatewayErrorResponse<Response>(AppError::WithCode(
+            ErrorCode::kInvalidArgument, "request body parse failed")));
         return false;
     }
     auto user_id = sessions.GetUserId(request.session_id());
     if (!user_id.ok()) {
         ZCHAT_LOG_WARN("gateway auth redis failed: {}", user_id.error().message);
-        callback(GatewayErrorResponse<Response>(user_id.error().message));
+        callback(GatewayErrorResponse<Response>(user_id.error()));
         return false;
     }
     if (!user_id.value().has_value()) {
         ZCHAT_LOG_WARN("gateway auth rejected: invalid session={}",
                        request.session_id());
-        callback(GatewayErrorResponse<Response>("登录会话已失效"));
+        callback(GatewayErrorResponse<Response>(AppError::WithCode(
+            ErrorCode::kUnauthorized, "session expired")));
         return false;
     }
     request.set_user_id(user_id.value().value());

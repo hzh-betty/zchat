@@ -41,13 +41,13 @@ template <typename Func> auto RunDb(Func function) -> decltype(function()) {
     } catch (const drogon::orm::DrogonDbException &error) {
         using ReturnType = decltype(function());
         AppError app_error =
-            AppError::WithCode(ErrorCode::kDatabaseError, "数据库操作失败");
+            AppError::WithCode(ErrorCode::kDatabaseError, "database operation failed");
         app_error.detail = error.base().what();
         return ReturnType::Fail(std::move(app_error));
     } catch (const std::exception &error) {
         using ReturnType = decltype(function());
         AppError app_error =
-            AppError::WithCode(ErrorCode::kUnknown, "服务内部错误");
+            AppError::WithCode(ErrorCode::kUnknown, "internal service error");
         app_error.detail = error.what();
         return ReturnType::Fail(std::move(app_error));
     }

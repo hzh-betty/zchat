@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
 #include "common/uuid.h"
@@ -9,15 +10,6 @@
 
 namespace zchat {
 namespace {
-
-zchat::NewMessageRsp ErrorResponse(const std::string &request_id,
-                                   const std::string &message) {
-    zchat::NewMessageRsp response;
-    response.set_request_id(request_id);
-    response.set_success(false);
-    response.set_errmsg(message);
-    return response;
-}
 
 } // namespace
 
@@ -34,14 +26,12 @@ zchat::NewMessageRsp
 TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
     const auto user_id = sessions_.GetUserId(request.session_id());
     if (!user_id.ok()) {
-        ZCHAT_LOG_WARN("new message rejected session={} error={}",
-                       request.session_id(), user_id.error().message);
-        return ErrorResponse(request.request_id(), user_id.error().message);
+        return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
+                                                       user_id.error());
     }
     if (!user_id.value().has_value()) {
-        ZCHAT_LOG_WARN("new message rejected session={} error=expired",
-                       request.session_id());
-        return ErrorResponse(request.request_id(), "登录会话已失效");
+        return MakeErrorResponse<zchat::NewMessageRsp>(
+            request.request_id(), ErrorCode::kUnauthorized, "session expired");
     }
 
     std::string file_content;
@@ -50,9 +40,9 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
                         UnixTimeSeconds(), &file_content);
     auto sender = users_.FindUserById(user_id.value().value());
     if (!sender.ok() || !sender.value().has_value()) {
-        ZCHAT_LOG_ERROR("new message sender lookup failed request={} sender={}",
-                        request.request_id(), user_id.value().value());
-        return ErrorResponse(request.request_id(), "发送者信息不存在");
+        return MakeErrorResponse<zchat::NewMessageRsp>(
+            request.request_id(), ErrorCode::kUserNotFound,
+            "sender not found");
     }
 
     if (queue_.enabled()) {
@@ -61,10 +51,8 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
             .SerializeToString(&queue_payload);
         const auto published = queue_.Publish(queue_payload);
         if (!published.ok()) {
-            ZCHAT_LOG_ERROR("queue publish failed request={} message={} error={}",
-                            request.request_id(), message.message_id,
-                            published.error().message);
-            return ErrorResponse(request.request_id(), published.error().message);
+            return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
+                                                           published.error());
         }
     } else {
         if (!file_content.empty()) {
@@ -72,24 +60,19 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
                 message.file_id, message.file_name, file_content.size(),
                 file_content});
             if (!saved.ok()) {
-                ZCHAT_LOG_ERROR("save message file failed request={} error={}",
-                                request.request_id(), saved.error().message);
-                return ErrorResponse(request.request_id(), saved.error().message);
+                return MakeErrorResponse<zchat::NewMessageRsp>(
+                    request.request_id(), saved.error());
             }
         }
         const auto inserted = repository_.InsertMessage(message);
         if (!inserted.ok()) {
-            ZCHAT_LOG_ERROR("insert message failed request={} chat={} error={}",
-                            request.request_id(), request.chat_session_id(),
-                            inserted.error().message);
-            return ErrorResponse(request.request_id(), inserted.error().message);
+            return MakeErrorResponse<zchat::NewMessageRsp>(
+                request.request_id(), inserted.error());
         }
         const auto indexed = search_index_.IndexMessage(message);
         if (!indexed.ok()) {
-            ZCHAT_LOG_ERROR("index message failed request={} message={} error={}",
-                            request.request_id(), message.message_id,
-                            indexed.error().message);
-            return ErrorResponse(request.request_id(), indexed.error().message);
+            return MakeErrorResponse<zchat::NewMessageRsp>(
+                request.request_id(), indexed.error());
         }
     }
 

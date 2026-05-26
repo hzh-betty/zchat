@@ -2,6 +2,7 @@
 #define ZCHAT_SERVER_SRC_COMMON_RESULT_H_
 
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -37,15 +38,71 @@ enum class ErrorCode {
     kTransmitTargetNotFound = 6001,
 };
 
+inline const char *ErrorCodeName(ErrorCode code) {
+    switch (code) {
+    case ErrorCode::kInvalidArgument:
+        return "INVALID_ARGUMENT";
+    case ErrorCode::kUnauthorized:
+        return "UNAUTHORIZED";
+    case ErrorCode::kForbidden:
+        return "FORBIDDEN";
+    case ErrorCode::kNotFound:
+        return "NOT_FOUND";
+    case ErrorCode::kConflict:
+        return "CONFLICT";
+    case ErrorCode::kDatabaseError:
+        return "DATABASE_ERROR";
+    case ErrorCode::kRedisError:
+        return "REDIS_ERROR";
+    case ErrorCode::kExternalServiceError:
+        return "EXTERNAL_SERVICE_ERROR";
+    case ErrorCode::kTimeout:
+        return "TIMEOUT";
+    case ErrorCode::kUserInvalidPhone:
+        return "USER_INVALID_PHONE";
+    case ErrorCode::kUserInvalidPassword:
+        return "USER_INVALID_PASSWORD";
+    case ErrorCode::kUserAlreadyExists:
+        return "USER_ALREADY_EXISTS";
+    case ErrorCode::kUserNotFound:
+        return "USER_NOT_FOUND";
+    case ErrorCode::kUserVerifyCodeInvalid:
+        return "USER_VERIFY_CODE_INVALID";
+    case ErrorCode::kFriendAlreadyExists:
+        return "FRIEND_ALREADY_EXISTS";
+    case ErrorCode::kFriendApplyAlreadyExists:
+        return "FRIEND_APPLY_ALREADY_EXISTS";
+    case ErrorCode::kFriendSessionNotFound:
+        return "FRIEND_SESSION_NOT_FOUND";
+    case ErrorCode::kMessageNotFound:
+        return "MESSAGE_NOT_FOUND";
+    case ErrorCode::kFileNotFound:
+        return "FILE_NOT_FOUND";
+    case ErrorCode::kSpeechRecognitionFailed:
+        return "SPEECH_RECOGNITION_FAILED";
+    case ErrorCode::kTransmitTargetNotFound:
+        return "TRANSMIT_TARGET_NOT_FOUND";
+    case ErrorCode::kUnknown:
+    default:
+        return "UNKNOWN";
+    }
+}
+
 struct FieldError {
     std::string field;
     std::string message;
+};
+
+struct ErrorContext {
+    std::string key;
+    std::string value;
 };
 
 struct AppError {
     ErrorCode code = ErrorCode::kUnknown;
     std::string message;
     std::vector<FieldError> fields;
+    std::vector<ErrorContext> context;
     std::optional<std::string> detail;
 
     static AppError FromMessage(std::string message) {
@@ -60,7 +117,40 @@ struct AppError {
         error.message = std::move(message);
         return error;
     }
+
+    AppError WithContext(std::string key, std::string value) && {
+        context.push_back(ErrorContext{std::move(key), std::move(value)});
+        return std::move(*this);
+    }
+
+    AppError WithDetail(std::string value) && {
+        detail = std::move(value);
+        return std::move(*this);
+    }
 };
+
+inline std::string FormatErrorForClient(const AppError &error) {
+    return std::string(ErrorCodeName(error.code)) + ": " + error.message;
+}
+
+inline std::string FormatErrorForLog(const AppError &error) {
+    std::ostringstream stream;
+    stream << ErrorCodeName(error.code) << ": " << error.message;
+    if (!error.context.empty()) {
+        stream << " context={";
+        for (std::size_t i = 0; i < error.context.size(); ++i) {
+            if (i > 0) {
+                stream << ",";
+            }
+            stream << error.context[i].key << "=" << error.context[i].value;
+        }
+        stream << "}";
+    }
+    if (error.detail.has_value() && !error.detail->empty()) {
+        stream << " detail=" << *error.detail;
+    }
+    return stream.str();
+}
 
 template <typename T> class Result {
   public:
