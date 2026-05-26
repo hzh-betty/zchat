@@ -78,11 +78,8 @@ bool IsSuccessStatus(drogon::HttpStatusCode status) {
 
 ConfiguredMessageSearchIndex::ConfiguredMessageSearchIndex(
     const ElasticsearchConfig &config)
-    : enabled_(config.enabled), host_(FirstHost(config.hosts)),
-      user_(config.user), password_(config.password) {
-    if (!enabled_) {
-        return;
-    }
+    : host_(FirstHost(config.hosts)), user_(config.user),
+      password_(config.password) {
     loop_thread_ =
         std::make_unique<trantor::EventLoopThread>("zchat-es-http-client");
     loop_thread_->run();
@@ -95,9 +92,6 @@ ConfiguredMessageSearchIndex::ConfiguredMessageSearchIndex(
 }
 
 VoidResult ConfiguredMessageSearchIndex::EnsureIndex() {
-    if (!enabled_) {
-        return VoidResult::Ok();
-    }
     if (!client_) {
         return VoidResult::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
@@ -135,9 +129,6 @@ VoidResult ConfiguredMessageSearchIndex::EnsureIndex() {
 
 VoidResult
 ConfiguredMessageSearchIndex::IndexMessage(const MessageRecord &message) {
-    if (!enabled_) {
-        return VoidResult::Ok();
-    }
     if (!client_) {
         return VoidResult::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
@@ -171,11 +162,6 @@ ConfiguredMessageSearchIndex::IndexMessage(const MessageRecord &message) {
 Result<std::vector<MessageRecord>>
 ConfiguredMessageSearchIndex::SearchMessages(const std::string &session_id,
                                              const std::string &keyword) {
-    if (!enabled_) {
-        return Result<std::vector<MessageRecord>>::Fail(
-            AppError::WithCode(ErrorCode::kExternalServiceError,
-                               "elasticsearch is disabled"));
-    }
     if (!client_) {
         return Result<std::vector<MessageRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,

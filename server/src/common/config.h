@@ -43,22 +43,18 @@ struct StorageConfig {
 };
 
 struct SpeechConfig {
-    bool enabled = false;
     std::string app_id;
     std::string api_key;
     std::string secret_key;
-    std::string placeholder_result = "语音识别服务未配置";
 };
 
 struct ElasticsearchConfig {
-    bool enabled = false;
     std::string hosts = "http://127.0.0.1:9200/";
     std::string user = "elastic";
     std::string password;
 };
 
 struct RabbitmqConfig {
-    bool enabled = false;
     std::string host = "127.0.0.1:5672";
     std::string user = "root";
     std::string password = "123456";
@@ -68,7 +64,6 @@ struct RabbitmqConfig {
 };
 
 struct SmsConfig {
-    bool enabled = false;
     std::string access_key_id;
     std::string access_key_secret;
     std::string sign_name;

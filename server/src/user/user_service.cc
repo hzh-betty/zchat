@@ -74,7 +74,11 @@ zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
         return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
                                                      inserted.error());
     }
-    IndexUser(user);
+    const auto indexed = IndexUser(user);
+    if (!indexed.ok()) {
+        return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
+                                                     indexed.error());
+    }
 
     zchat::UserRegisterRsp response;
     MarkOk(request.request_id(), &response);
@@ -185,7 +189,11 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
         return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
                                                       inserted.error());
     }
-    IndexUser(user);
+    const auto indexed = IndexUser(user);
+    if (!indexed.ok()) {
+        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
+                                                      indexed.error());
+    }
     sessions_.RemoveVerifyCode(request.verify_code_id());
     zchat::PhoneRegisterRsp response;
     MarkOk(request.request_id(), &response);
@@ -323,7 +331,11 @@ UserApplicationService::SetAvatar(const zchat::SetUserAvatarReq &request) {
         return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
                                                       updated.error());
     }
-    IndexUserById(user_id.value());
+    const auto indexed = IndexUserById(user_id.value());
+    if (!indexed.ok()) {
+        return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
+                                                      indexed.error());
+    }
     zchat::SetUserAvatarRsp response;
     MarkOk(request.request_id(), &response);
     ZCHAT_LOG_INFO("SetAvatar success: request_id={}", request.request_id());
@@ -344,7 +356,11 @@ UserApplicationService::SetNickname(const zchat::SetUserNicknameReq &request) {
         return ErrorResponse<zchat::SetUserNicknameRsp>(
             request.request_id(), updated.error());
     }
-    IndexUserById(user_id.value());
+    const auto indexed = IndexUserById(user_id.value());
+    if (!indexed.ok()) {
+        return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
+                                                        indexed.error());
+    }
     zchat::SetUserNicknameRsp response;
     MarkOk(request.request_id(), &response);
     ZCHAT_LOG_INFO("SetNickname success: request_id={}", request.request_id());
@@ -365,7 +381,11 @@ zchat::SetUserDescriptionRsp UserApplicationService::SetDescription(
         return ErrorResponse<zchat::SetUserDescriptionRsp>(
             request.request_id(), updated.error());
     }
-    IndexUserById(user_id.value());
+    const auto indexed = IndexUserById(user_id.value());
+    if (!indexed.ok()) {
+        return ErrorResponse<zchat::SetUserDescriptionRsp>(request.request_id(),
+                                                           indexed.error());
+    }
     zchat::SetUserDescriptionRsp response;
     MarkOk(request.request_id(), &response);
     ZCHAT_LOG_INFO("SetDescription success: request_id={}", request.request_id());
@@ -397,7 +417,11 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
             request.request_id(), updated.error());
     }
-    IndexUserById(user_id.value());
+    const auto indexed = IndexUserById(user_id.value());
+    if (!indexed.ok()) {
+        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(request.request_id(),
+                                                           indexed.error());
+    }
     sessions_.RemoveVerifyCode(request.phone_verify_code_id());
     zchat::SetUserPhoneNumberRsp response;
     MarkOk(request.request_id(), &response);
@@ -457,21 +481,20 @@ bool UserApplicationService::IsValidPassword(
     });
 }
 
-void UserApplicationService::IndexUser(const UserRecord &user) {
-    const auto indexed = search_index_.IndexUser(user);
-    if (!indexed.ok()) {
-        ZCHAT_LOG_WARN("user es index failed: user_id={} error={}",
-                       user.user_id, indexed.error().message);
-    }
+VoidResult UserApplicationService::IndexUser(const UserRecord &user) {
+    return search_index_.IndexUser(user);
 }
 
-void UserApplicationService::IndexUserById(const std::string &user_id) {
+VoidResult UserApplicationService::IndexUserById(const std::string &user_id) {
     auto user = users_.FindUserById(user_id);
-    if (!user.ok() || !user.value().has_value()) {
-        ZCHAT_LOG_WARN("user es index skipped: user_id={}", user_id);
-        return;
+    if (!user.ok()) {
+        return VoidResult::Fail(user.error());
     }
-    IndexUser(user.value().value());
+    if (!user.value().has_value()) {
+        return VoidResult::Fail(AppError::WithCode(ErrorCode::kUserNotFound,
+                                                   "user not found"));
+    }
+    return IndexUser(user.value().value());
 }
 
 Result<std::string> UserApplicationService::LoginUser(

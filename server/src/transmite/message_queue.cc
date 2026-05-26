@@ -27,8 +27,8 @@ struct EventBaseDeleter {
 };
 
 event_base *CreateEventBase() {
-    static const int threads_enabled = evthread_use_pthreads();
-    if (threads_enabled != 0) {
+    static const int threads_ready = evthread_use_pthreads();
+    if (threads_ready != 0) {
         return nullptr;
     }
     return event_base_new();
@@ -259,20 +259,14 @@ class AmqpConsumerRuntime {
 
 ConfiguredMessageQueuePublisher::ConfiguredMessageQueuePublisher(
     const RabbitmqConfig &config)
-    : enabled_(config.enabled), exchange_(config.exchange),
-      routing_key_(config.routing_key) {
-    if (enabled_) {
-        runtime_ = std::make_unique<AmqpPublisherRuntime>(config);
-    }
+    : exchange_(config.exchange), routing_key_(config.routing_key),
+      runtime_(std::make_unique<AmqpPublisherRuntime>(config)) {
 }
 
 ConfiguredMessageQueuePublisher::~ConfiguredMessageQueuePublisher() = default;
 
 VoidResult
 ConfiguredMessageQueuePublisher::Publish(const std::string &payload) {
-    if (!enabled_) {
-        return VoidResult::Ok();
-    }
     if (!runtime_) {
         return VoidResult::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
@@ -283,11 +277,8 @@ ConfiguredMessageQueuePublisher::Publish(const std::string &payload) {
 
 ConfiguredMessageQueueConsumer::ConfiguredMessageQueueConsumer(
     const RabbitmqConfig &config, MessageHandler handler)
-    : enabled_(config.enabled) {
-    if (enabled_) {
-        runtime_ =
-            std::make_unique<AmqpConsumerRuntime>(config, std::move(handler));
-    }
+    : runtime_(
+          std::make_unique<AmqpConsumerRuntime>(config, std::move(handler))) {
 }
 
 ConfiguredMessageQueueConsumer::~ConfiguredMessageQueueConsumer() = default;

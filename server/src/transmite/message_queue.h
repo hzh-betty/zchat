@@ -21,7 +21,6 @@ class MessageQueuePublisher : public NonCopyable {
     virtual ~MessageQueuePublisher() = default;
 
     virtual VoidResult Publish(const std::string &payload) = 0;
-    virtual bool enabled() const = 0;
 };
 
 class ConfiguredMessageQueuePublisher final : public MessageQueuePublisher {
@@ -30,10 +29,8 @@ class ConfiguredMessageQueuePublisher final : public MessageQueuePublisher {
     ~ConfiguredMessageQueuePublisher() override;
 
     VoidResult Publish(const std::string &payload) override;
-    bool enabled() const override { return enabled_; }
 
   private:
-    bool enabled_;
     std::string exchange_;
     std::string routing_key_;
     std::unique_ptr<AmqpPublisherRuntime> runtime_;
@@ -48,7 +45,6 @@ class ConfiguredMessageQueueConsumer final : public NonCopyable {
     ~ConfiguredMessageQueueConsumer();
 
   private:
-    bool enabled_;
     std::unique_ptr<AmqpConsumerRuntime> runtime_;
 };
 

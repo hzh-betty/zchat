@@ -31,20 +31,16 @@
     "path": "./server_storage"
   },
   "speech": {
-    "enabled": true,
     "app_id": "{{ZCHAT_SPEECH_APP_ID}}",
     "api_key": "{{ZCHAT_SPEECH_API_KEY}}",
-    "secret_key": "{{ZCHAT_SPEECH_SECRET_KEY}}",
-    "placeholder_result": "语音识别服务未配置"
+    "secret_key": "{{ZCHAT_SPEECH_SECRET_KEY}}"
   },
   "elasticsearch": {
-    "enabled": true,
     "hosts": "http://127.0.0.1:9200/",
     "user": "",
     "password": ""
   },
   "rabbitmq": {
-    "enabled": true,
     "host": "127.0.0.1:5672",
     "user": "{{ZCHAT_RABBITMQ_USER}}",
     "password": "{{ZCHAT_RABBITMQ_PASSWORD}}",
@@ -53,7 +49,6 @@
     "routing_key": "msg_queue"
   },
   "sms": {
-    "enabled": true,
     "access_key_id": "{{ZCHAT_SMS_ACCESS_KEY_ID}}",
     "access_key_secret": "{{ZCHAT_SMS_ACCESS_KEY_SECRET}}",
     "sign_name": "{{ZCHAT_SMS_SIGN_NAME}}",

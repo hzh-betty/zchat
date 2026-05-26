@@ -45,35 +45,13 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
             "sender not found");
     }
 
-    if (queue_.enabled()) {
-        std::string queue_payload;
-        ToProtoMessage(message, sender.value().value(), file_content)
-            .SerializeToString(&queue_payload);
-        const auto published = queue_.Publish(queue_payload);
-        if (!published.ok()) {
-            return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
-                                                           published.error());
-        }
-    } else {
-        if (!file_content.empty()) {
-            const auto saved = repository_.PutFile(FileRecord{
-                message.file_id, message.file_name, file_content.size(),
-                file_content});
-            if (!saved.ok()) {
-                return MakeErrorResponse<zchat::NewMessageRsp>(
-                    request.request_id(), saved.error());
-            }
-        }
-        const auto inserted = repository_.InsertMessage(message);
-        if (!inserted.ok()) {
-            return MakeErrorResponse<zchat::NewMessageRsp>(
-                request.request_id(), inserted.error());
-        }
-        const auto indexed = search_index_.IndexMessage(message);
-        if (!indexed.ok()) {
-            return MakeErrorResponse<zchat::NewMessageRsp>(
-                request.request_id(), indexed.error());
-        }
+    std::string queue_payload;
+    ToProtoMessage(message, sender.value().value(), file_content)
+        .SerializeToString(&queue_payload);
+    const auto published = queue_.Publish(queue_payload);
+    if (!published.ok()) {
+        return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
+                                                       published.error());
     }
 
     auto members =

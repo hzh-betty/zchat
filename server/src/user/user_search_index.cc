@@ -72,11 +72,8 @@ Result<std::vector<UserRecord>> ParseSearchResponse(const std::string &body) {
 
 ConfiguredUserSearchIndex::ConfiguredUserSearchIndex(
     const ElasticsearchConfig &config)
-    : enabled_(config.enabled), host_(FirstHost(config.hosts)),
-      user_(config.user), password_(config.password) {
-    if (!enabled_) {
-        return;
-    }
+    : host_(FirstHost(config.hosts)), user_(config.user),
+      password_(config.password) {
     loop_thread_ =
         std::make_unique<trantor::EventLoopThread>("zchat-es-user-client");
     loop_thread_->run();
@@ -89,9 +86,6 @@ ConfiguredUserSearchIndex::ConfiguredUserSearchIndex(
 }
 
 VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
-    if (!enabled_) {
-        return VoidResult::Ok();
-    }
     if (!client_) {
         return VoidResult::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
@@ -128,9 +122,6 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
 }
 
 VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
-    if (!enabled_) {
-        return VoidResult::Ok();
-    }
     if (!client_) {
         return VoidResult::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
@@ -163,11 +154,6 @@ VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
 Result<std::vector<UserRecord>> ConfiguredUserSearchIndex::SearchUsers(
     const std::string &keyword,
     const std::vector<std::string> &excluded_user_ids) {
-    if (!enabled_) {
-        return Result<std::vector<UserRecord>>::Fail(
-            AppError::WithCode(ErrorCode::kExternalServiceError,
-                               "elasticsearch is disabled"));
-    }
     if (!client_) {
         return Result<std::vector<UserRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,

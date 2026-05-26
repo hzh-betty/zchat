@@ -25,7 +25,6 @@ class UserSearchIndex : public NonCopyable {
     virtual Result<std::vector<UserRecord>>
     SearchUsers(const std::string &keyword,
                 const std::vector<std::string> &excluded_user_ids) = 0;
-    virtual bool enabled() const = 0;
 };
 
 class ConfiguredUserSearchIndex final : public UserSearchIndex {
@@ -37,13 +36,11 @@ class ConfiguredUserSearchIndex final : public UserSearchIndex {
     Result<std::vector<UserRecord>>
     SearchUsers(const std::string &keyword,
                 const std::vector<std::string> &excluded_user_ids) override;
-    bool enabled() const override { return enabled_; }
 
   private:
     VoidResult EnsureIndex();
     void AddAuthHeader(const drogon::HttpRequestPtr &request) const;
 
-    bool enabled_;
     std::string host_;
     std::string user_;
     std::string password_;

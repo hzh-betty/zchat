@@ -25,7 +25,6 @@ class MessageSearchIndex : public NonCopyable {
     virtual Result<std::vector<MessageRecord>>
     SearchMessages(const std::string &session_id,
                    const std::string &keyword) = 0;
-    virtual bool enabled() const = 0;
 };
 
 class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
@@ -37,13 +36,11 @@ class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
     Result<std::vector<MessageRecord>>
     SearchMessages(const std::string &session_id,
                    const std::string &keyword) override;
-    bool enabled() const override { return enabled_; }
 
   private:
     VoidResult EnsureIndex();
     void AddAuthHeader(const drogon::HttpRequestPtr &request) const;
 
-    bool enabled_;
     std::string host_;
     std::string user_;
     std::string password_;

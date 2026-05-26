@@ -23,7 +23,7 @@ class SmsClient : public NonCopyable {
 
 class ConfiguredSmsClient final : public SmsClient {
   public:
-    explicit ConfiguredSmsClient(bool enabled);
+    ConfiguredSmsClient() = default;
 
     ~ConfiguredSmsClient() override = default;
 
@@ -32,8 +32,6 @@ class ConfiguredSmsClient final : public SmsClient {
     VoidResult CheckVerificationCode(const std::string &phone,
                                      const std::string &code) override;
 
-  private:
-    bool enabled_;
 };
 
 } // namespace zchat

@@ -356,21 +356,8 @@ FriendApplicationService::SearchFriend(const zchat::FriendSearchReq &request) {
                                                      excluded.error());
     }
     excluded.value().push_back(user_id);
-    auto users = users_.SearchUsers(request.search_key(), user_id);
-    if (search_index_.enabled()) {
-        users = search_index_.SearchUsers(request.search_key(),
+    auto users = search_index_.SearchUsers(request.search_key(),
                                           excluded.value());
-        if (!users.ok()) {
-            ZCHAT_LOG_WARN(
-                "FriendService::SearchFriend es failed, fallback mysql: {}",
-                users.error().message);
-            users = users_.SearchUsers(request.search_key(), user_id);
-        } else if (users.value().empty()) {
-            ZCHAT_LOG_DEBUG(
-                "FriendService::SearchFriend es empty, fallback mysql");
-            users = users_.SearchUsers(request.search_key(), user_id);
-        }
-    }
     if (!users.ok()) {
         return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
                                                      users.error());

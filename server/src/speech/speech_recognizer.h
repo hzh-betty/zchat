@@ -20,14 +20,11 @@ class SpeechRecognizer : public NonCopyable {
 
 class ConfiguredSpeechRecognizer final : public SpeechRecognizer {
   public:
-    ConfiguredSpeechRecognizer(bool enabled, std::string placeholder_result);
+    ConfiguredSpeechRecognizer() = default;
     ~ConfiguredSpeechRecognizer() override = default;
 
     Result<std::string> Recognize(const std::string &speech_data) override;
 
-  private:
-    bool enabled_;
-    std::string placeholder_result_;
 };
 
 } // namespace zchat

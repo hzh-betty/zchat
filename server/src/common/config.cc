@@ -60,13 +60,6 @@ std::size_t GetSize(const Json::Value &value, const char *key,
     return static_cast<std::size_t>(value[key].asUInt64());
 }
 
-bool GetBool(const Json::Value &value, const char *key, bool fallback) {
-    if (!value.isObject() || !value.isMember(key)) {
-        return fallback;
-    }
-    return value[key].asBool();
-}
-
 } // namespace
 
 AppConfig LoadConfig(const std::string &path) {
@@ -113,17 +106,12 @@ AppConfig LoadConfig(const std::string &path) {
     config.storage.path = GetString(storage, "path", config.storage.path);
 
     const Json::Value speech = root["speech"];
-    config.speech.enabled = GetBool(speech, "enabled", config.speech.enabled);
     config.speech.app_id = GetString(speech, "app_id", config.speech.app_id);
     config.speech.api_key = GetString(speech, "api_key", config.speech.api_key);
     config.speech.secret_key =
         GetString(speech, "secret_key", config.speech.secret_key);
-    config.speech.placeholder_result = GetString(
-        speech, "placeholder_result", config.speech.placeholder_result);
 
     const Json::Value elasticsearch = root["elasticsearch"];
-    config.elasticsearch.enabled =
-        GetBool(elasticsearch, "enabled", config.elasticsearch.enabled);
     config.elasticsearch.hosts =
         GetString(elasticsearch, "hosts", config.elasticsearch.hosts);
     config.elasticsearch.user =
@@ -132,8 +120,6 @@ AppConfig LoadConfig(const std::string &path) {
         GetString(elasticsearch, "password", config.elasticsearch.password);
 
     const Json::Value rabbitmq = root["rabbitmq"];
-    config.rabbitmq.enabled =
-        GetBool(rabbitmq, "enabled", config.rabbitmq.enabled);
     config.rabbitmq.host = GetString(rabbitmq, "host", config.rabbitmq.host);
     config.rabbitmq.user = GetString(rabbitmq, "user", config.rabbitmq.user);
     config.rabbitmq.password =
@@ -145,7 +131,6 @@ AppConfig LoadConfig(const std::string &path) {
         GetString(rabbitmq, "routing_key", config.rabbitmq.routing_key);
 
     const Json::Value sms = root["sms"];
-    config.sms.enabled = GetBool(sms, "enabled", config.sms.enabled);
     config.sms.access_key_id =
         GetString(sms, "access_key_id", config.sms.access_key_id);
     config.sms.access_key_secret =

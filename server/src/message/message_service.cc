@@ -69,11 +69,8 @@ zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
         return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
                                                       auth.error());
     }
-    auto messages = search_index_.enabled()
-                        ? search_index_.SearchMessages(
-                              request.chat_session_id(), request.search_key())
-                        : messages_.SearchMessages(request.chat_session_id(),
-                                                   request.search_key());
+    auto messages = search_index_.SearchMessages(request.chat_session_id(),
+                                                 request.search_key());
     if (!messages.ok()) {
         return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
                                                       messages.error());
