@@ -40,8 +40,8 @@
   "elasticsearch": {
     "enabled": true,
     "hosts": "http://127.0.0.1:9200/",
-    "user": "{{ZCHAT_ES_USER}}",
-    "password": "{{ZCHAT_ES_PASSWORD}}"
+    "user": "",
+    "password": ""
   },
   "rabbitmq": {
     "enabled": true,
