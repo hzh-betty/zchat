@@ -9,6 +9,7 @@
 
 #include "common/config.h"
 #include "file/file_repository.h"
+#include "friend/friend_repository.h"
 #include "message/message_grpc_service.h"
 #include "message/message_repository.h"
 #include "message/message_search_index.h"
@@ -31,6 +32,7 @@ class MessageContext : public NonCopyable {
     OrmMessageRepository message_repository_;
     OrmUserRepository user_repository_;
     OrmFileRepository file_repository_;
+    OrmFriendRepository friend_repository_;
     ConfiguredMessageSearchIndex search_index_;
     std::shared_ptr<MessageService> message_service_;
     ConfiguredMessageQueueConsumer queue_consumer_;

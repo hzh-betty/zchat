@@ -1,5 +1,6 @@
 #include "message/message_service.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "common/logger.h"
@@ -22,13 +23,22 @@ Response ErrorResponse(const std::string &request_id,
 
 MessageService::MessageService(MessageRepository &messages,
                                UserRepository &users, FileRepository &files,
+                               FriendRepository &friends,
                                MessageSearchIndex &search_index)
     : messages_(messages), users_(users), files_(files),
-      search_index_(search_index) {}
+      friends_(friends), search_index_(search_index) {}
 
 zchat::GetRecentMsgRsp
 MessageService::GetRecent(const zchat::GetRecentMsgReq &request) {
     ZCHAT_LOG_INFO("MessageService::GetRecent request_id={}", request.request_id());
+    const auto auth = EnsureCanReadSession(
+        request.request_id(), request.user_id(), request.chat_session_id());
+    if (!auth.ok()) {
+        ZCHAT_LOG_WARN("MessageService::GetRecent rejected: request_id={} err={}",
+                       request.request_id(), auth.error().message);
+        return ErrorResponse<zchat::GetRecentMsgRsp>(request.request_id(),
+                                                     auth.error().message);
+    }
     auto messages = messages_.ListRecentMessages(
         request.chat_session_id(), static_cast<int>(request.msg_count()));
     if (!messages.ok()) {
@@ -45,6 +55,14 @@ MessageService::GetRecent(const zchat::GetRecentMsgReq &request) {
 zchat::GetHistoryMsgRsp
 MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
     ZCHAT_LOG_INFO("MessageService::GetHistory request_id={}", request.request_id());
+    const auto auth = EnsureCanReadSession(
+        request.request_id(), request.user_id(), request.chat_session_id());
+    if (!auth.ok()) {
+        ZCHAT_LOG_WARN("MessageService::GetHistory rejected: request_id={} err={}",
+                       request.request_id(), auth.error().message);
+        return ErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
+                                                      auth.error().message);
+    }
     auto messages = messages_.ListMessagesByTime(
         request.chat_session_id(), request.start_time(), request.over_time());
     if (!messages.ok()) {
@@ -60,6 +78,14 @@ MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
 
 zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
     ZCHAT_LOG_INFO("MessageService::Search request_id={}", request.request_id());
+    const auto auth = EnsureCanReadSession(
+        request.request_id(), request.user_id(), request.chat_session_id());
+    if (!auth.ok()) {
+        ZCHAT_LOG_WARN("MessageService::Search rejected: request_id={} err={}",
+                       request.request_id(), auth.error().message);
+        return ErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
+                                                  auth.error().message);
+    }
     auto messages = search_index_.enabled()
                         ? search_index_.SearchMessages(
                               request.chat_session_id(), request.search_key())
@@ -102,6 +128,23 @@ VoidResult MessageService::StoreQueuedMessage(const zchat::MessageInfo &message)
     }
     ZCHAT_LOG_INFO("MessageService::StoreQueuedMessage success: message_id={}",
                    record.message_id);
+    return VoidResult::Ok();
+}
+
+VoidResult MessageService::EnsureCanReadSession(
+    const std::string &, const std::string &user_id,
+    const std::string &session_id) {
+    if (user_id.empty()) {
+        return VoidResult::Fail("登录会话已失效");
+    }
+    auto members = friends_.ListChatSessionMembers(session_id);
+    if (!members.ok()) {
+        return VoidResult::Fail(members.error().message);
+    }
+    if (std::find(members.value().begin(), members.value().end(), user_id) ==
+        members.value().end()) {
+        return VoidResult::Fail("无权访问该会话消息");
+    }
     return VoidResult::Ok();
 }
 

@@ -85,6 +85,44 @@ ConfiguredMessageSearchIndex::ConfiguredMessageSearchIndex(
         std::make_unique<trantor::EventLoopThread>("zchat-es-http-client");
     loop_thread_->run();
     client_ = drogon::HttpClient::newHttpClient(host_, loop_thread_->getLoop());
+    const auto ensured = EnsureIndex();
+    if (!ensured.ok()) {
+        ZCHAT_LOG_WARN("Elasticsearch message index init failed: {}",
+                       ensured.error().message);
+    }
+}
+
+VoidResult ConfiguredMessageSearchIndex::EnsureIndex() {
+    if (!enabled_) {
+        return VoidResult::Ok();
+    }
+    if (!client_) {
+        return VoidResult::Fail("Elasticsearch 客户端未初始化");
+    }
+    auto request = drogon::HttpRequest::newHttpRequest();
+    request->setMethod(drogon::Put);
+    request->setPath(kIndexPath);
+    request->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+    request->setBody(BuildElasticsearchMessageIndexDefinition());
+    AddAuthHeader(request);
+
+    const auto [result, response] =
+        client_->sendRequest(request, kRequestTimeoutSeconds);
+    if (result != drogon::ReqResult::Ok || !response) {
+        return VoidResult::Fail("Elasticsearch 消息索引创建请求失败: " +
+                                drogon::to_string(result));
+    }
+    if (IsSuccessStatus(response->statusCode())) {
+        return VoidResult::Ok();
+    }
+    const std::string body(response->body());
+    if (response->statusCode() == drogon::k400BadRequest &&
+        body.find("resource_already_exists_exception") != std::string::npos) {
+        return VoidResult::Ok();
+    }
+    return VoidResult::Fail("Elasticsearch 消息索引创建返回异常状态: " +
+                            std::to_string(response->statusCode()) +
+                            " body=" + body);
 }
 
 VoidResult
@@ -178,6 +216,22 @@ std::string BuildElasticsearchSearchRequest(const std::string &session_id,
 
     root["query"]["bool"]["filter"] = filters;
     root["query"]["bool"]["must"]["match"]["content"] = keyword;
+    return CompactJson(root);
+}
+
+std::string BuildElasticsearchMessageIndexDefinition() {
+    Json::Value root(Json::objectValue);
+    Json::Value properties(Json::objectValue);
+    properties["message_id"]["type"] = "keyword";
+    properties["session_id"]["type"] = "keyword";
+    properties["user_id"]["type"] = "keyword";
+    properties["message_type"]["type"] = "integer";
+    properties["create_time"]["type"] = "long";
+    properties["content"]["type"] = "text";
+    properties["file_id"]["type"] = "keyword";
+    properties["file_name"]["type"] = "keyword";
+    properties["file_size"]["type"] = "long";
+    root["mappings"]["properties"] = properties;
     return CompactJson(root);
 }
 

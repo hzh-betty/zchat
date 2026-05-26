@@ -4,6 +4,7 @@
 #include "common/noncopyable.h"
 
 #include "file/file_repository.h"
+#include "friend/friend_repository.h"
 #include "message.pb.h"
 #include "message/message_repository.h"
 #include "message/message_search_index.h"
@@ -14,7 +15,8 @@ namespace zchat {
 class MessageService : public NonCopyable {
   public:
     MessageService(MessageRepository &messages, UserRepository &users,
-                   FileRepository &files, MessageSearchIndex &search_index);
+                   FileRepository &files, FriendRepository &friends,
+                   MessageSearchIndex &search_index);
     ~MessageService() = default;
 
     zchat::GetRecentMsgRsp GetRecent(const zchat::GetRecentMsgReq &request);
@@ -26,10 +28,14 @@ class MessageService : public NonCopyable {
     template <typename Response, typename Messages>
     Response BuildMessageListResponse(const std::string &request_id,
                                       const Messages &messages);
+    VoidResult EnsureCanReadSession(const std::string &request_id,
+                                    const std::string &user_id,
+                                    const std::string &session_id);
 
     MessageRepository &messages_;
     UserRepository &users_;
     FileRepository &files_;
+    FriendRepository &friends_;
     MessageSearchIndex &search_index_;
 };
 

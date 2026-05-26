@@ -40,6 +40,7 @@ class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
     bool enabled() const override { return enabled_; }
 
   private:
+    VoidResult EnsureIndex();
     void AddAuthHeader(const drogon::HttpRequestPtr &request) const;
 
     bool enabled_;
@@ -53,6 +54,7 @@ class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
 std::string BuildElasticsearchMessageDocument(const MessageRecord &message);
 std::string BuildElasticsearchSearchRequest(const std::string &session_id,
                                             const std::string &keyword);
+std::string BuildElasticsearchMessageIndexDefinition();
 
 } // namespace zchat
 
