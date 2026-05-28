@@ -190,7 +190,6 @@ class DisabledMessageSearchIndex final : public zchat::MessageSearchIndex {
     SearchMessages(const std::string &, const std::string &) override {
         return zchat::Result<std::vector<zchat::MessageRecord>>::Ok({});
     }
-    bool enabled() const override { return false; }
 };
 
 } // namespace
