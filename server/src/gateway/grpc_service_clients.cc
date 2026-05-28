@@ -9,9 +9,8 @@
 namespace zchat {
 namespace {
 
-std::shared_ptr<grpc::Channel> LocalChannel(int port) {
-    return grpc::CreateChannel("127.0.0.1:" + std::to_string(port),
-                               grpc::InsecureChannelCredentials());
+std::shared_ptr<grpc::Channel> EndpointChannel(const std::string &endpoint) {
+    return grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
 }
 
 template <typename Response>
@@ -46,19 +45,27 @@ void CallUnaryGrpc(
     callback(ProtobufResponse(response));
 }
 
-template <typename Stub, typename Request, typename Response, typename Method>
-void CallStub(Stub *stub, Method method, const std::string &body,
+template <typename Service, typename Request, typename Response, typename Method>
+void CallStub(EtcdDiscovery &discovery, const std::string &service_name,
+              Method method, const std::string &body,
               std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
+    auto endpoint = discovery.Endpoint(service_name);
+    if (!endpoint.ok()) {
+        callback(GrpcErrorResponse<Response>(endpoint.error()));
+        return;
+    }
+    auto stub = Service::NewStub(EndpointChannel(endpoint.value()));
     CallUnaryGrpc<Request, Response>(
         body, std::move(callback),
-        [stub, method](grpc::ClientContext *context, const Request &request,
-                       Response *response) {
-            return (stub->*method)(context, request, response);
+        [stub = std::move(stub), method](grpc::ClientContext *context,
+                                         const Request &request,
+                                         Response *response) {
+            return (stub.get()->*method)(context, request, response);
         });
 }
 
 void CallTransmite(
-    zchat::MsgTransmitService::Stub *stub, const std::string &body,
+    EtcdDiscovery &discovery, const std::string &body,
     std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
     zchat::NewMessageReq request;
     if (!request.ParseFromString(body)) {
@@ -67,6 +74,12 @@ void CallTransmite(
             ErrorCode::kInvalidArgument, "request body parse failed")));
         return;
     }
+    auto endpoint = discovery.Endpoint("transmite_service");
+    if (!endpoint.ok()) {
+        callback(GrpcErrorResponse<zchat::NewMessageRsp>(endpoint.error()));
+        return;
+    }
+    auto stub = zchat::MsgTransmitService::NewStub(EndpointChannel(endpoint.value()));
     zchat::GetTransmitTargetRsp target_response;
     grpc::ClientContext context;
     const grpc::Status status =
@@ -90,188 +103,179 @@ void CallTransmite(
 } // namespace
 
 GrpcServiceClients::GrpcServiceClients(const AppConfig &config)
-    : user_(zchat::UserService::NewStub(LocalChannel(config.services.user))),
-      friend_(zchat::FriendService::NewStub(
-          LocalChannel(config.services.friend_service))),
-      message_(zchat::MsgStorageService::NewStub(
-          LocalChannel(config.services.message))),
-      transmite_(zchat::MsgTransmitService::NewStub(
-          LocalChannel(config.services.transmite))),
-      file_(zchat::FileService::NewStub(LocalChannel(config.services.file))),
-      speech_(
-          zchat::SpeechService::NewStub(LocalChannel(config.services.speech))) {
+    : discovery_(config.etcd) {
 }
 
 void GrpcServiceClients::Forward(
     const std::string &path, const std::string &body,
     std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
     if (path == "/service/user/get_phone_verify_code") {
-        return CallStub<zchat::UserService::Stub, zchat::PhoneVerifyCodeReq,
+        return CallStub<zchat::UserService, zchat::PhoneVerifyCodeReq,
                         zchat::PhoneVerifyCodeRsp>(
-            user_.get(), &zchat::UserService::Stub::GetPhoneVerifyCode, body,
+            discovery_, "user_service", &zchat::UserService::Stub::GetPhoneVerifyCode, body,
             std::move(callback));
     }
     if (path == "/service/user/username_register") {
-        return CallStub<zchat::UserService::Stub, zchat::UserRegisterReq,
+        return CallStub<zchat::UserService, zchat::UserRegisterReq,
                         zchat::UserRegisterRsp>(
-            user_.get(), &zchat::UserService::Stub::UserRegister, body,
+            discovery_, "user_service", &zchat::UserService::Stub::UserRegister, body,
             std::move(callback));
     }
     if (path == "/service/user/username_login") {
-        return CallStub<zchat::UserService::Stub, zchat::UserLoginReq,
+        return CallStub<zchat::UserService, zchat::UserLoginReq,
                         zchat::UserLoginRsp>(
-            user_.get(), &zchat::UserService::Stub::UserLogin, body,
+            discovery_, "user_service", &zchat::UserService::Stub::UserLogin, body,
             std::move(callback));
     }
     if (path == "/service/user/phone_register") {
-        return CallStub<zchat::UserService::Stub, zchat::PhoneRegisterReq,
+        return CallStub<zchat::UserService, zchat::PhoneRegisterReq,
                         zchat::PhoneRegisterRsp>(
-            user_.get(), &zchat::UserService::Stub::PhoneRegister, body,
+            discovery_, "user_service", &zchat::UserService::Stub::PhoneRegister, body,
             std::move(callback));
     }
     if (path == "/service/user/phone_login") {
-        return CallStub<zchat::UserService::Stub, zchat::PhoneLoginReq,
+        return CallStub<zchat::UserService, zchat::PhoneLoginReq,
                         zchat::PhoneLoginRsp>(
-            user_.get(), &zchat::UserService::Stub::PhoneLogin, body,
+            discovery_, "user_service", &zchat::UserService::Stub::PhoneLogin, body,
             std::move(callback));
     }
     if (path == "/service/user/get_user_info") {
-        return CallStub<zchat::UserService::Stub, zchat::GetUserInfoReq,
+        return CallStub<zchat::UserService, zchat::GetUserInfoReq,
                         zchat::GetUserInfoRsp>(
-            user_.get(), &zchat::UserService::Stub::GetUserInfo, body,
+            discovery_, "user_service", &zchat::UserService::Stub::GetUserInfo, body,
             std::move(callback));
     }
     if (path == "/service/user/set_avatar") {
-        return CallStub<zchat::UserService::Stub, zchat::SetUserAvatarReq,
+        return CallStub<zchat::UserService, zchat::SetUserAvatarReq,
                         zchat::SetUserAvatarRsp>(
-            user_.get(), &zchat::UserService::Stub::SetUserAvatar, body,
+            discovery_, "user_service", &zchat::UserService::Stub::SetUserAvatar, body,
             std::move(callback));
     }
     if (path == "/service/user/set_nickname") {
-        return CallStub<zchat::UserService::Stub, zchat::SetUserNicknameReq,
+        return CallStub<zchat::UserService, zchat::SetUserNicknameReq,
                         zchat::SetUserNicknameRsp>(
-            user_.get(), &zchat::UserService::Stub::SetUserNickname, body,
+            discovery_, "user_service", &zchat::UserService::Stub::SetUserNickname, body,
             std::move(callback));
     }
     if (path == "/service/user/set_description") {
-        return CallStub<zchat::UserService::Stub, zchat::SetUserDescriptionReq,
+        return CallStub<zchat::UserService, zchat::SetUserDescriptionReq,
                         zchat::SetUserDescriptionRsp>(
-            user_.get(), &zchat::UserService::Stub::SetUserDescription, body,
+            discovery_, "user_service", &zchat::UserService::Stub::SetUserDescription, body,
             std::move(callback));
     }
     if (path == "/service/user/set_phone") {
-        return CallStub<zchat::UserService::Stub, zchat::SetUserPhoneNumberReq,
+        return CallStub<zchat::UserService, zchat::SetUserPhoneNumberReq,
                         zchat::SetUserPhoneNumberRsp>(
-            user_.get(), &zchat::UserService::Stub::SetUserPhoneNumber, body,
+            discovery_, "user_service", &zchat::UserService::Stub::SetUserPhoneNumber, body,
             std::move(callback));
     }
     if (path == "/service/friend/get_friend_list") {
-        return CallStub<zchat::FriendService::Stub, zchat::GetFriendListReq,
+        return CallStub<zchat::FriendService, zchat::GetFriendListReq,
                         zchat::GetFriendListRsp>(
-            friend_.get(), &zchat::FriendService::Stub::GetFriendList, body,
+            discovery_, "friend_service", &zchat::FriendService::Stub::GetFriendList, body,
             std::move(callback));
     }
     if (path == "/service/friend/get_chat_session_list") {
-        return CallStub<zchat::FriendService::Stub,
+        return CallStub<zchat::FriendService,
                         zchat::GetChatSessionListReq,
                         zchat::GetChatSessionListRsp>(
-            friend_.get(), &zchat::FriendService::Stub::GetChatSessionList,
+            discovery_, "friend_service", &zchat::FriendService::Stub::GetChatSessionList,
             body, std::move(callback));
     }
     if (path == "/service/friend/get_pending_friend_events") {
-        return CallStub<zchat::FriendService::Stub,
+        return CallStub<zchat::FriendService,
                         zchat::GetPendingFriendEventListReq,
                         zchat::GetPendingFriendEventListRsp>(
-            friend_.get(),
+            discovery_, "friend_service",
             &zchat::FriendService::Stub::GetPendingFriendEventList, body,
             std::move(callback));
     }
     if (path == "/service/friend/remove_friend") {
-        return CallStub<zchat::FriendService::Stub, zchat::FriendRemoveReq,
+        return CallStub<zchat::FriendService, zchat::FriendRemoveReq,
                         zchat::FriendRemoveRsp>(
-            friend_.get(), &zchat::FriendService::Stub::FriendRemove, body,
+            discovery_, "friend_service", &zchat::FriendService::Stub::FriendRemove, body,
             std::move(callback));
     }
     if (path == "/service/friend/add_friend_apply") {
-        return CallStub<zchat::FriendService::Stub, zchat::FriendAddReq,
+        return CallStub<zchat::FriendService, zchat::FriendAddReq,
                         zchat::FriendAddRsp>(
-            friend_.get(), &zchat::FriendService::Stub::FriendAdd, body,
+            discovery_, "friend_service", &zchat::FriendService::Stub::FriendAdd, body,
             std::move(callback));
     }
     if (path == "/service/friend/add_friend_process") {
-        return CallStub<zchat::FriendService::Stub, zchat::FriendAddProcessReq,
+        return CallStub<zchat::FriendService, zchat::FriendAddProcessReq,
                         zchat::FriendAddProcessRsp>(
-            friend_.get(), &zchat::FriendService::Stub::FriendAddProcess, body,
+            discovery_, "friend_service", &zchat::FriendService::Stub::FriendAddProcess, body,
             std::move(callback));
     }
     if (path == "/service/friend/create_chat_session") {
-        return CallStub<zchat::FriendService::Stub, zchat::ChatSessionCreateReq,
+        return CallStub<zchat::FriendService, zchat::ChatSessionCreateReq,
                         zchat::ChatSessionCreateRsp>(
-            friend_.get(), &zchat::FriendService::Stub::ChatSessionCreate, body,
+            discovery_, "friend_service", &zchat::FriendService::Stub::ChatSessionCreate, body,
             std::move(callback));
     }
     if (path == "/service/friend/get_chat_session_member") {
-        return CallStub<zchat::FriendService::Stub,
+        return CallStub<zchat::FriendService,
                         zchat::GetChatSessionMemberReq,
                         zchat::GetChatSessionMemberRsp>(
-            friend_.get(), &zchat::FriendService::Stub::GetChatSessionMember,
+            discovery_, "friend_service", &zchat::FriendService::Stub::GetChatSessionMember,
             body, std::move(callback));
     }
     if (path == "/service/friend/search_friend") {
-        return CallStub<zchat::FriendService::Stub, zchat::FriendSearchReq,
+        return CallStub<zchat::FriendService, zchat::FriendSearchReq,
                         zchat::FriendSearchRsp>(
-            friend_.get(), &zchat::FriendService::Stub::FriendSearch, body,
+            discovery_, "friend_service", &zchat::FriendService::Stub::FriendSearch, body,
             std::move(callback));
     }
     if (path == "/service/message_storage/get_recent") {
-        return CallStub<zchat::MsgStorageService::Stub, zchat::GetRecentMsgReq,
+        return CallStub<zchat::MsgStorageService, zchat::GetRecentMsgReq,
                         zchat::GetRecentMsgRsp>(
-            message_.get(), &zchat::MsgStorageService::Stub::GetRecentMsg, body,
+            discovery_, "message_service", &zchat::MsgStorageService::Stub::GetRecentMsg, body,
             std::move(callback));
     }
     if (path == "/service/message_storage/get_history") {
-        return CallStub<zchat::MsgStorageService::Stub, zchat::GetHistoryMsgReq,
+        return CallStub<zchat::MsgStorageService, zchat::GetHistoryMsgReq,
                         zchat::GetHistoryMsgRsp>(
-            message_.get(), &zchat::MsgStorageService::Stub::GetHistoryMsg,
+            discovery_, "message_service", &zchat::MsgStorageService::Stub::GetHistoryMsg,
             body, std::move(callback));
     }
     if (path == "/service/message_storage/search_history") {
-        return CallStub<zchat::MsgStorageService::Stub, zchat::MsgSearchReq,
+        return CallStub<zchat::MsgStorageService, zchat::MsgSearchReq,
                         zchat::MsgSearchRsp>(
-            message_.get(), &zchat::MsgStorageService::Stub::MsgSearch, body,
+            discovery_, "message_service", &zchat::MsgStorageService::Stub::MsgSearch, body,
             std::move(callback));
     }
     if (path == "/service/message_transmit/new_message") {
-        return CallTransmite(transmite_.get(), body, std::move(callback));
+        return CallTransmite(discovery_, body, std::move(callback));
     }
     if (path == "/service/file/get_single_file") {
-        return CallStub<zchat::FileService::Stub, zchat::GetSingleFileReq,
+        return CallStub<zchat::FileService, zchat::GetSingleFileReq,
                         zchat::GetSingleFileRsp>(
-            file_.get(), &zchat::FileService::Stub::GetSingleFile, body,
+            discovery_, "file_service", &zchat::FileService::Stub::GetSingleFile, body,
             std::move(callback));
     }
     if (path == "/service/file/get_multi_file") {
-        return CallStub<zchat::FileService::Stub, zchat::GetMultiFileReq,
+        return CallStub<zchat::FileService, zchat::GetMultiFileReq,
                         zchat::GetMultiFileRsp>(
-            file_.get(), &zchat::FileService::Stub::GetMultiFile, body,
+            discovery_, "file_service", &zchat::FileService::Stub::GetMultiFile, body,
             std::move(callback));
     }
     if (path == "/service/file/put_single_file") {
-        return CallStub<zchat::FileService::Stub, zchat::PutSingleFileReq,
+        return CallStub<zchat::FileService, zchat::PutSingleFileReq,
                         zchat::PutSingleFileRsp>(
-            file_.get(), &zchat::FileService::Stub::PutSingleFile, body,
+            discovery_, "file_service", &zchat::FileService::Stub::PutSingleFile, body,
             std::move(callback));
     }
     if (path == "/service/file/put_multi_file") {
-        return CallStub<zchat::FileService::Stub, zchat::PutMultiFileReq,
+        return CallStub<zchat::FileService, zchat::PutMultiFileReq,
                         zchat::PutMultiFileRsp>(
-            file_.get(), &zchat::FileService::Stub::PutMultiFile, body,
+            discovery_, "file_service", &zchat::FileService::Stub::PutMultiFile, body,
             std::move(callback));
     }
     if (path == "/service/speech/recognition") {
-        return CallStub<zchat::SpeechService::Stub, zchat::SpeechRecognitionReq,
+        return CallStub<zchat::SpeechService, zchat::SpeechRecognitionReq,
                         zchat::SpeechRecognitionRsp>(
-            speech_.get(), &zchat::SpeechService::Stub::SpeechRecognition, body,
+            discovery_, "speech_service", &zchat::SpeechService::Stub::SpeechRecognition, body,
             std::move(callback));
     }
     ZCHAT_LOG_WARN("unknown service path: {}", path);

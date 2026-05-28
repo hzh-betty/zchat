@@ -10,6 +10,7 @@
 #include <drogon/HttpResponse.h>
 
 #include "common/config.h"
+#include "common/etcd_service.h"
 #include "file.grpc.pb.h"
 #include "friend.grpc.pb.h"
 #include "message.grpc.pb.h"
@@ -30,12 +31,7 @@ class GrpcServiceClients : public NonCopyable {
             std::function<void(const drogon::HttpResponsePtr &)> &&callback);
 
   private:
-    std::unique_ptr<zchat::UserService::Stub> user_;
-    std::unique_ptr<zchat::FriendService::Stub> friend_;
-    std::unique_ptr<zchat::MsgStorageService::Stub> message_;
-    std::unique_ptr<zchat::MsgTransmitService::Stub> transmite_;
-    std::unique_ptr<zchat::FileService::Stub> file_;
-    std::unique_ptr<zchat::SpeechService::Stub> speech_;
+    EtcdDiscovery discovery_;
 };
 
 } // namespace zchat
