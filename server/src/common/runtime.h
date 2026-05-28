@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <drogon/drogon.h>
 #include <drogon/nosql/RedisClient.h>
@@ -13,6 +14,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "common/config.h"
+#include "common/etcd_service.h"
 #include "common/logger.h"
 
 namespace zchat {
@@ -23,7 +25,8 @@ drogon::nosql::RedisClientPtr MakeRedisClient(const RedisConfig &config);
 
 template <typename GrpcService>
 int RunGrpcServer(const std::string &service_name, int port,
-                  GrpcService *service) {
+                  GrpcService *service, const EtcdConfig *etcd_config = nullptr,
+                  const std::string &logical_service_name = "") {
     InitLogger(service_name);
     try {
         const std::string address = "0.0.0.0:" + std::to_string(port);
@@ -36,6 +39,20 @@ int RunGrpcServer(const std::string &service_name, int port,
                             service_name, address);
             return EXIT_FAILURE;
         }
+
+        std::unique_ptr<EtcdRegistry> registry;
+        if (etcd_config != nullptr && !logical_service_name.empty()) {
+            registry = std::make_unique<EtcdRegistry>(*etcd_config);
+            const auto registered = registry->Register(
+                logical_service_name, BuildInstanceId(logical_service_name),
+                BuildAdvertiseAddress(*etcd_config, port));
+            if (!registered.ok()) {
+                ZCHAT_LOG_ERROR("{} failed: {}", service_name,
+                                FormatErrorForLog(registered.error()));
+                return EXIT_FAILURE;
+            }
+        }
+
         ZCHAT_LOG_INFO("{} listening on {}", service_name, address);
         server->Wait();
         ZCHAT_LOG_INFO("{} stopped", service_name);

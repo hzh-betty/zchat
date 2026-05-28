@@ -105,6 +105,18 @@ AppConfig LoadConfig(const std::string &path) {
     const Json::Value storage = root["storage"];
     config.storage.path = GetString(storage, "path", config.storage.path);
 
+    const Json::Value etcd = root["etcd"];
+    config.etcd.endpoints = GetString(etcd, "endpoints", config.etcd.endpoints);
+    config.etcd.base_path = GetString(etcd, "base_path", config.etcd.base_path);
+    config.etcd.advertise_host =
+        GetString(etcd, "advertise_host", config.etcd.advertise_host);
+    config.etcd.username = GetString(etcd, "username", config.etcd.username);
+    config.etcd.password = GetString(etcd, "password", config.etcd.password);
+    config.etcd.lease_ttl_seconds =
+        GetInt(etcd, "lease_ttl_seconds", config.etcd.lease_ttl_seconds);
+    config.etcd.auth_token_ttl_seconds = GetInt(
+        etcd, "auth_token_ttl_seconds", config.etcd.auth_token_ttl_seconds);
+
     const Json::Value speech = root["speech"];
     config.speech.app_id = GetString(speech, "app_id", config.speech.app_id);
     config.speech.api_key = GetString(speech, "api_key", config.speech.api_key);

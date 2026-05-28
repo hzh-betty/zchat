@@ -42,6 +42,16 @@ struct StorageConfig {
     std::string path = "./server_storage";
 };
 
+struct EtcdConfig {
+    std::string endpoints = "http://127.0.0.1:2379";
+    std::string base_path = "/service";
+    std::string advertise_host = "127.0.0.1";
+    std::string username;
+    std::string password;
+    int lease_ttl_seconds = 3;
+    int auth_token_ttl_seconds = 300;
+};
+
 struct SpeechConfig {
     std::string app_id;
     std::string api_key;
@@ -76,6 +86,7 @@ struct AppConfig {
     MysqlConfig mysql;
     RedisConfig redis;
     StorageConfig storage;
+    EtcdConfig etcd;
     SpeechConfig speech;
     ElasticsearchConfig elasticsearch;
     RabbitmqConfig rabbitmq;
