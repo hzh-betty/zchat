@@ -22,6 +22,8 @@ find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin REQUIRED)
 pkg_check_modules(AMQPCPP REQUIRED IMPORTED_TARGET amqpcpp)
 pkg_check_modules(LIBEVENT REQUIRED IMPORTED_TARGET libevent)
 pkg_check_modules(LIBEVENT_PTHREADS REQUIRED IMPORTED_TARGET libevent_pthreads)
+find_library(ETCD_CPP_API_LIBRARY etcd-cpp-api REQUIRED PATHS /usr/local/lib)
+find_library(CPPREST_LIBRARY cpprest REQUIRED)
 
 set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/proto)
 set(PROTO_FILES
@@ -76,6 +78,7 @@ target_include_directories(zchat_proto
 set(SERVICE_CORE_SOURCES
     src/common/config.cc
     src/common/crypto.cc
+    src/common/etcd_service.cc
     src/common/logger.cc
     src/common/notify_publisher.cc
     src/common/proto_mapper.cc
@@ -112,13 +115,17 @@ target_link_libraries(zchat_service_core
     OpenSSL::Crypto
     PkgConfig::AMQPCPP
     PkgConfig::LIBEVENT
-    PkgConfig::LIBEVENT_PTHREADS)
+    PkgConfig::LIBEVENT_PTHREADS
+    ${ETCD_CPP_API_LIBRARY}
+    ${CPPREST_LIBRARY})
 target_include_directories(zchat_service_core
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    /usr/local/include)
 
 add_executable(zchat_gateway
     src/common/config.cc
+    src/common/etcd_service.cc
     src/common/logger.cc
     src/common/protobuf_http.cc
     src/common/runtime.cc
@@ -131,10 +138,11 @@ add_executable(zchat_gateway
     src/gateway/gateway_main.cc
     src/gateway/notify_subscriber.cc
     src/gateway/websocket_controller.cc)
-target_link_libraries(zchat_gateway PRIVATE Drogon::Drogon zchat_proto spdlog::spdlog)
+target_link_libraries(zchat_gateway PRIVATE Drogon::Drogon zchat_proto spdlog::spdlog ${ETCD_CPP_API_LIBRARY} ${CPPREST_LIBRARY})
 target_include_directories(zchat_gateway
   PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    /usr/local/include)
 
 add_executable(zchat_user_service
     src/user/user_builder.cc
