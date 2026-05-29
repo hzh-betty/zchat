@@ -9,6 +9,7 @@
 #include "common/proto_mapper.h"
 #include "common/protobuf_http.h"
 #include "common/result.h"
+#include "common/runtime.h"
 #include "common/uuid.h"
 #include "file/file_repository.h"
 #include "friend/friend_repository.h"
@@ -195,6 +196,16 @@ class DisabledMessageSearchIndex final : public zchat::MessageSearchIndex {
 } // namespace
 
 int main() {
+    char program_name[] = "zchat_user_service";
+    char *default_args[] = {program_name};
+    assert(zchat::ConfigPath(1, default_args, "server/config/user.json") ==
+           "server/config/user.json");
+
+    char config_path[] = "server/config/override.json";
+    char *override_args[] = {program_name, config_path};
+    assert(zchat::ConfigPath(2, override_args, "server/config/user.json") ==
+           "server/config/override.json");
+
     static_assert(!std::is_copy_constructible_v<zchat::NonCopyable>);
     static_assert(!std::is_copy_assignable_v<zchat::NonCopyable>);
 
