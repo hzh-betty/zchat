@@ -133,6 +133,7 @@ AppConfig LoadConfig(const std::string &path) {
 
     const Json::Value rabbitmq = root["rabbitmq"];
     config.rabbitmq.host = GetString(rabbitmq, "host", config.rabbitmq.host);
+    config.rabbitmq.port = GetInt(rabbitmq, "port", config.rabbitmq.port);
     config.rabbitmq.user = GetString(rabbitmq, "user", config.rabbitmq.user);
     config.rabbitmq.password =
         GetString(rabbitmq, "password", config.rabbitmq.password);

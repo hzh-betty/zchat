@@ -10,8 +10,8 @@ struct MysqlConfig {
     std::string host = "127.0.0.1";
     int port = 3306;
     std::string database = "zchat";
-    std::string user = "testuser";
-    std::string password = "123456";
+    std::string user;
+    std::string password;
     std::string charset = "utf8mb4";
     std::size_t connections = 4;
 };
@@ -60,14 +60,15 @@ struct SpeechConfig {
 
 struct ElasticsearchConfig {
     std::string hosts = "http://127.0.0.1:9200/";
-    std::string user = "elastic";
+    std::string user;
     std::string password;
 };
 
 struct RabbitmqConfig {
-    std::string host = "127.0.0.1:5672";
-    std::string user = "root";
-    std::string password = "123456";
+    std::string host = "127.0.0.1";
+    int port = 5672;
+    std::string user;
+    std::string password;
     std::string exchange = "msg_exchange";
     std::string queue = "msg_queue";
     std::string routing_key = "msg_queue";
