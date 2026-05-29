@@ -21,16 +21,16 @@
   "etcd": {
     "endpoints": "http://127.0.0.1:2379",
     "base_path": "/service",
-    "advertise_host": "127.0.0.1",
-    "username": "",
-    "password": "",
+    "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
+    "username": "{{ZCHAT_ETCD_USERNAME}}",
+    "password": "{{ZCHAT_ETCD_PASSWORD}}",
     "lease_ttl_seconds": 3,
     "auth_token_ttl_seconds": 300
   },
   "elasticsearch": {
     "hosts": "http://127.0.0.1:9200/",
-    "user": "",
-    "password": ""
+    "user": "{{ZCHAT_ELASTICSEARCH_USER}}",
+    "password": "{{ZCHAT_ELASTICSEARCH_PASSWORD}}"
   },
   "sms": {
     "access_key_id": "{{ZCHAT_SMS_ACCESS_KEY_ID}}",

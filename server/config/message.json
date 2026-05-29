@@ -14,19 +14,20 @@
   "etcd": {
     "endpoints": "http://127.0.0.1:2379",
     "base_path": "/service",
-    "advertise_host": "127.0.0.1",
-    "username": "",
-    "password": "",
+    "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
+    "username": "{{ZCHAT_ETCD_USERNAME}}",
+    "password": "{{ZCHAT_ETCD_PASSWORD}}",
     "lease_ttl_seconds": 3,
     "auth_token_ttl_seconds": 300
   },
   "elasticsearch": {
     "hosts": "http://127.0.0.1:9200/",
-    "user": "",
-    "password": ""
+    "user": "{{ZCHAT_ELASTICSEARCH_USER}}",
+    "password": "{{ZCHAT_ELASTICSEARCH_PASSWORD}}"
   },
   "rabbitmq": {
-    "host": "127.0.0.1:5672",
+    "host": "127.0.0.1",
+    "port": 5672,
     "user": "{{ZCHAT_RABBITMQ_USER}}",
     "password": "{{ZCHAT_RABBITMQ_PASSWORD}}",
     "exchange": "msg_exchange",
