@@ -1,0 +1,43 @@
+{
+  "services": {
+    "transmite": 10004
+  },
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "database": "zchat",
+    "user": "{{ZCHAT_MYSQL_USER}}",
+    "password": "{{ZCHAT_MYSQL_PASSWORD}}",
+    "charset": "utf8mb4",
+    "connections": 4
+  },
+  "redis": {
+    "host": "127.0.0.1",
+    "port": 6379,
+    "database": 0,
+    "password": "{{ZCHAT_REDIS_PASSWORD}}",
+    "connections": 2
+  },
+  "etcd": {
+    "endpoints": "http://127.0.0.1:2379",
+    "base_path": "/service",
+    "advertise_host": "127.0.0.1",
+    "username": "",
+    "password": "",
+    "lease_ttl_seconds": 3,
+    "auth_token_ttl_seconds": 300
+  },
+  "elasticsearch": {
+    "hosts": "http://127.0.0.1:9200/",
+    "user": "",
+    "password": ""
+  },
+  "rabbitmq": {
+    "host": "127.0.0.1:5672",
+    "user": "{{ZCHAT_RABBITMQ_USER}}",
+    "password": "{{ZCHAT_RABBITMQ_PASSWORD}}",
+    "exchange": "msg_exchange",
+    "queue": "msg_queue",
+    "routing_key": "msg_queue"
+  }
+}

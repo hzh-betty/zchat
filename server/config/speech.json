@@ -1,0 +1,19 @@
+{
+  "services": {
+    "speech": 10001
+  },
+  "etcd": {
+    "endpoints": "http://127.0.0.1:2379",
+    "base_path": "/service",
+    "advertise_host": "127.0.0.1",
+    "username": "",
+    "password": "",
+    "lease_ttl_seconds": 3,
+    "auth_token_ttl_seconds": 300
+  },
+  "speech": {
+    "app_id": "{{ZCHAT_SPEECH_APP_ID}}",
+    "api_key": "{{ZCHAT_SPEECH_API_KEY}}",
+    "secret_key": "{{ZCHAT_SPEECH_SECRET_KEY}}"
+  }
+}
