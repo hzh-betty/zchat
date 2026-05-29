@@ -6,7 +6,8 @@
 
 int main(int argc, char *argv[]) {
     const zchat::AppConfig config =
-        zchat::LoadConfig(zchat::ConfigPath(argc, argv));
+        zchat::LoadConfig(
+            zchat::ConfigPath(argc, argv, "server/config/message.json"));
     auto server = std::make_unique<zchat::MessageBuilder>(config);
     return server->Start();
 }

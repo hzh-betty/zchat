@@ -6,7 +6,6 @@ SERVER_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${SERVER_DIR}/.." && pwd)"
 
 BUILD_DIR="${ROOT_DIR}/build/dev"
-CONFIG_PATH="${SERVER_DIR}/config/app.json"
 ENV_PATH="${SERVER_DIR}/config/.env"
 LOG_DIR="${SERVER_DIR}/logs"
 RUN_DIR="${SERVER_DIR}/run"
@@ -62,6 +61,16 @@ SERVICES=(
     zchat_gateway
 )
 
+declare -A CONFIG_PATHS=(
+    [zchat_file_service]="${SERVER_DIR}/config/file.json"
+    [zchat_speech_service]="${SERVER_DIR}/config/speech.json"
+    [zchat_transmite_service]="${SERVER_DIR}/config/transmite.json"
+    [zchat_message_service]="${SERVER_DIR}/config/message.json"
+    [zchat_friend_service]="${SERVER_DIR}/config/friend.json"
+    [zchat_user_service]="${SERVER_DIR}/config/user.json"
+    [zchat_gateway]="${SERVER_DIR}/config/gateway.json"
+)
+
 require_file() {
     local path="$1"
     if [[ ! -f "${path}" ]]; then
@@ -73,6 +82,7 @@ require_file() {
 stop_service() {
     local service="$1"
     local pid_file="${RUN_DIR}/${service}.pid"
+    local config_path="${CONFIG_PATHS[${service}]}"
 
     if [[ -f "${pid_file}" ]]; then
         local pid
@@ -94,12 +104,13 @@ stop_service() {
         rm -f "${pid_file}"
     fi
 
-    pkill -f "[/]${service} ${CONFIG_PATH}" 2>/dev/null || true
+    pkill -f "[/]${service} ${config_path}" 2>/dev/null || true
 }
 
 start_service() {
     local service="$1"
     local binary="${BUILD_DIR}/server/${service}"
+    local config_path="${CONFIG_PATHS[${service}]}"
     local log_file="${LOG_DIR}/${service}.log"
     local pid_file="${RUN_DIR}/${service}.pid"
 
@@ -122,7 +133,7 @@ start_service() {
     echo "Starting ${service}"
     (
         cd "${ROOT_DIR}"
-        nohup "${binary}" "${CONFIG_PATH}" >"${log_file}" 2>&1 &
+        nohup "${binary}" "${config_path}" >"${log_file}" 2>&1 &
         echo $! >"${pid_file}"
     )
 
@@ -136,8 +147,10 @@ start_service() {
     fi
 }
 
-require_file "${CONFIG_PATH}"
 require_file "${ENV_PATH}"
+for service in "${SERVICES[@]}"; do
+    require_file "${CONFIG_PATHS[${service}]}"
+done
 
 mkdir -p "${LOG_DIR}" "${RUN_DIR}"
 

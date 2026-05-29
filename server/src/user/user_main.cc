@@ -6,7 +6,8 @@
 
 int main(int argc, char *argv[]) {
     const zchat::AppConfig config =
-        zchat::LoadConfig(zchat::ConfigPath(argc, argv));
+        zchat::LoadConfig(
+            zchat::ConfigPath(argc, argv, "server/config/user.json"));
     auto server = std::make_unique<zchat::UserBuilder>(config);
     return server->Start();
 }
