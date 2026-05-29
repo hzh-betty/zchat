@@ -34,16 +34,6 @@ event_base *CreateEventBase() {
     return event_base_new();
 }
 
-std::pair<std::string, std::uint16_t>
-ParseRabbitmqHost(const std::string &host) {
-    const auto colon = host.rfind(':');
-    if (colon == std::string::npos) {
-        return {host, 5672};
-    }
-    return {host.substr(0, colon),
-            static_cast<std::uint16_t>(std::stoi(host.substr(colon + 1)))};
-}
-
 class RuntimeHandler final : public AMQP::LibEventHandler {
   public:
     explicit RuntimeHandler(event_base *base) : AMQP::LibEventHandler(base) {}
@@ -284,9 +274,8 @@ ConfiguredMessageQueueConsumer::ConfiguredMessageQueueConsumer(
 ConfiguredMessageQueueConsumer::~ConfiguredMessageQueueConsumer() = default;
 
 std::string BuildRabbitmqAddress(const RabbitmqConfig &config) {
-    const auto [host, port] = ParseRabbitmqHost(config.host);
-    return "amqp://" + config.user + ":" + config.password + "@" + host + ":" +
-           std::to_string(port) + "/";
+    return "amqp://" + config.user + ":" + config.password + "@" +
+           config.host + ":" + std::to_string(config.port) + "/";
 }
 
 } // namespace zchat

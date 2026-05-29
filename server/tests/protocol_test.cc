@@ -1,4 +1,6 @@
 #include <cassert>
+#include <cstdlib>
+#include <fstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -196,6 +198,39 @@ class DisabledMessageSearchIndex final : public zchat::MessageSearchIndex {
 } // namespace
 
 int main() {
+    setenv("ZCHAT_EMPTY_ETCD_USERNAME", "", 1);
+    setenv("ZCHAT_EMPTY_ETCD_PASSWORD", "", 1);
+    setenv("ZCHAT_EMPTY_ES_USER", "", 1);
+    setenv("ZCHAT_EMPTY_ES_PASSWORD", "", 1);
+
+    const std::string temp_config_path = "/tmp/zchat_protocol_config_test.json";
+    {
+        std::ofstream config_file(temp_config_path);
+        config_file << R"({
+  "etcd": {
+    "username": "{{ZCHAT_EMPTY_ETCD_USERNAME}}",
+    "password": "{{ZCHAT_EMPTY_ETCD_PASSWORD}}"
+  },
+  "elasticsearch": {
+    "user": "{{ZCHAT_EMPTY_ES_USER}}",
+    "password": "{{ZCHAT_EMPTY_ES_PASSWORD}}"
+  },
+  "rabbitmq": {
+    "host": "rabbitmq.local",
+    "port": 5678,
+    "user": "guest",
+    "password": "guest"
+  }
+})";
+    }
+    const zchat::AppConfig loaded_config = zchat::LoadConfig(temp_config_path);
+    assert(loaded_config.etcd.username.empty());
+    assert(loaded_config.etcd.password.empty());
+    assert(loaded_config.elasticsearch.user.empty());
+    assert(loaded_config.elasticsearch.password.empty());
+    assert(loaded_config.rabbitmq.host == "rabbitmq.local");
+    assert(loaded_config.rabbitmq.port == 5678);
+
     char program_name[] = "zchat_user_service";
     char *default_args[] = {program_name};
     assert(zchat::ConfigPath(1, default_args, "server/config/user.json") ==
@@ -261,7 +296,8 @@ int main() {
            std::string::npos);
 
     zchat::RabbitmqConfig rabbitmq;
-    rabbitmq.host = "127.0.0.1:5673";
+    rabbitmq.host = "127.0.0.1";
+    rabbitmq.port = 5673;
     rabbitmq.user = "guest";
     rabbitmq.password = "guest";
     assert(zchat::BuildRabbitmqAddress(rabbitmq) ==
