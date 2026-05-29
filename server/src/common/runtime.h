@@ -19,7 +19,8 @@
 
 namespace zchat {
 
-std::string ConfigPath(int argc, char *argv[]);
+std::string ConfigPath(int argc, char *argv[],
+                       const std::string &default_path);
 std::shared_ptr<drogon::orm::DbClient> MakeDbClient(const MysqlConfig &config);
 drogon::nosql::RedisClientPtr MakeRedisClient(const RedisConfig &config);
 

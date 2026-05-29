@@ -6,11 +6,12 @@
 
 namespace zchat {
 
-std::string ConfigPath(int argc, char *argv[]) {
+std::string ConfigPath(int argc, char *argv[],
+                       const std::string &default_path) {
     if (argc > 1) {
         return argv[1];
     }
-    return "server/config/app.json";
+    return default_path;
 }
 
 std::shared_ptr<drogon::orm::DbClient> MakeDbClient(const MysqlConfig &config) {
