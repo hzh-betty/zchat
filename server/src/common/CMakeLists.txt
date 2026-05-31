@@ -1,0 +1,21 @@
+add_library(zchat_common STATIC
+  config.cc
+  crypto.cc
+  etcd_service.cc
+  logger.cc
+  notify_publisher.cc
+  proto_mapper.cc
+  protobuf_http.cc
+  runtime.cc
+  session_store.cc
+  uuid.cc)
+target_link_libraries(zchat_common
+  PUBLIC
+    Drogon::Drogon
+    OpenSSL::Crypto
+    spdlog::spdlog
+    zchat_proto
+    etcd-cpp-api)
+target_include_directories(zchat_common
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)

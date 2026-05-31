@@ -1,0 +1,9 @@
+add_executable(zchat_gateway
+  gateway_builder.cc
+  gateway_context.cc
+  gateway_controller.cc
+  gateway_main.cc
+  grpc_service_clients.cc
+  notify_subscriber.cc
+  websocket_controller.cc)
+target_link_libraries(zchat_gateway PRIVATE zchat_common)

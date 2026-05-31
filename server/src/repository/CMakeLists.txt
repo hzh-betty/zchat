@@ -1,0 +1,2 @@
+add_library(zchat_repository STATIC orm_helpers.cc)
+target_link_libraries(zchat_repository PUBLIC zchat_common)
