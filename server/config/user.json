@@ -3,7 +3,7 @@
     "user": 10003
   },
   "mysql": {
-    "host": "127.0.0.1",
+    "host": "{{ZCHAT_MYSQL_HOST}}",
     "port": 3306,
     "database": "zchat",
     "user": "{{ZCHAT_MYSQL_USER}}",
@@ -12,14 +12,14 @@
     "connections": 4
   },
   "redis": {
-    "host": "127.0.0.1",
+    "host": "{{ZCHAT_REDIS_HOST}}",
     "port": 6379,
     "database": 0,
     "password": "{{ZCHAT_REDIS_PASSWORD}}",
     "connections": 2
   },
   "etcd": {
-    "endpoints": "http://127.0.0.1:2379",
+    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:2379",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
@@ -28,7 +28,7 @@
     "auth_token_ttl_seconds": 300
   },
   "elasticsearch": {
-    "hosts": "http://127.0.0.1:9200/",
+    "hosts": "http://{{ZCHAT_ES_HOST}}:9200/",
     "user": "{{ZCHAT_ELASTICSEARCH_USER}}",
     "password": "{{ZCHAT_ELASTICSEARCH_PASSWORD}}"
   },

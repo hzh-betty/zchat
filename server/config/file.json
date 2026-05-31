@@ -3,7 +3,7 @@
     "file": 10002
   },
   "mysql": {
-    "host": "127.0.0.1",
+    "host": "{{ZCHAT_MYSQL_HOST}}",
     "port": 3306,
     "database": "zchat",
     "user": "{{ZCHAT_MYSQL_USER}}",
@@ -12,7 +12,7 @@
     "connections": 4
   },
   "etcd": {
-    "endpoints": "http://127.0.0.1:2379",
+    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:2379",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",

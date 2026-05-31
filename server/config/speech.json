@@ -3,7 +3,7 @@
     "speech": 10001
   },
   "etcd": {
-    "endpoints": "http://127.0.0.1:2379",
+    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:2379",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
