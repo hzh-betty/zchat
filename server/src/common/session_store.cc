@@ -6,6 +6,8 @@
 #include <drogon/nosql/RedisException.h>
 #include <drogon/nosql/RedisResult.h>
 
+#include "common/common_errors.h"
+
 namespace zchat {
 namespace {
 
@@ -15,13 +17,11 @@ template <typename Func> auto RunRedis(Func function) -> decltype(function()) {
     } catch (const drogon::nosql::RedisException &error) {
         using ReturnType = decltype(function());
         return ReturnType::Fail(
-            AppError::WithCode(ErrorCode::kRedisError, "redis operation failed")
-                .WithDetail(error.what()));
+            common_errors::RedisOperationFailed().WithDetail(error.what()));
     } catch (const std::exception &error) {
         using ReturnType = decltype(function());
         return ReturnType::Fail(
-            AppError::WithCode(ErrorCode::kRedisError, "redis operation failed")
-                .WithDetail(error.what()));
+            common_errors::RedisOperationFailed().WithDetail(error.what()));
     }
 }
 

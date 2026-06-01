@@ -13,6 +13,7 @@
 #include <drogon/orm/Exception.h>
 #include <drogon/orm/Row.h>
 
+#include "common/common_errors.h"
 #include "common/domain_records.h"
 #include "common/result.h"
 
@@ -40,14 +41,12 @@ template <typename Func> auto RunDb(Func function) -> decltype(function()) {
         return function();
     } catch (const drogon::orm::DrogonDbException &error) {
         using ReturnType = decltype(function());
-        AppError app_error =
-            AppError::WithCode(ErrorCode::kDatabaseError, "database operation failed");
+        AppError app_error = common_errors::DatabaseOperationFailed();
         app_error.detail = error.base().what();
         return ReturnType::Fail(std::move(app_error));
     } catch (const std::exception &error) {
         using ReturnType = decltype(function());
-        AppError app_error =
-            AppError::WithCode(ErrorCode::kUnknown, "internal service error");
+        AppError app_error = common_errors::InternalServiceError();
         app_error.detail = error.what();
         return ReturnType::Fail(std::move(app_error));
     }

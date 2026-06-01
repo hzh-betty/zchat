@@ -10,6 +10,7 @@
 #include <etcd/Response.hpp>
 #include <etcd/Value.hpp>
 
+#include "common/common_errors.h"
 #include "common/logger.h"
 
 namespace zchat {
@@ -157,8 +158,7 @@ Result<std::string> EtcdDiscovery::Endpoint(const std::string &service_name) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto keys = service_keys_.find(service_name);
     if (keys == service_keys_.end() || keys->second.empty()) {
-        return Result<std::string>::Fail(AppError::WithCode(
-            ErrorCode::kExternalServiceError, "service endpoint not found")
+        return Result<std::string>::Fail(common_errors::ServiceEndpointNotFound()
             .WithContext("service", service_name));
     }
     std::size_t &next = next_index_[service_name];
@@ -168,8 +168,7 @@ Result<std::string> EtcdDiscovery::Endpoint(const std::string &service_name) {
     const std::string key = keys->second[next++];
     auto address = key_to_address_.find(key);
     if (address == key_to_address_.end() || address->second.empty()) {
-        return Result<std::string>::Fail(AppError::WithCode(
-            ErrorCode::kExternalServiceError, "service endpoint not found")
+        return Result<std::string>::Fail(common_errors::ServiceEndpointNotFound()
             .WithContext("service", service_name));
     }
     return Result<std::string>::Ok(address->second);

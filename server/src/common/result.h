@@ -21,12 +21,16 @@ enum class ErrorCode {
     kRedisError = 7,
     kExternalServiceError = 8,
     kTimeout = 9,
+    kSessionExpired = 10,
 
     kUserInvalidPhone = 1001,
     kUserInvalidPassword = 1002,
     kUserAlreadyExists = 1003,
     kUserNotFound = 1004,
     kUserVerifyCodeInvalid = 1005,
+    kUserVerifyCodeExpired = 1006,
+    kUserVerifyCodePhoneMismatch = 1007,
+    kUserAlreadyLoggedIn = 1008,
 
     kFriendAlreadyExists = 2001,
     kFriendApplyAlreadyExists = 2002,
@@ -58,6 +62,8 @@ inline const char *ErrorCodeName(ErrorCode code) {
         return "EXTERNAL_SERVICE_ERROR";
     case ErrorCode::kTimeout:
         return "TIMEOUT";
+    case ErrorCode::kSessionExpired:
+        return "SESSION_EXPIRED";
     case ErrorCode::kUserInvalidPhone:
         return "USER_INVALID_PHONE";
     case ErrorCode::kUserInvalidPassword:
@@ -68,6 +74,12 @@ inline const char *ErrorCodeName(ErrorCode code) {
         return "USER_NOT_FOUND";
     case ErrorCode::kUserVerifyCodeInvalid:
         return "USER_VERIFY_CODE_INVALID";
+    case ErrorCode::kUserVerifyCodeExpired:
+        return "USER_VERIFY_CODE_EXPIRED";
+    case ErrorCode::kUserVerifyCodePhoneMismatch:
+        return "USER_VERIFY_CODE_PHONE_MISMATCH";
+    case ErrorCode::kUserAlreadyLoggedIn:
+        return "USER_ALREADY_LOGGED_IN";
     case ErrorCode::kFriendAlreadyExists:
         return "FRIEND_ALREADY_EXISTS";
     case ErrorCode::kFriendApplyAlreadyExists:
@@ -88,11 +100,6 @@ inline const char *ErrorCodeName(ErrorCode code) {
     }
 }
 
-struct FieldError {
-    std::string field;
-    std::string message;
-};
-
 struct ErrorContext {
     std::string key;
     std::string value;
@@ -101,7 +108,6 @@ struct ErrorContext {
 struct AppError {
     ErrorCode code = ErrorCode::kUnknown;
     std::string message;
-    std::vector<FieldError> fields;
     std::vector<ErrorContext> context;
     std::optional<std::string> detail;
 
