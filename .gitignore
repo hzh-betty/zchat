@@ -10,3 +10,4 @@ AGENTS.md
 .env
 logs/
 run/
+CMakeUserPresets.json

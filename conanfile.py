@@ -11,7 +11,7 @@ class ZChatRecipe(ConanFile):
         # 核心直接依赖库
         self.requires("drogon/1.9.8")
         self.requires("amqp-cpp/4.3.27")
-        self.requires("etcd-cpp-apiv3/0.14.3")
+        self.requires("etcd-cpp-apiv3/0.15.4")
         self.requires("grpc/1.54.3")
         self.requires("spdlog/1.12.0")
         
@@ -19,4 +19,5 @@ class ZChatRecipe(ConanFile):
         self.requires("libevent/2.1.12")
 
     def layout(self):
-        cmake_layout(self)
+        cmake_layout(self, build_folder=".")
+        self.folders.generators = "generators"
