@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "common/common_errors.h"
 #include "common/config.h"
 #include "common/domain_records.h"
 #include "common/noncopyable.h"
@@ -19,6 +20,7 @@
 #include "message/message_search_index.h"
 #include "message/message_service.h"
 #include "transmite/message_queue.h"
+#include "user/user_errors.h"
 #include "user/user_repository.h"
 #include "user/user_search_index.h"
 #include "user.pb.h"
@@ -256,6 +258,20 @@ int main() {
     auto value_fail = zchat::Result<std::string>::Fail("value error");
     assert(!value_fail.ok());
     assert(value_fail.error().message == "value error");
+
+    const auto session_expired = zchat::common_errors::SessionExpired();
+    assert(session_expired.code == zchat::ErrorCode::kSessionExpired);
+    assert(zchat::ErrorCodeName(session_expired.code) == "SESSION_EXPIRED");
+    const auto verify_code_expired = zchat::user_errors::VerifyCodeExpired();
+    assert(verify_code_expired.code ==
+           zchat::ErrorCode::kUserVerifyCodeExpired);
+    const auto verify_code_phone_mismatch =
+        zchat::user_errors::VerifyCodePhoneMismatch();
+    assert(verify_code_phone_mismatch.code ==
+           zchat::ErrorCode::kUserVerifyCodePhoneMismatch);
+    const auto already_logged_in = zchat::user_errors::AlreadyLoggedIn();
+    assert(already_logged_in.code ==
+           zchat::ErrorCode::kUserAlreadyLoggedIn);
 
     zchat::UserLoginRsp response;
     response.set_request_id(zchat::NewRequestId());
