@@ -7,6 +7,7 @@
 #include "common/crypto.h"
 #include "common/logger.h"
 #include "common/result.h"
+#include "speech/speech_errors.h"
 
 namespace zchat {
 
@@ -49,14 +50,14 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     const auto [result, response] = client_->sendRequest(request, 10.0);
     if (result != drogon::ReqResult::Ok || !response) {
         return Result<std::string>::Fail(
-            AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
-                               "baidu speech recognition request failed")
+            speech_errors::RecognitionFailed(
+                "baidu speech recognition request failed")
                 .WithDetail(drogon::to_string(result)));
     }
     if (response->statusCode() != 200) {
         return Result<std::string>::Fail(
-            AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
-                               "baidu speech recognition request failed")
+            speech_errors::RecognitionFailed(
+                "baidu speech recognition request failed")
                 .WithContext("status", std::to_string(response->statusCode())));
     }
 
@@ -66,8 +67,8 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     std::istringstream input(std::string(response->body()));
     if (!Json::parseFromStream(reader_builder, input, &root, &errors)) {
         return Result<std::string>::Fail(
-            AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
-                               "baidu speech recognition response parse failed")
+            speech_errors::RecognitionFailed(
+                "baidu speech recognition response parse failed")
                 .WithDetail(errors));
     }
 
@@ -75,16 +76,15 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     if (err_no != 0) {
         std::string err_msg = root.get("err_msg", "unknown error").asString();
         return Result<std::string>::Fail(
-            AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
-                               "baidu speech recognition failed")
+            speech_errors::RecognitionFailed(
+                "baidu speech recognition failed")
                 .WithContext("provider_code", std::to_string(err_no))
                 .WithDetail(err_msg));
     }
 
     const Json::Value &result_array = root["result"];
     if (!result_array.isArray() || result_array.empty()) {
-        return Result<std::string>::Fail(AppError::WithCode(
-            ErrorCode::kSpeechRecognitionFailed,
+        return Result<std::string>::Fail(speech_errors::RecognitionFailed(
             "baidu speech recognition returned empty result"));
     }
 

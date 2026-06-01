@@ -11,6 +11,7 @@
 #include "common/logger.h"
 #include "common/result.h"
 #include "common/uuid.h"
+#include "user/user_errors.h"
 
 namespace zchat {
 namespace {
@@ -165,9 +166,7 @@ VoidResult AlibabaSmsClient::SendRequest(
             std::string verify_result =
                 model.get("VerifyResult", model.get("verifyResult", "")).asString();
             if (verify_result != "PASS") {
-                return VoidResult::Fail(AppError::WithCode(
-                    ErrorCode::kUserVerifyCodeInvalid,
-                    "verification code check failed"));
+                return VoidResult::Fail(user_errors::VerifyCodeCheckFailed());
             }
         } else {
             return VoidResult::Fail(

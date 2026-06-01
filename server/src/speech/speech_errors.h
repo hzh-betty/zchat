@@ -5,9 +5,14 @@
 
 namespace zchat::speech_errors {
 
-inline AppError RecognitionFailed() {
+inline AppError RecognitionFailed(std::string message) {
     return AppError::WithCode(ErrorCode::kSpeechRecognitionFailed,
-                              "speech recognition failed");
+                              std::move(message));
+}
+
+inline AppError RecognizerNotConfigured() {
+    return AppError::WithCode(ErrorCode::kExternalServiceError,
+                              "speech recognizer is not configured");
 }
 
 } // namespace zchat::speech_errors

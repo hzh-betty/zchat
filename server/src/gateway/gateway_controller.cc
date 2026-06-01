@@ -4,6 +4,7 @@
 #include <string>
 #include <utility>
 
+#include "common/common_errors.h"
 #include "common/logger.h"
 #include "common/protobuf_http.h"
 #include "common/result.h"
@@ -34,8 +35,8 @@ bool AuthenticateAndInjectUser(SessionStore &sessions, const std::string &body,
     if (!request.ParseFromString(body)) {
         ZCHAT_LOG_WARN("gateway auth protobuf parse failed, body size={}B",
                        body.size());
-        callback(GatewayErrorResponse<Response>(AppError::WithCode(
-            ErrorCode::kInvalidArgument, "request body parse failed")));
+        callback(GatewayErrorResponse<Response>(
+            common_errors::RequestBodyParseFailed()));
         return false;
     }
     auto user_id = sessions.GetUserId(request.session_id());
@@ -47,8 +48,8 @@ bool AuthenticateAndInjectUser(SessionStore &sessions, const std::string &body,
     if (!user_id.value().has_value()) {
         ZCHAT_LOG_WARN("gateway auth rejected: invalid session={}",
                        request.session_id());
-        callback(GatewayErrorResponse<Response>(AppError::WithCode(
-            ErrorCode::kUnauthorized, "session expired")));
+        callback(
+            GatewayErrorResponse<Response>(common_errors::SessionExpired()));
         return false;
     }
     request.set_user_id(user_id.value().value());

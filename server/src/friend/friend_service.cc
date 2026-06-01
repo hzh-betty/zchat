@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <vector>
 
+#include "common/common_errors.h"
 #include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
 #include "common/uuid.h"
+#include "friend/friend_errors.h"
 #include "notify.pb.h"
 
 namespace zchat {
@@ -16,12 +18,6 @@ template <typename Response>
 Response ErrorResponse(const std::string &request_id,
                        const AppError &error) {
     return MakeErrorResponse<Response>(request_id, error);
-}
-
-template <typename Response>
-Response ErrorResponse(const std::string &request_id, ErrorCode code,
-                       const std::string &message) {
-    return MakeErrorResponse<Response>(request_id, code, message);
 }
 
 template <typename Response>
@@ -51,8 +47,7 @@ zchat::GetFriendListRsp FriendApplicationService::GetFriendList(
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
         return ErrorResponse<zchat::GetFriendListRsp>(
-            request.request_id(), ErrorCode::kUnauthorized,
-            "session expired");
+            request.request_id(), common_errors::SessionExpired());
     }
     auto ids = friends_.ListFriendIds(user_id);
     if (!ids.ok()) {
@@ -80,9 +75,8 @@ zchat::GetChatSessionListRsp FriendApplicationService::GetChatSessionList(
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        return ErrorResponse<zchat::GetChatSessionListRsp>(request.request_id(),
-                                                           ErrorCode::kUnauthorized,
-                                                           "session expired");
+        return ErrorResponse<zchat::GetChatSessionListRsp>(
+            request.request_id(), common_errors::SessionExpired());
     }
     auto sessions = friends_.ListChatSessions(user_id);
     if (!sessions.ok()) {
@@ -108,7 +102,7 @@ FriendApplicationService::GetPendingFriendEvents(
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
         return ErrorResponse<zchat::GetPendingFriendEventListRsp>(
-            request.request_id(), ErrorCode::kUnauthorized, "session expired");
+            request.request_id(), common_errors::SessionExpired());
     }
     auto applies = friends_.ListPendingApplies(user_id);
     if (!applies.ok()) {
@@ -137,9 +131,8 @@ FriendApplicationService::RemoveFriend(const zchat::FriendRemoveReq &request) {
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        return ErrorResponse<zchat::FriendRemoveRsp>(request.request_id(),
-                                                     ErrorCode::kUnauthorized,
-                                                     "session expired");
+        return ErrorResponse<zchat::FriendRemoveRsp>(
+            request.request_id(), common_errors::SessionExpired());
     }
     auto del = friends_.DeleteRelation(user_id, request.peer_id());
     if (!del.ok()) {
@@ -168,21 +161,18 @@ FriendApplicationService::AddFriend(const zchat::FriendAddReq &request) {
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        return ErrorResponse<zchat::FriendAddRsp>(request.request_id(),
-                                                  ErrorCode::kUnauthorized,
-                                                  "session expired");
+        return ErrorResponse<zchat::FriendAddRsp>(
+            request.request_id(), common_errors::SessionExpired());
     }
     auto exists = friends_.RelationExists(user_id, request.respondent_id());
     if (exists.ok() && exists.value()) {
         return ErrorResponse<zchat::FriendAddRsp>(
-            request.request_id(), ErrorCode::kFriendAlreadyExists,
-            "friend relation already exists");
+            request.request_id(), friend_errors::AlreadyFriends());
     }
     auto applied = friends_.FriendApplyExists(user_id, request.respondent_id());
     if (applied.ok() && applied.value()) {
         return ErrorResponse<zchat::FriendAddRsp>(
-            request.request_id(), ErrorCode::kFriendApplyAlreadyExists,
-            "friend request already exists");
+            request.request_id(), friend_errors::ApplyAlreadyExists());
     }
     const std::string event_id = NewId();
     const auto inserted = friends_.InsertFriendApply(
@@ -216,9 +206,8 @@ zchat::FriendAddProcessRsp FriendApplicationService::ProcessFriendApply(
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        return ErrorResponse<zchat::FriendAddProcessRsp>(request.request_id(),
-                                                         ErrorCode::kUnauthorized,
-                                                         "session expired");
+        return ErrorResponse<zchat::FriendAddProcessRsp>(
+            request.request_id(), common_errors::SessionExpired());
     }
     friends_.DeleteFriendApply(request.apply_user_id(), user_id);
     std::string new_session_id;
@@ -274,9 +263,8 @@ zchat::ChatSessionCreateRsp FriendApplicationService::CreateChatSession(
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        return ErrorResponse<zchat::ChatSessionCreateRsp>(request.request_id(),
-                                                          ErrorCode::kUnauthorized,
-                                                          "session expired");
+        return ErrorResponse<zchat::ChatSessionCreateRsp>(
+            request.request_id(), common_errors::SessionExpired());
     }
     const std::string session_id = NewId();
     std::vector<std::string> members(request.member_id_list().begin(),
@@ -346,9 +334,8 @@ FriendApplicationService::SearchFriend(const zchat::FriendSearchReq &request) {
         request.session_id(),
         request.has_user_id() ? request.user_id() : std::string());
     if (user_id.empty()) {
-        return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
-                                                     ErrorCode::kUnauthorized,
-                                                     "session expired");
+        return ErrorResponse<zchat::FriendSearchRsp>(
+            request.request_id(), common_errors::SessionExpired());
     }
     auto excluded = friends_.ListFriendIds(user_id);
     if (!excluded.ok()) {

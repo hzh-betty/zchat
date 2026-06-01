@@ -2,11 +2,13 @@
 
 #include <string>
 
+#include "common/common_errors.h"
 #include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
 #include "common/uuid.h"
 #include "notify.pb.h"
+#include "user/user_errors.h"
 
 namespace zchat {
 namespace {
@@ -31,7 +33,7 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
     }
     if (!user_id.value().has_value()) {
         return MakeErrorResponse<zchat::NewMessageRsp>(
-            request.request_id(), ErrorCode::kUnauthorized, "session expired");
+            request.request_id(), common_errors::SessionExpired());
     }
 
     std::string file_content;
@@ -41,8 +43,7 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
     auto sender = users_.FindUserById(user_id.value().value());
     if (!sender.ok() || !sender.value().has_value()) {
         return MakeErrorResponse<zchat::NewMessageRsp>(
-            request.request_id(), ErrorCode::kUserNotFound,
-            "sender not found");
+            request.request_id(), user_errors::UserNotFound());
     }
 
     std::string queue_payload;

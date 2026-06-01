@@ -3,6 +3,7 @@
 #include "common/result.h"
 #include "common/runtime.h"
 #include "base.pb.h"
+#include "message/message_errors.h"
 
 namespace zchat {
 
@@ -16,9 +17,7 @@ MessageContext::MessageContext(const AppConfig &config)
       queue_consumer_(config.rabbitmq, [this](const std::string &payload) {
           zchat::MessageInfo message;
           if (!message.ParseFromString(payload)) {
-              return VoidResult::Fail(AppError::WithCode(
-                  ErrorCode::kInvalidArgument,
-                  "rabbitmq message payload parse failed"));
+              return VoidResult::Fail(message_errors::QueuePayloadParseFailed());
           }
           return message_service_->StoreQueuedMessage(message);
       }),

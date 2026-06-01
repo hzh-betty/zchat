@@ -3,6 +3,7 @@
 #include "common/error_response.h"
 #include "common/logger.h"
 #include "common/uuid.h"
+#include "file/file_errors.h"
 
 namespace zchat {
 namespace {
@@ -30,8 +31,7 @@ FileApplicationService::GetSingleFile(const zchat::GetSingleFileReq &request) {
         return ErrorResponse(request.request_id(), file.error());
     }
     if (!file.value().has_value()) {
-        return ErrorResponse(request.request_id(), AppError::WithCode(
-            ErrorCode::kFileNotFound, "file not found"));
+        return ErrorResponse(request.request_id(), file_errors::FileNotFound());
     }
     zchat::GetSingleFileRsp response;
     response.set_request_id(request.request_id());

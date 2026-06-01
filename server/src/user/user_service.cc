@@ -4,10 +4,12 @@
 #include <cctype>
 #include <vector>
 
+#include "common/common_errors.h"
 #include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
 #include "common/uuid.h"
+#include "user/user_errors.h"
 
 namespace zchat {
 namespace {
@@ -16,12 +18,6 @@ template <typename Response>
 Response ErrorResponse(const std::string &request_id,
                        const AppError &error) {
     return MakeErrorResponse<Response>(request_id, error);
-}
-
-template <typename Response>
-Response ErrorResponse(const std::string &request_id, ErrorCode code,
-                       const std::string &message) {
-    return MakeErrorResponse<Response>(request_id, code, message);
 }
 
 template <typename Response>
@@ -46,13 +42,11 @@ zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
     ZCHAT_LOG_INFO("RegisterByNickname request_id={}", request.request_id());
     if (request.nickname().empty()) {
         return ErrorResponse<zchat::UserRegisterRsp>(
-            request.request_id(), ErrorCode::kInvalidArgument,
-            "nickname is required");
+            request.request_id(), user_errors::NicknameRequired());
     }
     if (!IsValidPassword(request.password())) {
         return ErrorResponse<zchat::UserRegisterRsp>(
-            request.request_id(), ErrorCode::kUserInvalidPassword,
-            "invalid password format");
+            request.request_id(), user_errors::InvalidPassword());
     }
     auto existing = users_.FindUserByNickname(request.nickname());
     if (!existing.ok()) {
@@ -61,8 +55,7 @@ zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
     }
     if (existing.value().has_value()) {
         return ErrorResponse<zchat::UserRegisterRsp>(
-            request.request_id(), ErrorCode::kUserAlreadyExists,
-            "nickname already exists");
+            request.request_id(), user_errors::NicknameAlreadyExists());
     }
 
     UserRecord user;
@@ -97,8 +90,7 @@ UserApplicationService::LoginByNickname(const zchat::UserLoginReq &request) {
     if (!user.value().has_value() ||
         user.value()->password != request.password()) {
         return ErrorResponse<zchat::UserLoginRsp>(
-            request.request_id(), ErrorCode::kUnauthorized,
-            "invalid nickname or password");
+            request.request_id(), user_errors::InvalidCredentials());
     }
 
     auto session_id = LoginUser(user.value()->user_id);
@@ -118,8 +110,7 @@ zchat::PhoneVerifyCodeRsp UserApplicationService::GetPhoneVerifyCode(
     ZCHAT_LOG_INFO("GetPhoneVerifyCode request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
         return ErrorResponse<zchat::PhoneVerifyCodeRsp>(
-            request.request_id(), ErrorCode::kUserInvalidPhone,
-            "invalid phone number");
+            request.request_id(), user_errors::InvalidPhone());
     }
     const std::string verify_code_id = NewId();
     const auto saved =
@@ -146,8 +137,7 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     ZCHAT_LOG_INFO("RegisterByPhone request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
         return ErrorResponse<zchat::PhoneRegisterRsp>(
-            request.request_id(), ErrorCode::kUserInvalidPhone,
-            "invalid phone number");
+            request.request_id(), user_errors::InvalidPhone());
     }
     auto existing_user = users_.FindUserByPhone(request.phone_number());
     if (!existing_user.ok()) {
@@ -156,8 +146,7 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     }
     if (existing_user.value().has_value()) {
         return ErrorResponse<zchat::PhoneRegisterRsp>(
-            request.request_id(), ErrorCode::kUserAlreadyExists,
-            "phone number already registered");
+            request.request_id(), user_errors::PhoneAlreadyRegistered());
     }
     const auto code =
         ValidateVerifyCode(request.verify_code_id(), request.verify_code());
@@ -167,8 +156,7 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     }
     if (code.value() != request.phone_number()) {
         return ErrorResponse<zchat::PhoneRegisterRsp>(
-            request.request_id(), ErrorCode::kUserVerifyCodeInvalid,
-            "verification code does not match phone number");
+            request.request_id(), user_errors::VerifyCodePhoneMismatch());
     }
     auto existing = users_.FindUserByPhone(request.phone_number());
     if (!existing.ok()) {
@@ -177,8 +165,7 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     }
     if (existing.value().has_value()) {
         return ErrorResponse<zchat::PhoneRegisterRsp>(
-            request.request_id(), ErrorCode::kUserAlreadyExists,
-            "phone number already registered");
+            request.request_id(), user_errors::PhoneAlreadyRegistered());
     }
     UserRecord user;
     user.user_id = NewId();
@@ -206,8 +193,7 @@ UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
     ZCHAT_LOG_INFO("LoginByPhone request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
         return ErrorResponse<zchat::PhoneLoginRsp>(
-            request.request_id(), ErrorCode::kUserInvalidPhone,
-            "invalid phone number");
+            request.request_id(), user_errors::InvalidPhone());
     }
     auto existing_user = users_.FindUserByPhone(request.phone_number());
     if (!existing_user.ok()) {
@@ -216,8 +202,7 @@ UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
     }
     if (!existing_user.value().has_value()) {
         return ErrorResponse<zchat::PhoneLoginRsp>(
-            request.request_id(), ErrorCode::kUserNotFound,
-            "phone number is not registered");
+            request.request_id(), user_errors::PhoneNotRegistered());
     }
     const auto code =
         ValidateVerifyCode(request.verify_code_id(), request.verify_code());
@@ -227,8 +212,7 @@ UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
     }
     if (code.value() != request.phone_number()) {
         return ErrorResponse<zchat::PhoneLoginRsp>(
-            request.request_id(), ErrorCode::kUserVerifyCodeInvalid,
-            "verification code does not match phone number");
+            request.request_id(), user_errors::VerifyCodePhoneMismatch());
     }
     auto user = users_.FindUserByPhone(request.phone_number());
     if (!user.ok()) {
@@ -237,8 +221,7 @@ UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
     }
     if (!user.value().has_value()) {
         return ErrorResponse<zchat::PhoneLoginRsp>(
-            request.request_id(), ErrorCode::kUserNotFound,
-            "phone number is not registered");
+            request.request_id(), user_errors::PhoneNotRegistered());
     }
     auto session_id = LoginUser(user.value()->user_id);
     if (!session_id.ok()) {
@@ -268,7 +251,7 @@ UserApplicationService::GetUserInfo(const zchat::GetUserInfoReq &request) {
     }
     if (!user.value().has_value()) {
         return ErrorResponse<zchat::GetUserInfoRsp>(
-            request.request_id(), ErrorCode::kUserNotFound, "user not found");
+            request.request_id(), user_errors::UserNotFound());
     }
     std::string avatar;
     if (!user.value()->avatar_id.empty()) {
@@ -408,8 +391,7 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
     }
     if (code.value() != request.phone_number()) {
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
-            request.request_id(), ErrorCode::kUserVerifyCodeInvalid,
-            "verification code does not match phone number");
+            request.request_id(), user_errors::VerifyCodePhoneMismatch());
     }
     const auto updated =
         users_.UpdateUserPhone(user_id.value(), request.phone_number());
@@ -432,16 +414,14 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
 Result<std::string>
 UserApplicationService::UserIdFromSession(const std::string &session_id) {
     if (session_id.empty()) {
-        return Result<std::string>::Fail(AppError::WithCode(
-            ErrorCode::kUnauthorized, "session id is required"));
+        return Result<std::string>::Fail(common_errors::SessionIdRequired());
     }
     auto user_id = sessions_.GetUserId(session_id);
     if (!user_id.ok()) {
         return Result<std::string>::Fail(user_id.error());
     }
     if (!user_id.value().has_value()) {
-        return Result<std::string>::Fail(AppError::WithCode(
-            ErrorCode::kUnauthorized, "session expired"));
+        return Result<std::string>::Fail(common_errors::SessionExpired());
     }
     return Result<std::string>::Ok(user_id.value().value());
 }
@@ -454,8 +434,7 @@ UserApplicationService::ValidateVerifyCode(const std::string &verify_code_id,
         return Result<std::string>::Fail(saved.error());
     }
     if (!saved.value().has_value()) {
-        return Result<std::string>::Fail(AppError::WithCode(
-            ErrorCode::kUserVerifyCodeInvalid, "verification code expired"));
+        return Result<std::string>::Fail(user_errors::VerifyCodeExpired());
     }
     const std::string &phone = saved.value().value();
     auto checked = sms_.CheckVerificationCode(phone, verify_code);
@@ -491,8 +470,7 @@ VoidResult UserApplicationService::IndexUserById(const std::string &user_id) {
         return VoidResult::Fail(user.error());
     }
     if (!user.value().has_value()) {
-        return VoidResult::Fail(AppError::WithCode(ErrorCode::kUserNotFound,
-                                                   "user not found"));
+        return VoidResult::Fail(user_errors::UserNotFound());
     }
     return IndexUser(user.value().value());
 }
@@ -504,8 +482,7 @@ Result<std::string> UserApplicationService::LoginUser(
         return Result<std::string>::Fail(online.error());
     }
     if (online.value()) {
-        return Result<std::string>::Fail(AppError::WithCode(
-            ErrorCode::kConflict, "user already logged in"));
+        return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
     }
     const std::string session_id = NewId();
     auto saved = sessions_.SaveSession(session_id, user_id);

@@ -15,10 +15,6 @@ inline AppError ApplyAlreadyExists() {
                               "friend request already exists");
 }
 
-inline AppError SessionExpired() {
-    return AppError::WithCode(ErrorCode::kUnauthorized, "session expired");
-}
-
 } // namespace zchat::friend_errors
 
 #endif // ZCHAT_SERVER_SRC_FRIEND_FRIEND_ERRORS_H_

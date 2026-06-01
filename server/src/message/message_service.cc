@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <vector>
 
+#include "common/common_errors.h"
 #include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
+#include "message/message_errors.h"
 
 namespace zchat {
 namespace {
@@ -108,8 +110,7 @@ VoidResult MessageService::EnsureCanReadSession(
     const std::string &, const std::string &user_id,
     const std::string &session_id) {
     if (user_id.empty()) {
-        return VoidResult::Fail(
-            AppError::WithCode(ErrorCode::kUnauthorized, "session expired"));
+        return VoidResult::Fail(common_errors::SessionExpired());
     }
     auto members = friends_.ListChatSessionMembers(session_id);
     if (!members.ok()) {
@@ -117,8 +118,7 @@ VoidResult MessageService::EnsureCanReadSession(
     }
     if (std::find(members.value().begin(), members.value().end(), user_id) ==
         members.value().end()) {
-        return VoidResult::Fail(AppError::WithCode(
-            ErrorCode::kForbidden, "chat session access denied"));
+        return VoidResult::Fail(message_errors::SessionAccessDenied());
     }
     return VoidResult::Ok();
 }

@@ -2,6 +2,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include "common/common_errors.h"
 #include "common/logger.h"
 #include "common/protobuf_http.h"
 #include "common/result.h"
@@ -28,8 +29,8 @@ void CallUnaryGrpc(
     Request request;
     if (!request.ParseFromString(body)) {
         ZCHAT_LOG_WARN("grpc protobuf parse failed, body size={}B", body.size());
-        callback(GrpcErrorResponse<Response>(AppError::WithCode(
-            ErrorCode::kInvalidArgument, "request body parse failed")));
+        callback(GrpcErrorResponse<Response>(
+            common_errors::RequestBodyParseFailed()));
         return;
     }
     Response response;
@@ -70,8 +71,8 @@ void CallTransmite(
     zchat::NewMessageReq request;
     if (!request.ParseFromString(body)) {
         ZCHAT_LOG_WARN("grpc protobuf parse failed, body size={}B", body.size());
-        callback(GrpcErrorResponse<zchat::NewMessageRsp>(AppError::WithCode(
-            ErrorCode::kInvalidArgument, "request body parse failed")));
+        callback(GrpcErrorResponse<zchat::NewMessageRsp>(
+            common_errors::RequestBodyParseFailed()));
         return;
     }
     auto endpoint = discovery.Endpoint("transmite_service");
@@ -86,7 +87,7 @@ void CallTransmite(
         stub->GetTransmitTarget(&context, request, &target_response);
     if (!status.ok()) {
         ZCHAT_LOG_ERROR("GetTransmitTarget rpc failed: error_code={}, error_message={}",
-                        status.error_code(), status.error_message());
+                        static_cast<int>(status.error_code()), status.error_message());
         callback(GrpcErrorResponse<zchat::NewMessageRsp>(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "grpc request failed")
@@ -279,8 +280,8 @@ void GrpcServiceClients::Forward(
             std::move(callback));
     }
     ZCHAT_LOG_WARN("unknown service path: {}", path);
-    callback(GrpcErrorResponse<zchat::NewMessageRsp>(AppError::WithCode(
-        ErrorCode::kNotFound, "unknown service path")));
+    callback(GrpcErrorResponse<zchat::NewMessageRsp>(
+        common_errors::UnknownServicePath()));
 }
 
 } // namespace zchat
