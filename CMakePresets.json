@@ -1,12 +1,14 @@
 {
-  "version": 6,
+  "version": 3,
   "configurePresets": [
     {
       "name": "base",
       "hidden": true,
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
       }
     },
     {

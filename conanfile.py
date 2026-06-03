@@ -15,9 +15,23 @@ class ZChatRecipe(ConanFile):
         self.requires("grpc/1.54.3")
         self.requires("spdlog/1.12.0")
         
-        # libevent 并非上述库的强制传递依赖，但本项目 message_queue 模块直接需要它，因此在此保留直接声明
         self.requires("libevent/2.1.12")
 
     def layout(self):
-        cmake_layout(self, build_folder=".")
-        self.folders.generators = "generators"
+        build_type = str(self.settings.build_type).lower()
+        build_folder = f"build/conan2-{build_type}"
+
+        self.folders.source = "."
+        self.folders.build = build_folder
+        self.folders.generators = f"{build_folder}/generators"
+    
+    def generate(self):
+        deps = CMakeDeps(self)
+        deps.generate()
+
+        tc = CMakeToolchain(self)
+
+        # 禁止生成用户预设文件，避免与项目的CMakePresets.json冲突
+        tc.user_presets_path = False
+
+        tc.generate()

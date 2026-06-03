@@ -1,9 +1,26 @@
-version: '3.8'
+x-common-environment: &common-environment
+  ZCHAT_MYSQL_HOST: zchat-mysql
+  ZCHAT_MYSQL_USER: testuser
+  ZCHAT_MYSQL_PASSWORD: "123456"
+  ZCHAT_REDIS_HOST: zchat-redis
+  ZCHAT_REDIS_PASSWORD: ''
+  ZCHAT_ETCD_HOST: zchat-etcd
+  ZCHAT_ETCD_USERNAME: ''
+  ZCHAT_ETCD_PASSWORD: ''
+  ZCHAT_RABBITMQ_HOST: zchat-rabbitmq
+  ZCHAT_RABBITMQ_USER: guest
+  ZCHAT_RABBITMQ_PASSWORD: guest
+  ZCHAT_ES_HOST: zchat-elasticsearch
+  ZCHAT_ELASTICSEARCH_USER: ''
+  ZCHAT_ELASTICSEARCH_PASSWORD: ''
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 10s
+  timeout: 5s
+  retries: 10
+  start_period: 10s
 
 services:
-  # ============================================================================
-  # 1. 基础设施服务（Infrastructure Services）
-  # ============================================================================
   zchat-mysql:
     image: mysql:8.0
     container_name: zchat-mysql
@@ -12,30 +29,45 @@ services:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: zchat
       MYSQL_USER: testuser
-      MYSQL_PASSWORD: 123456
+      MYSQL_PASSWORD: "123456"
     ports:
       - "3306:3306"
     volumes:
-      - mysql-data:/var/lib/mysql
+      - mysql80-data:/var/lib/mysql
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpassword --silent"]
 
   zchat-redis:
-    image: redis:7.0-alpine
+    image: redis:8.6.3-alpine
     container_name: zchat-redis
     restart: always
     ports:
       - "6379:6379"
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "redis-cli", "ping"]
 
   zchat-etcd:
-    image: bitnami/etcd:3.5
+    image: quay.io/coreos/etcd:v3.5.18
     container_name: zchat-etcd
     restart: always
-    environment:
-      - ALLOW_NONE_AUTHENTICATION=yes
-      - ETCD_ADVERTISE_CLIENT_URLS=http://zchat-etcd:2379
-      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+    command:
+      - /usr/local/bin/etcd
+      - --advertise-client-urls=http://zchat-etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
     ports:
       - "2379:2379"
       - "2380:2380"
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "etcdctl", "endpoint", "health", "--endpoints=http://127.0.0.1:2379"]
 
   zchat-rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -47,159 +79,239 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
 
   zchat-elasticsearch:
     image: elasticsearch:8.8.2
     container_name: zchat-elasticsearch
     restart: always
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
       - "9200:9200"
     volumes:
       - es-data:/usr/share/elasticsearch/data
-
-  # ============================================================================
-  # 2. C++ 业务微服务群（zchat Microservices）
-  # ============================================================================
-  gateway:
-    build:
-      context: .
-      dockerfile: server/src/gateway/Dockerfile
-      args:
-        BUILD_PRESET: conan2-release
-    container_name: zchat-gateway
-    restart: always
-    environment:
-      - ZCHAT_MYSQL_HOST=zchat-mysql
-      - ZCHAT_REDIS_HOST=zchat-redis
-      - ZCHAT_ETCD_HOST=zchat-etcd
-      - ZCHAT_RABBITMQ_HOST=zchat-rabbitmq
-      - ZCHAT_ES_HOST=zchat-elasticsearch
-      - ZCHAT_ADVERTISE_HOST=gateway
-    ports:
-      - "8000:8000"
-      - "8001:8001"
-    depends_on:
-      - zchat-etcd
-      - zchat-redis
-
-  user-service:
-    build:
-      context: .
-      dockerfile: server/src/user/Dockerfile
-      args:
-        BUILD_PRESET: conan2-release
-    container_name: zchat-user-service
-    restart: always
-    environment:
-      - ZCHAT_MYSQL_HOST=zchat-mysql
-      - ZCHAT_REDIS_HOST=zchat-redis
-      - ZCHAT_ETCD_HOST=zchat-etcd
-      - ZCHAT_ES_HOST=zchat-elasticsearch
-      - ZCHAT_ADVERTISE_HOST=user-service
-    depends_on:
-      - zchat-mysql
-      - zchat-redis
-      - zchat-etcd
-      - zchat-elasticsearch
-
-  friend-service:
-    build:
-      context: .
-      dockerfile: server/src/friend/Dockerfile
-      args:
-        BUILD_PRESET: conan2-release
-    container_name: zchat-friend-service
-    restart: always
-    environment:
-      - ZCHAT_MYSQL_HOST=zchat-mysql
-      - ZCHAT_REDIS_HOST=zchat-redis
-      - ZCHAT_ETCD_HOST=zchat-etcd
-      - ZCHAT_ES_HOST=zchat-elasticsearch
-      - ZCHAT_ADVERTISE_HOST=friend-service
-    depends_on:
-      - zchat-mysql
-      - zchat-redis
-      - zchat-etcd
-      - zchat-elasticsearch
-
-  message-service:
-    build:
-      context: .
-      dockerfile: server/src/message/Dockerfile
-      args:
-        BUILD_PRESET: conan2-release
-    container_name: zchat-message-service
-    restart: always
-    environment:
-      - ZCHAT_MYSQL_HOST=zchat-mysql
-      - ZCHAT_REDIS_HOST=zchat-redis
-      - ZCHAT_ETCD_HOST=zchat-etcd
-      - ZCHAT_RABBITMQ_HOST=zchat-rabbitmq
-      - ZCHAT_ES_HOST=zchat-elasticsearch
-      - ZCHAT_ADVERTISE_HOST=message-service
-    depends_on:
-      - zchat-mysql
-      - zchat-redis
-      - zchat-etcd
-      - zchat-rabbitmq
-      - zchat-elasticsearch
-
-  transmite-service:
-    build:
-      context: .
-      dockerfile: server/src/transmite/Dockerfile
-      args:
-        BUILD_PRESET: conan2-release
-    container_name: zchat-transmite-service
-    restart: always
-    environment:
-      - ZCHAT_MYSQL_HOST=zchat-mysql
-      - ZCHAT_REDIS_HOST=zchat-redis
-      - ZCHAT_ETCD_HOST=zchat-etcd
-      - ZCHAT_RABBITMQ_HOST=zchat-rabbitmq
-      - ZCHAT_ES_HOST=zchat-elasticsearch
-      - ZCHAT_ADVERTISE_HOST=transmite-service
-    depends_on:
-      - zchat-mysql
-      - zchat-redis
-      - zchat-etcd
-      - zchat-rabbitmq
-      - zchat-elasticsearch
-
-  speech-service:
-    build:
-      context: .
-      dockerfile: server/src/speech/Dockerfile
-      args:
-        BUILD_PRESET: conan2-release
-    container_name: zchat-speech-service
-    restart: always
-    environment:
-      - ZCHAT_ETCD_HOST=zchat-etcd
-      - ZCHAT_ADVERTISE_HOST=speech-service
-    depends_on:
-      - zchat-etcd
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9200/_cluster/health >/dev/null"]
 
   file-service:
     build:
       context: .
-      dockerfile: server/src/file/Dockerfile
+      dockerfile: server/Dockerfile.service
       args:
         BUILD_PRESET: conan2-release
+        SERVICE_TARGET: zchat_file_service
+        SERVICE_BINARY: zchat_file_service
+        SERVICE_CONFIG: file.json
     container_name: zchat-file-service
     restart: always
     environment:
-      - ZCHAT_REDIS_HOST=zchat-redis
-      - ZCHAT_ETCD_HOST=zchat-etcd
-      - ZCHAT_ADVERTISE_HOST=file-service
+      <<: *common-environment
+      ZCHAT_ADVERTISE_HOST: file-service
     depends_on:
-      - zchat-redis
-      - zchat-etcd
+      zchat-etcd:
+        condition: service_healthy
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10002'"]
+
+  speech-service:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.service
+      args:
+        BUILD_PRESET: conan2-release
+        SERVICE_TARGET: zchat_speech_service
+        SERVICE_BINARY: zchat_speech_service
+        SERVICE_CONFIG: speech.json
+    container_name: zchat-speech-service
+    restart: always
+    environment:
+      <<: *common-environment
+      ZCHAT_ADVERTISE_HOST: speech-service
+    depends_on:
+      zchat-etcd:
+        condition: service_healthy
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10001'"]
+
+  transmite-service:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.service
+      args:
+        BUILD_PRESET: conan2-release
+        SERVICE_TARGET: zchat_transmite_service
+        SERVICE_BINARY: zchat_transmite_service
+        SERVICE_CONFIG: transmite.json
+    container_name: zchat-transmite-service
+    restart: always
+    environment:
+      <<: *common-environment
+      ZCHAT_ADVERTISE_HOST: transmite-service
+    depends_on:
+      zchat-mysql:
+        condition: service_healthy
+      zchat-redis:
+        condition: service_healthy
+      zchat-etcd:
+        condition: service_healthy
+      zchat-rabbitmq:
+        condition: service_healthy
+      zchat-elasticsearch:
+        condition: service_healthy
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10004'"]
+
+  message-service:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.service
+      args:
+        BUILD_PRESET: conan2-release
+        SERVICE_TARGET: zchat_message_service
+        SERVICE_BINARY: zchat_message_service
+        SERVICE_CONFIG: message.json
+    container_name: zchat-message-service
+    restart: always
+    environment:
+      <<: *common-environment
+      ZCHAT_ADVERTISE_HOST: message-service
+    depends_on:
+      zchat-mysql:
+        condition: service_healthy
+      zchat-etcd:
+        condition: service_healthy
+      zchat-rabbitmq:
+        condition: service_healthy
+      zchat-elasticsearch:
+        condition: service_healthy
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10005'"]
+
+  friend-service:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.service
+      args:
+        BUILD_PRESET: conan2-release
+        SERVICE_TARGET: zchat_friend_service
+        SERVICE_BINARY: zchat_friend_service
+        SERVICE_CONFIG: friend.json
+    container_name: zchat-friend-service
+    restart: always
+    environment:
+      <<: *common-environment
+      ZCHAT_ADVERTISE_HOST: friend-service
+    depends_on:
+      zchat-mysql:
+        condition: service_healthy
+      zchat-redis:
+        condition: service_healthy
+      zchat-etcd:
+        condition: service_healthy
+      zchat-elasticsearch:
+        condition: service_healthy
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10006'"]
+
+  user-service:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.service
+      args:
+        BUILD_PRESET: conan2-release
+        SERVICE_TARGET: zchat_user_service
+        SERVICE_BINARY: zchat_user_service
+        SERVICE_CONFIG: user.json
+    container_name: zchat-user-service
+    restart: always
+    environment:
+      <<: *common-environment
+      ZCHAT_ADVERTISE_HOST: user-service
+    depends_on:
+      zchat-mysql:
+        condition: service_healthy
+      zchat-redis:
+        condition: service_healthy
+      zchat-etcd:
+        condition: service_healthy
+      zchat-elasticsearch:
+        condition: service_healthy
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10003'"]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.service
+      args:
+        BUILD_PRESET: conan2-release
+        SERVICE_TARGET: zchat_gateway
+        SERVICE_BINARY: zchat_gateway
+        SERVICE_CONFIG: gateway.json
+    container_name: zchat-gateway
+    restart: always
+    environment:
+      <<: *common-environment
+      ZCHAT_ADVERTISE_HOST: gateway
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    depends_on:
+      zchat-redis:
+        condition: service_healthy
+      zchat-etcd:
+        condition: service_healthy
+      file-service:
+        condition: service_healthy
+      speech-service:
+        condition: service_healthy
+      transmite-service:
+        condition: service_healthy
+      message-service:
+        condition: service_healthy
+      friend-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - zchat-network
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/8000'"]
+
+networks:
+  zchat-network:
+    name: zchat-network
+    driver: bridge
 
 volumes:
-  mysql-data:
+  mysql80-data:
   es-data:

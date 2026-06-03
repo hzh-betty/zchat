@@ -204,12 +204,14 @@ int main() {
     setenv("ZCHAT_EMPTY_ETCD_PASSWORD", "", 1);
     setenv("ZCHAT_EMPTY_ES_USER", "", 1);
     setenv("ZCHAT_EMPTY_ES_PASSWORD", "", 1);
+    setenv("ZCHAT_TEST_ETCD_HOST", "etcd.local", 1);
 
     const std::string temp_config_path = "/tmp/zchat_protocol_config_test.json";
     {
         std::ofstream config_file(temp_config_path);
         config_file << R"({
   "etcd": {
+    "endpoints": "http://{{ZCHAT_TEST_ETCD_HOST}}:2379",
     "username": "{{ZCHAT_EMPTY_ETCD_USERNAME}}",
     "password": "{{ZCHAT_EMPTY_ETCD_PASSWORD}}"
   },
@@ -228,6 +230,7 @@ int main() {
     const zchat::AppConfig loaded_config = zchat::LoadConfig(temp_config_path);
     assert(loaded_config.etcd.username.empty());
     assert(loaded_config.etcd.password.empty());
+    assert(loaded_config.etcd.endpoints == "http://etcd.local:2379");
     assert(loaded_config.elasticsearch.user.empty());
     assert(loaded_config.elasticsearch.password.empty());
     assert(loaded_config.rabbitmq.host == "rabbitmq.local");
@@ -261,7 +264,8 @@ int main() {
 
     const auto session_expired = zchat::common_errors::SessionExpired();
     assert(session_expired.code == zchat::ErrorCode::kSessionExpired);
-    assert(zchat::ErrorCodeName(session_expired.code) == "SESSION_EXPIRED");
+    assert(std::string(zchat::ErrorCodeName(session_expired.code)) ==
+           "SESSION_EXPIRED");
     const auto verify_code_expired = zchat::user_errors::VerifyCodeExpired();
     assert(verify_code_expired.code ==
            zchat::ErrorCode::kUserVerifyCodeExpired);

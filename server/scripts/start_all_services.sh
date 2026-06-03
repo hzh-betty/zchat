@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${SERVER_DIR}/.." && pwd)"
 
-BUILD_DIR="${ROOT_DIR}/build/dev"
+BUILD_PRESET="system-debug"
+BUILD_DIR=""
 ENV_PATH="${SERVER_DIR}/config/.env"
 LOG_DIR="${SERVER_DIR}/logs"
 RUN_DIR="${SERVER_DIR}/run"
@@ -18,9 +19,12 @@ usage() {
 Usage: server/scripts/start_all_services.sh [options]
 
 Options:
-  --build       Build all zchat services before starting.
-  --restart    Stop running zchat services before starting.
-  --help       Show this help.
+  --preset <name>  Select build preset. Default: system-debug.
+                   Supported: system-debug, system-release,
+                   conan2-debug, conan2-release.
+  --build          Configure and build all zchat services before starting.
+  --restart        Stop running zchat services before starting.
+  --help           Show this help.
 
 Logs:
   server/logs/<service>.log
@@ -34,6 +38,15 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --build)
             BUILD_BEFORE_START=1
+            ;;
+        --preset)
+            if [[ $# -lt 2 ]]; then
+                echo "Missing value for --preset" >&2
+                usage >&2
+                exit 2
+            fi
+            BUILD_PRESET="$2"
+            shift
             ;;
         --restart)
             RESTART_BEFORE_START=1
@@ -50,6 +63,18 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+case "${BUILD_PRESET}" in
+    system-debug|system-release|conan2-debug|conan2-release)
+        ;;
+    *)
+        echo "Unsupported preset: ${BUILD_PRESET}" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+BUILD_DIR="${ROOT_DIR}/build/${BUILD_PRESET}"
 
 SERVICES=(
     zchat_file_service
@@ -109,7 +134,7 @@ stop_service() {
 
 start_service() {
     local service="$1"
-    local binary="${BUILD_DIR}/server/${service}"
+    local binary="${BUILD_DIR}/bin/${service}"
     local config_path="${CONFIG_PATHS[${service}]}"
     local log_file="${LOG_DIR}/${service}.log"
     local pid_file="${RUN_DIR}/${service}.pid"
@@ -160,8 +185,26 @@ source "${ENV_PATH}"
 set +a
 
 if [[ "${BUILD_BEFORE_START}" -eq 1 ]]; then
-    echo "Building zchat services"
-    cmake --build "${BUILD_DIR}" --target \
+    if [[ "${BUILD_PRESET}" == conan2-* ]]; then
+        if [[ "${BUILD_PRESET}" == "conan2-debug" ]]; then
+            CONAN_BUILD_TYPE="Debug"
+        else
+            CONAN_BUILD_TYPE="Release"
+        fi
+        echo "Installing Conan dependencies for ${BUILD_PRESET}"
+        conan install "${ROOT_DIR}" \
+            --output-folder="${BUILD_DIR}" \
+            --build=missing \
+            -s:h "build_type=${CONAN_BUILD_TYPE}" \
+            -s:b build_type=Release \
+            -s:a compiler.cppstd=17 \
+            -c:a tools.cmake.cmaketoolchain:generator=Ninja \
+            -c:a 'tools.build:compiler_executables={"c": "clang", "cpp": "clang++"}'
+    fi
+    echo "Configuring zchat services with preset ${BUILD_PRESET}"
+    cmake --preset "${BUILD_PRESET}"
+    echo "Building zchat services with preset ${BUILD_PRESET}"
+    cmake --build --preset "${BUILD_PRESET}" --target \
         zchat_file_service \
         zchat_speech_service \
         zchat_transmite_service \
@@ -184,5 +227,6 @@ done
 
 echo
 echo "All zchat services are running."
+echo "Build preset: ${BUILD_PRESET}"
 echo "HTTP gateway: http://127.0.0.1:8000"
 echo "Logs: ${LOG_DIR}"

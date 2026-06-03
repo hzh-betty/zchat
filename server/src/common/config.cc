@@ -25,16 +25,28 @@ Json::Value ReadJsonFile(const std::string &path) {
 }
 
 std::string ResolveEnv(const std::string &value) {
-    if (value.size() >= 4 && value.front() == '{' && value[1] == '{' &&
-        value[value.size() - 2] == '}' && value[value.size() - 1] == '}') {
-        std::string env_name = value.substr(2, value.size() - 4);
+    std::string resolved;
+    std::size_t position = 0;
+    while (position < value.size()) {
+        const std::size_t begin = value.find("{{", position);
+        if (begin == std::string::npos) {
+            resolved.append(value, position, std::string::npos);
+            break;
+        }
+        resolved.append(value, position, begin - position);
+        const std::size_t end = value.find("}}", begin + 2);
+        if (end == std::string::npos) {
+            resolved.append(value, begin, std::string::npos);
+            break;
+        }
+        const std::string env_name = value.substr(begin + 2, end - begin - 2);
         const char *env_value = std::getenv(env_name.c_str());
         if (env_value != nullptr) {
-            return std::string(env_value);
+            resolved.append(env_value);
         }
-        return std::string();
+        position = end + 2;
     }
-    return value;
+    return resolved;
 }
 
 std::string GetString(const Json::Value &value, const char *key,
