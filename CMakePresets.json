@@ -12,26 +12,6 @@
       }
     },
     {
-      "name": "system-debug",
-      "displayName": "System Debug",
-      "description": "Debug build utilizing system libraries",
-      "inherits": "base",
-      "binaryDir": "${sourceDir}/build/system-debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-    {
-      "name": "system-release",
-      "displayName": "System Release",
-      "description": "Release build utilizing system libraries",
-      "inherits": "base",
-      "binaryDir": "${sourceDir}/build/system-release",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
-      }
-    },
-    {
       "name": "conan2-debug",
       "displayName": "Conan 2 Debug",
       "description": "Debug build utilizing Conan 2 managed libraries",
@@ -56,14 +36,6 @@
   ],
   "buildPresets": [
     {
-      "name": "system-debug",
-      "configurePreset": "system-debug"
-    },
-    {
-      "name": "system-release",
-      "configurePreset": "system-release"
-    },
-    {
       "name": "conan2-debug",
       "configurePreset": "conan2-debug"
     },
@@ -73,20 +45,6 @@
     }
   ],
   "testPresets": [
-    {
-      "name": "system-debug",
-      "configurePreset": "system-debug",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "system-release",
-      "configurePreset": "system-release",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
     {
       "name": "conan2-debug",
       "configurePreset": "conan2-debug",

@@ -1,37 +1,88 @@
 from conan import ConanFile
-from conan.tools.cmake import cmake_layout
+from conan.tools.cmake import CMakeDeps, CMakeToolchain
+
+required_conan_version = ">=2.28"
+
 
 class ZChatRecipe(ConanFile):
     name = "zchat"
     version = "1.0.0"
+
     settings = "os", "compiler", "build_type", "arch"
-    generators = "CMakeDeps", "CMakeToolchain"
+    default_options = {
+        "boost/*:bzip2": False,
+        "boost/*:zlib": False,
+        "boost/*:without_charconv": True,
+        "boost/*:without_cobalt": True,
+        "boost/*:without_context": True,
+        "boost/*:without_contract": True,
+        "boost/*:without_coroutine": True,
+        "boost/*:without_fiber": True,
+        "boost/*:without_graph": True,
+        "boost/*:without_iostreams": True,
+        "boost/*:without_json": True,
+        "boost/*:without_locale": True,
+        "boost/*:without_log": True,
+        "boost/*:without_math": True,
+        "boost/*:without_nowide": True,
+        "boost/*:without_program_options": True,
+        "boost/*:without_serialization": True,
+        "boost/*:without_stacktrace": True,
+        "boost/*:without_test": True,
+        "boost/*:without_timer": True,
+        "boost/*:without_type_erasure": True,
+        "boost/*:without_url": True,
+        "boost/*:without_wave": True,
+
+        "cpprestsdk/*:with_websockets": False,
+        
+        "drogon/*:with_mysql": True,
+        "drogon/*:with_redis": True,
+        
+        "grpc/*:csharp_plugin": False,
+        "grpc/*:node_plugin": False,
+        "grpc/*:objective_c_plugin": False,
+        "grpc/*:php_plugin": False,
+        "grpc/*:python_plugin": False,
+        "grpc/*:ruby_plugin": False,
+        
+        "libcurl/*:with_dict": False,
+        "libcurl/*:with_file": False,
+        "libcurl/*:with_ftp": False,
+        "libcurl/*:with_gopher": False,
+        "libcurl/*:with_imap": False,
+        "libcurl/*:with_mqtt": False,
+        "libcurl/*:with_pop3": False,
+        "libcurl/*:with_rtsp": False,
+        "libcurl/*:with_smtp": False,
+        "libcurl/*:with_telnet": False,
+        "libcurl/*:with_tftp": False,
+        "libcurl/*:with_websockets": False,
+        
+        
+        "libevent/*:with_openssl": False,
+    }
 
     def requirements(self):
         # 核心直接依赖库
-        self.requires("drogon/1.9.8")
+        self.requires("drogon/1.9.13")
         self.requires("amqp-cpp/4.3.27")
-        self.requires("etcd-cpp-apiv3/0.15.4")
-        self.requires("grpc/1.54.3")
-        self.requires("spdlog/1.12.0")
-        
+        self.requires("etcd-cpp-apiv3/0.15.4") # etcd-cpp-apiv3 间接依赖grpc
+        self.requires("spdlog/1.17.0")
         self.requires("libevent/2.1.12")
 
     def layout(self):
-        build_type = str(self.settings.build_type).lower()
-        build_folder = f"build/conan2-{build_type}"
-
         self.folders.source = "."
-        self.folders.build = build_folder
-        self.folders.generators = f"{build_folder}/generators"
-    
+        self.folders.build = "."
+        self.folders.generators = "generators"
+
     def generate(self):
         deps = CMakeDeps(self)
         deps.generate()
 
         tc = CMakeToolchain(self)
 
-        # 禁止生成用户预设文件，避免与项目的CMakePresets.json冲突
+        # 禁止生成用户预设文件，避免与项目的 CMakePresets.json 冲突
         tc.user_presets_path = False
 
         tc.generate()
