@@ -22,15 +22,15 @@ ENV CXX=clang++
 RUN pip3 install "conan>=2.28"
 
 WORKDIR /app
-RUN conan profile detect --force
 COPY conanfile.py .
+COPY profiles ./profiles
 
 ARG BUILD_PRESET=conan2-release
 
 RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
-        conan install . --output-folder=build/conan2-debug --build=missing -s:h build_type=Debug -s:b build_type=Release -s:a compiler.cppstd=17 -c:a tools.cmake.cmaketoolchain:generator=Ninja -c:a 'tools.build:compiler_executables={"c": "clang", "cpp": "clang++"}' -c tools.build:jobs=4 ; \
+        conan install . --build=missing -pr:h profiles/linux-clang-debug -pr:b profiles/linux-clang-release ; \
     else \
-        conan install . --output-folder=build/conan2-release --build=missing -s:h build_type=Release -s:b build_type=Release -s:a compiler.cppstd=17 -c:a tools.cmake.cmaketoolchain:generator=Ninja -c:a 'tools.build:compiler_executables={"c": "clang", "cpp": "clang++"}' -c tools.build:jobs=4 ; \
+        conan install . --build=missing -pr:h profiles/linux-clang-release -pr:b profiles/linux-clang-release ; \
     fi
 
 FROM conan-deps AS builder

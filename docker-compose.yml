@@ -34,6 +34,7 @@ services:
       - "3306:3306"
     volumes:
       - mysql80-data:/var/lib/mysql
+      - ./server/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     networks:
       - zchat-network
     healthcheck:
