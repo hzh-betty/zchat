@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${SERVER_DIR}/.." && pwd)"
 
-BUILD_PRESET="system-debug"
+BUILD_PRESET="conan2-debug"
 BUILD_DIR=""
 ENV_PATH="${SERVER_DIR}/config/.env"
 LOG_DIR="${SERVER_DIR}/logs"
@@ -19,9 +19,8 @@ usage() {
 Usage: server/scripts/start_all_services.sh [options]
 
 Options:
-  --preset <name>  Select build preset. Default: system-debug.
-                   Supported: system-debug, system-release,
-                   conan2-debug, conan2-release.
+  --preset <name>  Select build preset. Default: conan2-debug.
+                   Supported: conan2-debug, conan2-release.
   --build          Configure and build all zchat services before starting.
   --restart        Stop running zchat services before starting.
   --help           Show this help.
@@ -65,7 +64,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${BUILD_PRESET}" in
-    system-debug|system-release|conan2-debug|conan2-release)
+    conan2-debug|conan2-release)
         ;;
     *)
         echo "Unsupported preset: ${BUILD_PRESET}" >&2
@@ -187,19 +186,16 @@ set +a
 if [[ "${BUILD_BEFORE_START}" -eq 1 ]]; then
     if [[ "${BUILD_PRESET}" == conan2-* ]]; then
         if [[ "${BUILD_PRESET}" == "conan2-debug" ]]; then
-            CONAN_BUILD_TYPE="Debug"
+            CONAN_HOST_PROFILE="${ROOT_DIR}/profiles/linux-clang-debug"
         else
-            CONAN_BUILD_TYPE="Release"
+            CONAN_HOST_PROFILE="${ROOT_DIR}/profiles/linux-clang-release"
         fi
+        CONAN_BUILD_PROFILE="${ROOT_DIR}/profiles/linux-clang-release"
         echo "Installing Conan dependencies for ${BUILD_PRESET}"
         conan install "${ROOT_DIR}" \
-            --output-folder="${BUILD_DIR}" \
             --build=missing \
-            -s:h "build_type=${CONAN_BUILD_TYPE}" \
-            -s:b build_type=Release \
-            -s:a compiler.cppstd=17 \
-            -c:a tools.cmake.cmaketoolchain:generator=Ninja \
-            -c:a 'tools.build:compiler_executables={"c": "clang", "cpp": "clang++"}'
+            -pr:h "${CONAN_HOST_PROFILE}" \
+            -pr:b "${CONAN_BUILD_PROFILE}"
     fi
     echo "Configuring zchat services with preset ${BUILD_PRESET}"
     cmake --preset "${BUILD_PRESET}"
