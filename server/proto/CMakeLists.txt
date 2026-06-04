@@ -43,7 +43,10 @@ add_library(zchat_proto STATIC
   ${PROTO_HDRS}
   ${GRPC_SRCS}
   ${GRPC_HDRS})
-target_link_libraries(zchat_proto PUBLIC protobuf::libprotobuf gRPC::grpc++)
+target_link_libraries(zchat_proto PUBLIC protobuf::protobuf gRPC::grpc++)
 target_include_directories(zchat_proto
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
+    "${protobuf_PACKAGE_FOLDER_DEBUG}/include"
+    "${abseil_PACKAGE_FOLDER_DEBUG}/include"
+    "${grpc_PACKAGE_FOLDER_DEBUG}/include")

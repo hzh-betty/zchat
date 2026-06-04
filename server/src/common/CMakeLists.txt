@@ -15,7 +15,7 @@ target_link_libraries(zchat_common
     OpenSSL::Crypto
     spdlog::spdlog
     zchat_proto
-    etcd-cpp-api)
+    etcd-cpp-apiv3::etcd-cpp-apiv3)
 target_include_directories(zchat_common
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)

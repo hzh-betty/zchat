@@ -18,26 +18,17 @@ find_package(Drogon REQUIRED)
 find_package(c-ares CONFIG REQUIRED)
 find_package(gRPC REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(PkgConfig REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(spdlog REQUIRED)
-find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin REQUIRED)
-
-# 使用 PkgConfig 查找支持此机制的依赖，生成现代 CMake IMPORTED target
-pkg_check_modules(LIBEVENT REQUIRED IMPORTED_TARGET libevent)
-pkg_check_modules(LIBEVENT_PTHREADS REQUIRED IMPORTED_TARGET libevent_pthreads)
+find_package(Libevent CONFIG REQUIRED)
+find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin
+  HINTS "${grpc_PACKAGE_FOLDER_DEBUG}/bin"
+  REQUIRED)
 
 # 使用标准的 find_package 查找 amqpcpp
 find_package(amqpcpp CONFIG REQUIRED)
 
-find_package(etcd-cpp-api REQUIRED)
-
-# 封装 etcd-cpp-api 的头文件目录为现代 Target 属性
-if(TARGET etcd-cpp-api)
-  set_target_properties(etcd-cpp-api PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${ETCD_CPP_INCLUDE_DIRS}"
-  )
-endif()
+find_package(etcd-cpp-apiv3 REQUIRED)
 
 add_subdirectory(proto)
 add_subdirectory(src/common)

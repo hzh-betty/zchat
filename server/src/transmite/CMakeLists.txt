@@ -3,8 +3,8 @@ target_link_libraries(zchat_message_queue
   PUBLIC
     zchat_common
     amqpcpp
-    PkgConfig::LIBEVENT
-    PkgConfig::LIBEVENT_PTHREADS)
+    libevent::core
+    libevent::pthreads)
 
 add_library(zchat_transmite_module STATIC
   transmite_service.cc
