@@ -37,12 +37,23 @@ FROM conan-deps AS builder
 
 ARG BUILD_PRESET=conan2-release
 ARG SERVICE_TARGET
+ARG SERVICE_BINARY
 
 COPY CMakeLists.txt CMakePresets.json ./
 COPY server ./server
 
-RUN cmake --preset ${BUILD_PRESET} \
-    && cmake --build --preset ${BUILD_PRESET} --target ${SERVICE_TARGET} -j1
+RUN . /app/build/${BUILD_PRESET}/generators/conanrun.sh \
+    && cmake --preset ${BUILD_PRESET} \
+    && cmake --build --preset ${BUILD_PRESET} --target ${SERVICE_TARGET} -j1 \
+    && mkdir -p /app/lib \
+    && ldd /app/build/${BUILD_PRESET}/bin/${SERVICE_BINARY} \
+      | awk '/=>/ { print $3 } /^[[:space:]]*\// { print $1 }' \
+      | sort -u \
+      | while read -r lib; do \
+          case "${lib}" in \
+            /root/.conan2/*) cp -L "${lib}" /app/lib/ ;; \
+          esac; \
+        done
 
 # ==========================================
 # Runner
@@ -63,8 +74,10 @@ ARG SERVICE_BINARY
 ARG SERVICE_CONFIG
 
 ENV SERVICE_BINARY=${SERVICE_BINARY}
+ENV LD_LIBRARY_PATH=/app/lib
 
 COPY --from=builder /app/build/${BUILD_PRESET}/bin/${SERVICE_BINARY} /app/bin/${SERVICE_BINARY}
+COPY --from=builder /app/lib /app/lib
 COPY --from=builder /app/server/config/${SERVICE_CONFIG} /app/server/config/${SERVICE_CONFIG}
 
 CMD ["/bin/sh", "-c", "exec /app/bin/${SERVICE_BINARY}"]
