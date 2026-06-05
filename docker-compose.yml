@@ -1,5 +1,5 @@
 x-common-environment: &common-environment
-  ZCHAT_MYSQL_HOST: zchat-mysql
+  ZCHAT_MYSQL_HOST: MySQL_Server_8.0.46_Auto_Generated_Server_Certificate
   ZCHAT_MYSQL_USER: testuser
   ZCHAT_MYSQL_PASSWORD: "123456"
   ZCHAT_REDIS_HOST: zchat-redis
@@ -13,6 +13,17 @@ x-common-environment: &common-environment
   ZCHAT_ES_HOST: zchat-elasticsearch
   ZCHAT_ELASTICSEARCH_USER: ''
   ZCHAT_ELASTICSEARCH_PASSWORD: ''
+
+x-mysql-client-environment: &mysql-client-environment
+  SSL_CERT_FILE: /etc/ssl/certs/zchat-mysql-ca.pem
+
+x-mysql-ca-volume: &mysql-ca-volume
+  type: volume
+  source: mysql80-data
+  target: /etc/ssl/certs/zchat-mysql-ca.pem
+  read_only: true
+  volume:
+    subpath: ca.pem
 
 x-healthcheck-defaults: &healthcheck-defaults
   interval: 10s
@@ -30,13 +41,16 @@ services:
       MYSQL_DATABASE: zchat
       MYSQL_USER: testuser
       MYSQL_PASSWORD: "123456"
+    command: ["--default-authentication-plugin=mysql_native_password"]
     ports:
       - "3306:3306"
     volumes:
       - mysql80-data:/var/lib/mysql
       - ./server/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     networks:
-      - zchat-network
+      zchat-network:
+        aliases:
+          - MySQL_Server_8.0.46_Auto_Generated_Server_Certificate
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpassword --silent"]
@@ -116,9 +130,13 @@ services:
     container_name: zchat-file-service
     restart: always
     environment:
-      <<: *common-environment
+      <<: [*common-environment, *mysql-client-environment]
       ZCHAT_ADVERTISE_HOST: file-service
+    volumes:
+      - *mysql-ca-volume
     depends_on:
+      zchat-mysql:
+        condition: service_healthy
       zchat-etcd:
         condition: service_healthy
     networks:
@@ -162,8 +180,10 @@ services:
     container_name: zchat-transmite-service
     restart: always
     environment:
-      <<: *common-environment
+      <<: [*common-environment, *mysql-client-environment]
       ZCHAT_ADVERTISE_HOST: transmite-service
+    volumes:
+      - *mysql-ca-volume
     depends_on:
       zchat-mysql:
         condition: service_healthy
@@ -193,8 +213,10 @@ services:
     container_name: zchat-message-service
     restart: always
     environment:
-      <<: *common-environment
+      <<: [*common-environment, *mysql-client-environment]
       ZCHAT_ADVERTISE_HOST: message-service
+    volumes:
+      - *mysql-ca-volume
     depends_on:
       zchat-mysql:
         condition: service_healthy
@@ -222,8 +244,10 @@ services:
     container_name: zchat-friend-service
     restart: always
     environment:
-      <<: *common-environment
+      <<: [*common-environment, *mysql-client-environment]
       ZCHAT_ADVERTISE_HOST: friend-service
+    volumes:
+      - *mysql-ca-volume
     depends_on:
       zchat-mysql:
         condition: service_healthy
@@ -251,8 +275,10 @@ services:
     container_name: zchat-user-service
     restart: always
     environment:
-      <<: *common-environment
+      <<: [*common-environment, *mysql-client-environment]
       ZCHAT_ADVERTISE_HOST: user-service
+    volumes:
+      - *mysql-ca-volume
     depends_on:
       zchat-mysql:
         condition: service_healthy
