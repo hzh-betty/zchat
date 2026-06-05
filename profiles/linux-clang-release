@@ -2,11 +2,17 @@
 {% set detected_arch = detect_api.detect_arch() %}
 {% set _, detected_clang_version, _ = detect_api.detect_clang_compiler("clang") %}
 {% set clang_major_version = (detected_clang_version|string).split(".")[0] %}
+{% set clang_major_int = clang_major_version|int %}
 {% set gcc_libstdcxx = subprocess.check_output(["gcc", "-print-file-name=libstdc++.so"], text=True).strip() %}
 {% if "/" not in gcc_libstdcxx %}
 {% set _ = subprocess.check_call(["/bin/sh", "-c", "printf '%s\n' 'gcc could not locate libstdc++.so; install g++/libstdc++ development files or set a proper GCC toolchain' >&2; exit 1"]) %}
 {% endif %}
 {% set gcc_install_dir = gcc_libstdcxx.rsplit("/", 1)[0] %}
+{% if clang_major_int >= 15 %}
+{% set gcc_toolchain_flag = "--gcc-install-dir=" + gcc_install_dir %}
+{% else %}
+{% set gcc_toolchain_flag = "--gcc-toolchain=/usr" %}
+{% endif %}
 
 [settings]
 os={{ detected_os }}
@@ -17,8 +23,13 @@ compiler.libcxx=libstdc++11
 compiler.cppstd=17
 build_type=Release
 
+[options]
+*:shared=True
+
 [conf]
 tools.cmake.cmaketoolchain:generator=Ninja
 tools.build:compiler_executables={"c": "clang", "cpp": "clang++"}
-tools.build:cxxflags=["--gcc-install-dir={{ gcc_install_dir }}"]
-tools.build:jobs=4
+tools.build:cxxflags=["{{ gcc_toolchain_flag }}", "-Wno-error=nullability-extension"]
+tools.build:sharedlinkflags=["{{ gcc_toolchain_flag }}"]
+tools.build:exelinkflags=["{{ gcc_toolchain_flag }}", "-Wl,--copy-dt-needed-entries"]
+tools.build:jobs=16

@@ -72,9 +72,12 @@ class ZChatRecipe(ConanFile):
         self.requires("libevent/2.1.12")
 
     def layout(self):
+        build_type = str(self.settings.build_type).lower()
+        build_folder = f"build/conan2-{build_type}"
+
         self.folders.source = "."
-        self.folders.build = "."
-        self.folders.generators = "generators"
+        self.folders.build = build_folder
+        self.folders.generators = f"{build_folder}/generators"
 
     def generate(self):
         deps = CMakeDeps(self)
