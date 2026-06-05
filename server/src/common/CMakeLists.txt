@@ -13,9 +13,13 @@ target_link_libraries(zchat_common
   PUBLIC
     Drogon::Drogon
     OpenSSL::Crypto
+    gRPC::grpc++
     spdlog::spdlog
     zchat_proto
     etcd-cpp-apiv3::etcd-cpp-apiv3)
 target_include_directories(zchat_common
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
+target_link_options(zchat_common
+  PUBLIC
+    -Wl,--copy-dt-needed-entries)

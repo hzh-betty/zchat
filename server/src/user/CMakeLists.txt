@@ -14,4 +14,8 @@ add_executable(zchat_user_service
 target_link_libraries(zchat_user_service
   PRIVATE
     zchat_file_module
-    zchat_user_module)
+    zchat_user_module
+    gRPC::grpc++
+    grpc++
+    grpc
+    gpr)

@@ -13,4 +13,8 @@ target_link_libraries(zchat_friend_service
     zchat_file_module
     zchat_friend_module
     zchat_message_module
-    zchat_user_module)
+    zchat_user_module
+    gRPC::grpc++
+    grpc++
+    grpc
+    gpr)

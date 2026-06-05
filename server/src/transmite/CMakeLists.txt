@@ -21,4 +21,10 @@ add_executable(zchat_transmite_service
   transmite_context.cc
   transmite_grpc_service.cc
   transmite_main.cc)
-target_link_libraries(zchat_transmite_service PRIVATE zchat_transmite_module)
+target_link_libraries(zchat_transmite_service
+  PRIVATE
+    zchat_transmite_module
+    gRPC::grpc++
+    grpc++
+    grpc
+    gpr)

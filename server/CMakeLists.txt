@@ -21,8 +21,17 @@ find_package(OpenSSL REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Libevent CONFIG REQUIRED)
+
+if(NOT CMAKE_BUILD_TYPE)
+  message(FATAL_ERROR "CMAKE_BUILD_TYPE is required for Conan package lookup")
+endif()
+string(TOUPPER "${CMAKE_BUILD_TYPE}" ZCHAT_CONAN_BUILD_TYPE)
+set(ZCHAT_GRPC_PACKAGE_FOLDER "${grpc_PACKAGE_FOLDER_${ZCHAT_CONAN_BUILD_TYPE}}")
+if(NOT ZCHAT_GRPC_PACKAGE_FOLDER)
+  message(FATAL_ERROR "gRPC Conan package folder not found for ${CMAKE_BUILD_TYPE}")
+endif()
 find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin
-  HINTS "${grpc_PACKAGE_FOLDER_DEBUG}/bin"
+  HINTS "${ZCHAT_GRPC_PACKAGE_FOLDER}/bin"
   REQUIRED)
 
 # 使用标准的 find_package 查找 amqpcpp

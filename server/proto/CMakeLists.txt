@@ -38,15 +38,37 @@ foreach(PROTO_FILE ${PROTO_FILES})
   list(APPEND GRPC_HDRS ${GRPC_HDR})
 endforeach()
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(ZCHAT_PROTOBUF_LIBRARY protobufd)
+else()
+  set(ZCHAT_PROTOBUF_LIBRARY protobuf)
+endif()
+
+set(ZCHAT_PROTOBUF_PACKAGE_FOLDER
+  "${protobuf_PACKAGE_FOLDER_${ZCHAT_CONAN_BUILD_TYPE}}")
+set(ZCHAT_ABSEIL_PACKAGE_FOLDER
+  "${abseil_PACKAGE_FOLDER_${ZCHAT_CONAN_BUILD_TYPE}}")
+set(ZCHAT_GRPC_PACKAGE_FOLDER
+  "${grpc_PACKAGE_FOLDER_${ZCHAT_CONAN_BUILD_TYPE}}")
+foreach(PACKAGE_FOLDER
+    ZCHAT_PROTOBUF_PACKAGE_FOLDER
+    ZCHAT_ABSEIL_PACKAGE_FOLDER
+    ZCHAT_GRPC_PACKAGE_FOLDER)
+  if(NOT ${PACKAGE_FOLDER})
+    message(FATAL_ERROR
+      "Conan package folder ${PACKAGE_FOLDER} not found for ${CMAKE_BUILD_TYPE}")
+  endif()
+endforeach()
+
 add_library(zchat_proto STATIC
   ${PROTO_SRCS}
   ${PROTO_HDRS}
   ${GRPC_SRCS}
   ${GRPC_HDRS})
-target_link_libraries(zchat_proto PUBLIC protobuf::protobuf gRPC::grpc++)
+target_link_libraries(zchat_proto PUBLIC protobuf::protobuf gRPC::grpc++ ${ZCHAT_PROTOBUF_LIBRARY})
 target_include_directories(zchat_proto
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
-    "${protobuf_PACKAGE_FOLDER_DEBUG}/include"
-    "${abseil_PACKAGE_FOLDER_DEBUG}/include"
-    "${grpc_PACKAGE_FOLDER_DEBUG}/include")
+    "${ZCHAT_PROTOBUF_PACKAGE_FOLDER}/include"
+    "${ZCHAT_ABSEIL_PACKAGE_FOLDER}/include"
+    "${ZCHAT_GRPC_PACKAGE_FOLDER}/include")
