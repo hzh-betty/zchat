@@ -1,42 +1,42 @@
 {
   "services": {
-    "transmite": 10004
+    "transmite": "{{ZCHAT_TRANSMITE_SERVICE_PORT}}"
   },
   "mysql": {
     "host": "{{ZCHAT_MYSQL_HOST}}",
-    "port": 3306,
-    "database": "zchat",
-    "user": "{{ZCHAT_MYSQL_USER}}",
-    "password": "{{ZCHAT_MYSQL_PASSWORD}}",
+    "port": "{{ZCHAT_MYSQL_PORT}}",
+    "database": "{{MYSQL_DATABASE}}",
+    "user": "{{MYSQL_USER}}",
+    "password": "{{secret_file:MYSQL_PASSWORD_FILE}}",
     "charset": "utf8mb4",
     "connections": 4
   },
   "redis": {
     "host": "{{ZCHAT_REDIS_HOST}}",
-    "port": 6379,
+    "port": "{{ZCHAT_REDIS_PORT}}",
     "database": 0,
-    "password": "{{ZCHAT_REDIS_PASSWORD}}",
+    "password": "{{secret_file:ZCHAT_REDIS_PASSWORD_FILE}}",
     "connections": 2
   },
   "etcd": {
-    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:2379",
+    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
-    "password": "{{ZCHAT_ETCD_PASSWORD}}",
+    "password": "{{secret_file:ZCHAT_ETCD_PASSWORD_FILE}}",
     "lease_ttl_seconds": 3,
     "auth_token_ttl_seconds": 300
   },
   "elasticsearch": {
-    "hosts": "http://{{ZCHAT_ES_HOST}}:9200/",
+    "hosts": "http://{{ZCHAT_ES_HOST}}:{{ZCHAT_ES_PORT}}/",
     "user": "{{ZCHAT_ELASTICSEARCH_USER}}",
-    "password": "{{ZCHAT_ELASTICSEARCH_PASSWORD}}"
+    "password": "{{secret_file:ZCHAT_ELASTICSEARCH_PASSWORD_FILE}}"
   },
   "rabbitmq": {
     "host": "{{ZCHAT_RABBITMQ_HOST}}",
-    "port": 5672,
-    "user": "{{ZCHAT_RABBITMQ_USER}}",
-    "password": "{{ZCHAT_RABBITMQ_PASSWORD}}",
+    "port": "{{ZCHAT_RABBITMQ_PORT}}",
+    "user": "{{RABBITMQ_DEFAULT_USER}}",
+    "password": "{{secret_file:RABBITMQ_DEFAULT_PASS_FILE}}",
     "exchange": "msg_exchange",
     "queue": "msg_queue",
     "routing_key": "msg_queue"

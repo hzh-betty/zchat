@@ -1,22 +1,22 @@
 {
   "services": {
-    "file": 10002
+    "file": "{{ZCHAT_FILE_SERVICE_PORT}}"
   },
   "mysql": {
     "host": "{{ZCHAT_MYSQL_HOST}}",
-    "port": 3306,
-    "database": "zchat",
-    "user": "{{ZCHAT_MYSQL_USER}}",
-    "password": "{{ZCHAT_MYSQL_PASSWORD}}",
+    "port": "{{ZCHAT_MYSQL_PORT}}",
+    "database": "{{MYSQL_DATABASE}}",
+    "user": "{{MYSQL_USER}}",
+    "password": "{{secret_file:MYSQL_PASSWORD_FILE}}",
     "charset": "utf8mb4",
     "connections": 4
   },
   "etcd": {
-    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:2379",
+    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
-    "password": "{{ZCHAT_ETCD_PASSWORD}}",
+    "password": "{{secret_file:ZCHAT_ETCD_PASSWORD_FILE}}",
     "lease_ttl_seconds": 3,
     "auth_token_ttl_seconds": 300
   }

@@ -1,19 +1,19 @@
 {
   "services": {
-    "speech": 10001
+    "speech": "{{ZCHAT_SPEECH_SERVICE_PORT}}"
   },
   "etcd": {
-    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:2379",
+    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
-    "password": "{{ZCHAT_ETCD_PASSWORD}}",
+    "password": "{{secret_file:ZCHAT_ETCD_PASSWORD_FILE}}",
     "lease_ttl_seconds": 3,
     "auth_token_ttl_seconds": 300
   },
   "speech": {
     "app_id": "{{ZCHAT_SPEECH_APP_ID}}",
-    "api_key": "{{ZCHAT_SPEECH_API_KEY}}",
-    "secret_key": "{{ZCHAT_SPEECH_SECRET_KEY}}"
+    "api_key": "{{secret_file:ZCHAT_SPEECH_API_KEY_FILE}}",
+    "secret_key": "{{secret_file:ZCHAT_SPEECH_SECRET_KEY_FILE}}"
   }
 }

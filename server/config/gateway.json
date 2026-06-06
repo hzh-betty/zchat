@@ -1,21 +1,21 @@
 {
   "server": {
-    "http_port": 8000,
-    "websocket_port": 8001
+    "http_port": "{{ZCHAT_GATEWAY_HTTP_PORT}}",
+    "websocket_port": "{{ZCHAT_GATEWAY_WEBSOCKET_PORT}}"
   },
   "redis": {
     "host": "{{ZCHAT_REDIS_HOST}}",
-    "port": 6379,
+    "port": "{{ZCHAT_REDIS_PORT}}",
     "database": 0,
-    "password": "{{ZCHAT_REDIS_PASSWORD}}",
+    "password": "{{secret_file:ZCHAT_REDIS_PASSWORD_FILE}}",
     "connections": 2
   },
   "etcd": {
-    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:2379",
+    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
-    "password": "{{ZCHAT_ETCD_PASSWORD}}",
+    "password": "{{secret_file:ZCHAT_ETCD_PASSWORD_FILE}}",
     "lease_ttl_seconds": 3,
     "auth_token_ttl_seconds": 300
   }
