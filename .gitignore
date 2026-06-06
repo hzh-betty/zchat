@@ -9,6 +9,5 @@ AGENTS.md
 .clangd
 .env
 logs/
-run/
 CMakeUserPresets.json
 server/certs/
