@@ -1,6 +1,8 @@
 #include "common/config.h"
 
 #include <cstdlib>
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 
@@ -24,7 +26,43 @@ Json::Value ReadJsonFile(const std::string &path) {
     return root;
 }
 
-std::string ResolveEnv(const std::string &value) {
+std::string TrimRight(std::string value) {
+    value.erase(std::find_if(value.rbegin(), value.rend(), [](unsigned char ch) {
+                    return !std::isspace(ch);
+                }).base(),
+                value.end());
+    return value;
+}
+
+std::string ReadSecretFile(const std::string &env_name) {
+    const char *path = std::getenv(env_name.c_str());
+    if (path == nullptr || *path == '\0') {
+        return "";
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input.is_open()) {
+        return "";
+    }
+    std::ostringstream stream;
+    stream << input.rdbuf();
+    return TrimRight(stream.str());
+}
+
+std::string ResolvePlaceholder(const std::string &placeholder) {
+    constexpr char kSecretFilePrefix[] = "secret_file:";
+    const std::string prefix(kSecretFilePrefix);
+    if (placeholder.rfind(prefix, 0) == 0) {
+        return ReadSecretFile(placeholder.substr(prefix.size()));
+    }
+
+    const char *env_value = std::getenv(placeholder.c_str());
+    if (env_value != nullptr) {
+        return env_value;
+    }
+    return "";
+}
+
+std::string ResolveConfigValue(const std::string &value) {
     std::string resolved;
     std::size_t position = 0;
     while (position < value.size()) {
@@ -39,11 +77,8 @@ std::string ResolveEnv(const std::string &value) {
             resolved.append(value, begin, std::string::npos);
             break;
         }
-        const std::string env_name = value.substr(begin + 2, end - begin - 2);
-        const char *env_value = std::getenv(env_name.c_str());
-        if (env_value != nullptr) {
-            resolved.append(env_value);
-        }
+        const std::string placeholder = value.substr(begin + 2, end - begin - 2);
+        resolved.append(ResolvePlaceholder(placeholder));
         position = end + 2;
     }
     return resolved;
@@ -54,14 +89,29 @@ std::string GetString(const Json::Value &value, const char *key,
     if (!value.isObject() || !value.isMember(key)) {
         return fallback;
     }
-    return ResolveEnv(value[key].asString());
+    return ResolveConfigValue(value[key].asString());
 }
 
 int GetInt(const Json::Value &value, const char *key, int fallback) {
     if (!value.isObject() || !value.isMember(key)) {
         return fallback;
     }
-    return value[key].asInt();
+    const Json::Value &field = value[key];
+    if (field.isInt()) {
+        return field.asInt();
+    }
+    if (!field.isString()) {
+        return fallback;
+    }
+    const std::string resolved = ResolveConfigValue(field.asString());
+    if (resolved.empty()) {
+        return fallback;
+    }
+    try {
+        return std::stoi(resolved);
+    } catch (...) {
+        return fallback;
+    }
 }
 
 std::size_t GetSize(const Json::Value &value, const char *key,
