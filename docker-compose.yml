@@ -1,21 +1,35 @@
-x-common-environment: &common-environment
-  ZCHAT_MYSQL_HOST: zchat-mysql
-  ZCHAT_MYSQL_USER: testuser
-  ZCHAT_MYSQL_PASSWORD: "123456"
-  ZCHAT_REDIS_HOST: zchat-redis
-  ZCHAT_REDIS_PASSWORD: ''
-  ZCHAT_ETCD_HOST: zchat-etcd
-  ZCHAT_ETCD_USERNAME: ''
-  ZCHAT_ETCD_PASSWORD: ''
-  ZCHAT_RABBITMQ_HOST: zchat-rabbitmq
-  ZCHAT_RABBITMQ_USER: guest
-  ZCHAT_RABBITMQ_PASSWORD: guest
-  ZCHAT_ES_HOST: zchat-elasticsearch
-  ZCHAT_ELASTICSEARCH_USER: ''
-  ZCHAT_ELASTICSEARCH_PASSWORD: ''
+x-zchat-build: &zchat-build
+  context: .
+  dockerfile: server/Dockerfile.service
+  args:
+    BUILD_PRESET: ${ZCHAT_BUILD_PRESET:-conan2-release}
+
+x-zchat-service-base: &zchat-service-base
+  image: zchat-service:latest
+  build: *zchat-build
+  restart: always
+  networks:
+    - zchat-network
 
 x-mysql-client-environment: &mysql-client-environment
   SSL_CERT_FILE: /etc/ssl/certs/zchat-mysql-ca.pem
+
+x-docker-service-hosts: &docker-service-hosts
+  ZCHAT_MYSQL_HOST: zchat-mysql
+  ZCHAT_REDIS_HOST: zchat-redis
+  ZCHAT_ETCD_HOST: zchat-etcd
+  ZCHAT_RABBITMQ_HOST: zchat-rabbitmq
+  ZCHAT_ES_HOST: zchat-elasticsearch
+
+x-service-ports: &service-ports
+  ZCHAT_SPEECH_SERVICE_PORT: ${ZCHAT_SPEECH_SERVICE_PORT:-10001}
+  ZCHAT_FILE_SERVICE_PORT: ${ZCHAT_FILE_SERVICE_PORT:-10002}
+  ZCHAT_USER_SERVICE_PORT: ${ZCHAT_USER_SERVICE_PORT:-10003}
+  ZCHAT_TRANSMITE_SERVICE_PORT: ${ZCHAT_TRANSMITE_SERVICE_PORT:-10004}
+  ZCHAT_MESSAGE_SERVICE_PORT: ${ZCHAT_MESSAGE_SERVICE_PORT:-10005}
+  ZCHAT_FRIEND_SERVICE_PORT: ${ZCHAT_FRIEND_SERVICE_PORT:-10006}
+  ZCHAT_GATEWAY_HTTP_PORT: ${ZCHAT_GATEWAY_HTTP_PORT:-8000}
+  ZCHAT_GATEWAY_WEBSOCKET_PORT: ${ZCHAT_GATEWAY_WEBSOCKET_PORT:-8001}
 
 x-mysql-ca-volume: &mysql-ca-volume
   type: bind
@@ -32,68 +46,108 @@ x-healthcheck-defaults: &healthcheck-defaults
 services:
   zchat-mysql:
     image: mysql:8.4.9
-    container_name: zchat-mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: zchat
-      MYSQL_USER: testuser
-      MYSQL_PASSWORD: "123456"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
     command:
       - --ssl-ca=/etc/mysql/ssl/ca.pem
       - --ssl-cert=/etc/mysql/ssl/server-cert.pem
       - --ssl-key=/etc/mysql/ssl/server-key.pem
+      - --port=${ZCHAT_MYSQL_PORT:-3306}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:${ZCHAT_MYSQL_PUBLISHED_PORT:-3306}:${ZCHAT_MYSQL_PORT:-3306}"
     volumes:
-      - mysql80-data:/var/lib/mysql
+      - mysql-data:/var/lib/mysql
       - ./server/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./server/certs/mysql:/etc/mysql/ssl:ro
+    secrets:
+      - mysql_root_password
+      - mysql_password
     networks:
       - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpassword --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -P \"$${ZCHAT_MYSQL_PORT:-3306}\" -uroot -p\"$$(cat \"$${MYSQL_ROOT_PASSWORD_FILE}\")\" --silent"]
 
   zchat-redis:
     image: redis:8.6.3-alpine
-    container_name: zchat-redis
     restart: always
+    environment:
+      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
+      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if [ -s "$${ZCHAT_REDIS_PASSWORD_FILE}" ]; then
+          redis_password="$$(cat "$${ZCHAT_REDIS_PASSWORD_FILE}")"
+          exec redis-server --port "$${ZCHAT_REDIS_PORT:-6379}" --requirepass "$${redis_password}"
+        fi
+        exec redis-server --port "$${ZCHAT_REDIS_PORT:-6379}"
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${ZCHAT_REDIS_PUBLISHED_PORT:-6379}:${ZCHAT_REDIS_PORT:-6379}"
     networks:
       - zchat-network
+    secrets:
+      - redis_password
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -s \"$${ZCHAT_REDIS_PASSWORD_FILE}\" ]; then redis-cli -p \"$${ZCHAT_REDIS_PORT:-6379}\" -a \"$$(cat \"$${ZCHAT_REDIS_PASSWORD_FILE}\")\" ping; else redis-cli -p \"$${ZCHAT_REDIS_PORT:-6379}\" ping; fi"]
 
   zchat-etcd:
     image: quay.io/coreos/etcd:v3.5.18
-    container_name: zchat-etcd
     restart: always
     command:
       - /usr/local/bin/etcd
-      - --advertise-client-urls=http://zchat-etcd:2379
-      - --listen-client-urls=http://0.0.0.0:2379
+      - --data-dir=/etcd-data
+      - --advertise-client-urls=http://zchat-etcd:${ZCHAT_ETCD_PORT:-2379}
+      - --listen-client-urls=http://0.0.0.0:${ZCHAT_ETCD_PORT:-2379}
     ports:
-      - "2379:2379"
-      - "2380:2380"
+      - "127.0.0.1:${ZCHAT_ETCD_CLIENT_PUBLISHED_PORT:-2379}:${ZCHAT_ETCD_PORT:-2379}"
+      - "127.0.0.1:${ZCHAT_ETCD_PEER_PUBLISHED_PORT:-2380}:2380"
+    volumes:
+      - etcd-data:/etcd-data
     networks:
       - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "etcdctl", "endpoint", "health", "--endpoints=http://127.0.0.1:2379"]
+      test:
+        [
+          "CMD",
+          "etcdctl",
+          "endpoint",
+          "health",
+          "--endpoints=http://127.0.0.1:${ZCHAT_ETCD_PORT:-2379}"
+        ]
 
   zchat-rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: zchat-rabbitmq
     restart: always
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
+      ZCHAT_RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
+      RABBITMQ_NODE_PORT: ${ZCHAT_RABBITMQ_PORT:-5672}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        rabbitmq_password="$$(cat "$${ZCHAT_RABBITMQ_DEFAULT_PASS_FILE}")"
+        {
+          printf 'default_user = %s\n' "$${RABBITMQ_DEFAULT_USER}"
+          printf 'default_pass = %s\n' "$${rabbitmq_password}"
+        } > /etc/rabbitmq/conf.d/99-zchat-default-user.conf
+        exec rabbitmq-server
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:${ZCHAT_RABBITMQ_PUBLISHED_PORT:-5672}:${ZCHAT_RABBITMQ_PORT:-5672}"
+      - "127.0.0.1:${ZCHAT_RABBITMQ_MANAGEMENT_PUBLISHED_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    secrets:
+      - rabbitmq_default_pass
     networks:
       - zchat-network
     healthcheck:
@@ -102,88 +156,101 @@ services:
 
   zchat-elasticsearch:
     image: elasticsearch:8.8.2
-    container_name: zchat-elasticsearch
     restart: always
     environment:
       discovery.type: single-node
+      http.port: ${ZCHAT_ES_PORT:-9200}
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
-      - "9200:9200"
+      - "127.0.0.1:${ZCHAT_ES_PUBLISHED_PORT:-9200}:${ZCHAT_ES_PORT:-9200}"
     volumes:
       - es-data:/usr/share/elasticsearch/data
     networks:
       - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9200/_cluster/health >/dev/null"]
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:${ZCHAT_ES_PORT:-9200}/_cluster/health >/dev/null"]
 
   file-service:
-    build:
-      context: .
-      dockerfile: server/Dockerfile.service
-      args:
-        BUILD_PRESET: conan2-release
-        SERVICE_TARGET: zchat_file_service
-        SERVICE_BINARY: zchat_file_service
-        SERVICE_CONFIG: file.json
-    container_name: zchat-file-service
-    restart: always
+    <<: *zchat-service-base
     environment:
-      <<: [*common-environment, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      SERVICE_BINARY: zchat_file_service
       ZCHAT_ADVERTISE_HOST: file-service
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
+      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
+      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
+      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
     volumes:
       - *mysql-ca-volume
+    secrets:
+      - mysql_password
+      - etcd_password
     depends_on:
       zchat-mysql:
         condition: service_healthy
       zchat-etcd:
         condition: service_healthy
-    networks:
-      - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10002'"]
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/'\"$${ZCHAT_FILE_SERVICE_PORT:-10002}\""]
 
   speech-service:
-    build:
-      context: .
-      dockerfile: server/Dockerfile.service
-      args:
-        BUILD_PRESET: conan2-release
-        SERVICE_TARGET: zchat_speech_service
-        SERVICE_BINARY: zchat_speech_service
-        SERVICE_CONFIG: speech.json
-    container_name: zchat-speech-service
-    restart: always
+    <<: *zchat-service-base
     environment:
-      <<: *common-environment
+      <<: [*docker-service-hosts, *service-ports]
+      SERVICE_BINARY: zchat_speech_service
       ZCHAT_ADVERTISE_HOST: speech-service
+      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
+      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
+      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
+      ZCHAT_SPEECH_APP_ID: ${ZCHAT_SPEECH_APP_ID:-}
+      ZCHAT_SPEECH_API_KEY_FILE: /run/secrets/speech_api_key
+      ZCHAT_SPEECH_SECRET_KEY_FILE: /run/secrets/speech_secret_key
+    secrets:
+      - etcd_password
+      - speech_api_key
+      - speech_secret_key
     depends_on:
       zchat-etcd:
         condition: service_healthy
-    networks:
-      - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10001'"]
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/'\"$${ZCHAT_SPEECH_SERVICE_PORT:-10001}\""]
 
   transmite-service:
-    build:
-      context: .
-      dockerfile: server/Dockerfile.service
-      args:
-        BUILD_PRESET: conan2-release
-        SERVICE_TARGET: zchat_transmite_service
-        SERVICE_BINARY: zchat_transmite_service
-        SERVICE_CONFIG: transmite.json
-    container_name: zchat-transmite-service
-    restart: always
+    <<: *zchat-service-base
     environment:
-      <<: [*common-environment, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      SERVICE_BINARY: zchat_transmite_service
       ZCHAT_ADVERTISE_HOST: transmite-service
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
+      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
+      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
+      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
+      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
+      ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
+      ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
+      ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
+      ZCHAT_RABBITMQ_PORT: ${ZCHAT_RABBITMQ_PORT:-5672}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
+      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
     volumes:
       - *mysql-ca-volume
+    secrets:
+      - mysql_password
+      - redis_password
+      - etcd_password
+      - elasticsearch_password
+      - rabbitmq_default_pass
     depends_on:
       zchat-mysql:
         condition: service_healthy
@@ -195,28 +262,36 @@ services:
         condition: service_healthy
       zchat-elasticsearch:
         condition: service_healthy
-    networks:
-      - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10004'"]
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/'\"$${ZCHAT_TRANSMITE_SERVICE_PORT:-10004}\""]
 
   message-service:
-    build:
-      context: .
-      dockerfile: server/Dockerfile.service
-      args:
-        BUILD_PRESET: conan2-release
-        SERVICE_TARGET: zchat_message_service
-        SERVICE_BINARY: zchat_message_service
-        SERVICE_CONFIG: message.json
-    container_name: zchat-message-service
-    restart: always
+    <<: *zchat-service-base
     environment:
-      <<: [*common-environment, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      SERVICE_BINARY: zchat_message_service
       ZCHAT_ADVERTISE_HOST: message-service
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
+      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
+      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
+      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
+      ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
+      ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
+      ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
+      ZCHAT_RABBITMQ_PORT: ${ZCHAT_RABBITMQ_PORT:-5672}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
+      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
     volumes:
       - *mysql-ca-volume
+    secrets:
+      - mysql_password
+      - etcd_password
+      - elasticsearch_password
+      - rabbitmq_default_pass
     depends_on:
       zchat-mysql:
         condition: service_healthy
@@ -226,28 +301,35 @@ services:
         condition: service_healthy
       zchat-elasticsearch:
         condition: service_healthy
-    networks:
-      - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10005'"]
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/'\"$${ZCHAT_MESSAGE_SERVICE_PORT:-10005}\""]
 
   friend-service:
-    build:
-      context: .
-      dockerfile: server/Dockerfile.service
-      args:
-        BUILD_PRESET: conan2-release
-        SERVICE_TARGET: zchat_friend_service
-        SERVICE_BINARY: zchat_friend_service
-        SERVICE_CONFIG: friend.json
-    container_name: zchat-friend-service
-    restart: always
+    <<: *zchat-service-base
     environment:
-      <<: [*common-environment, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      SERVICE_BINARY: zchat_friend_service
       ZCHAT_ADVERTISE_HOST: friend-service
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
+      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
+      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
+      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
+      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
+      ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
+      ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
+      ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
     volumes:
       - *mysql-ca-volume
+    secrets:
+      - mysql_password
+      - redis_password
+      - etcd_password
+      - elasticsearch_password
     depends_on:
       zchat-mysql:
         condition: service_healthy
@@ -257,28 +339,41 @@ services:
         condition: service_healthy
       zchat-elasticsearch:
         condition: service_healthy
-    networks:
-      - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10006'"]
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/'\"$${ZCHAT_FRIEND_SERVICE_PORT:-10006}\""]
 
   user-service:
-    build:
-      context: .
-      dockerfile: server/Dockerfile.service
-      args:
-        BUILD_PRESET: conan2-release
-        SERVICE_TARGET: zchat_user_service
-        SERVICE_BINARY: zchat_user_service
-        SERVICE_CONFIG: user.json
-    container_name: zchat-user-service
-    restart: always
+    <<: *zchat-service-base
     environment:
-      <<: [*common-environment, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      SERVICE_BINARY: zchat_user_service
       ZCHAT_ADVERTISE_HOST: user-service
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
+      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
+      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
+      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
+      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
+      ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
+      ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
+      ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
+      ZCHAT_SMS_ACCESS_KEY_ID_FILE: /run/secrets/sms_access_key_id
+      ZCHAT_SMS_ACCESS_KEY_SECRET_FILE: /run/secrets/sms_access_key_secret
+      ZCHAT_SMS_SIGN_NAME: ${ZCHAT_SMS_SIGN_NAME:-}
+      ZCHAT_SMS_TEMPLATE_CODE: ${ZCHAT_SMS_TEMPLATE_CODE:-}
     volumes:
       - *mysql-ca-volume
+    secrets:
+      - mysql_password
+      - redis_password
+      - etcd_password
+      - elasticsearch_password
+      - sms_access_key_id
+      - sms_access_key_secret
     depends_on:
       zchat-mysql:
         condition: service_healthy
@@ -288,29 +383,27 @@ services:
         condition: service_healthy
       zchat-elasticsearch:
         condition: service_healthy
-    networks:
-      - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/10003'"]
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/'\"$${ZCHAT_USER_SERVICE_PORT:-10003}\""]
 
   gateway:
-    build:
-      context: .
-      dockerfile: server/Dockerfile.service
-      args:
-        BUILD_PRESET: conan2-release
-        SERVICE_TARGET: zchat_gateway
-        SERVICE_BINARY: zchat_gateway
-        SERVICE_CONFIG: gateway.json
-    container_name: zchat-gateway
-    restart: always
+    <<: *zchat-service-base
     environment:
-      <<: *common-environment
+      <<: [*docker-service-hosts, *service-ports]
+      SERVICE_BINARY: zchat_gateway
       ZCHAT_ADVERTISE_HOST: gateway
+      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
+      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
+      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
+      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
+    secrets:
+      - redis_password
+      - etcd_password
     ports:
-      - "8000:8000"
-      - "8001:8001"
+      - "${ZCHAT_GATEWAY_HTTP_PUBLISHED_PORT:-8000}:${ZCHAT_GATEWAY_HTTP_PORT:-8000}"
+      - "${ZCHAT_GATEWAY_WEBSOCKET_PUBLISHED_PORT:-8001}:${ZCHAT_GATEWAY_WEBSOCKET_PORT:-8001}"
     depends_on:
       zchat-redis:
         condition: service_healthy
@@ -328,11 +421,9 @@ services:
         condition: service_healthy
       user-service:
         condition: service_healthy
-    networks:
-      - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/8000'"]
+      test: ["CMD-SHELL", "bash -ec '</dev/tcp/127.0.0.1/'\"$${ZCHAT_GATEWAY_HTTP_PORT:-8000}\""]
 
 networks:
   zchat-network:
@@ -340,5 +431,29 @@ networks:
     driver: bridge
 
 volumes:
-  mysql80-data:
+  mysql-data:
   es-data:
+  rabbitmq-data:
+  etcd-data:
+
+secrets:
+  mysql_root_password:
+    file: ${MYSQL_ROOT_PASSWORD_FILE:?}
+  mysql_password:
+    file: ${MYSQL_PASSWORD_FILE:?}
+  redis_password:
+    file: ${ZCHAT_REDIS_PASSWORD_FILE:?}
+  etcd_password:
+    file: ${ZCHAT_ETCD_PASSWORD_FILE:?}
+  elasticsearch_password:
+    file: ${ZCHAT_ELASTICSEARCH_PASSWORD_FILE:?}
+  rabbitmq_default_pass:
+    file: ${RABBITMQ_DEFAULT_PASS_FILE:?}
+  speech_api_key:
+    file: ${ZCHAT_SPEECH_API_KEY_FILE:?}
+  speech_secret_key:
+    file: ${ZCHAT_SPEECH_SECRET_KEY_FILE:?}
+  sms_access_key_id:
+    file: ${ZCHAT_SMS_ACCESS_KEY_ID_FILE:?}
+  sms_access_key_secret:
+    file: ${ZCHAT_SMS_ACCESS_KEY_SECRET_FILE:?}
