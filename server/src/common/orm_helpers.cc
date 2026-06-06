@@ -1,4 +1,4 @@
-#include "repository/orm_helpers.h"
+#include "common/orm_helpers.h"
 
 #include <utility>
 

@@ -4,7 +4,7 @@ add_library(zchat_user_module STATIC
   sms_client.cc
   user_search_index.cc
   user_service.cc)
-target_link_libraries(zchat_user_module PUBLIC zchat_repository)
+target_link_libraries(zchat_user_module PUBLIC zchat_common)
 
 add_executable(zchat_user_service
   user_builder.cc
@@ -14,8 +14,4 @@ add_executable(zchat_user_service
 target_link_libraries(zchat_user_service
   PRIVATE
     zchat_file_module
-    zchat_user_module
-    gRPC::grpc++
-    grpc++
-    grpc
-    gpr)
+    zchat_user_module)

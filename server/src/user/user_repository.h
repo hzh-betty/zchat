@@ -12,7 +12,7 @@
 
 #include "common/domain_records.h"
 #include "common/result.h"
-#include "repository/orm_helpers.h"
+#include "common/orm_helpers.h"
 
 namespace zchat {
 

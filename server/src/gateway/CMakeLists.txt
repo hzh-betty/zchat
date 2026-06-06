@@ -8,8 +8,4 @@ add_executable(zchat_gateway
   websocket_controller.cc)
 target_link_libraries(zchat_gateway
   PRIVATE
-    zchat_common
-    gRPC::grpc++
-    grpc++
-    grpc
-    gpr)
+    zchat_common)

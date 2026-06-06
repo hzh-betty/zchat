@@ -2,7 +2,7 @@ add_library(zchat_message_module STATIC
   message_search_index.cc
   message_service.cc
   orm_message_repository.cc)
-target_link_libraries(zchat_message_module PUBLIC zchat_repository)
+target_link_libraries(zchat_message_module PUBLIC zchat_common)
 
 add_executable(zchat_message_service
   message_builder.cc
@@ -15,8 +15,4 @@ target_link_libraries(zchat_message_service
     zchat_friend_module
     zchat_message_module
     zchat_message_queue
-    zchat_user_module
-    gRPC::grpc++
-    grpc++
-    grpc
-    gpr)
+    zchat_user_module)

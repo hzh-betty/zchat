@@ -13,7 +13,7 @@ target_link_libraries(zchat_transmite_module
   PUBLIC
     zchat_message_module
     zchat_message_queue
-    zchat_repository
+    zchat_common
     zchat_user_module)
 
 add_executable(zchat_transmite_service
@@ -23,8 +23,4 @@ add_executable(zchat_transmite_service
   transmite_main.cc)
 target_link_libraries(zchat_transmite_service
   PRIVATE
-    zchat_transmite_module
-    gRPC::grpc++
-    grpc++
-    grpc
-    gpr)
+    zchat_transmite_module)

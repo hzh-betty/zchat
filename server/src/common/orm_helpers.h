@@ -1,5 +1,5 @@
-#ifndef ZCHAT_SERVER_SRC_REPOSITORY_ORM_HELPERS_H_
-#define ZCHAT_SERVER_SRC_REPOSITORY_ORM_HELPERS_H_
+#ifndef ZCHAT_SERVER_SRC_COMMON_ORM_HELPERS_H_
+#define ZCHAT_SERVER_SRC_COMMON_ORM_HELPERS_H_
 
 #include "common/noncopyable.h"
 
@@ -54,4 +54,4 @@ template <typename Func> auto RunDb(Func function) -> decltype(function()) {
 
 } // namespace zchat
 
-#endif // ZCHAT_SERVER_SRC_REPOSITORY_ORM_HELPERS_H_
+#endif // ZCHAT_SERVER_SRC_COMMON_ORM_HELPERS_H_

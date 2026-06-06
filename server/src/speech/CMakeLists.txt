@@ -11,8 +11,4 @@ add_executable(zchat_speech_service
   speech_main.cc)
 target_link_libraries(zchat_speech_service
   PRIVATE
-    zchat_speech_module
-    gRPC::grpc++
-    grpc++
-    grpc
-    gpr)
+    zchat_speech_module)

@@ -1,7 +1,7 @@
 add_library(zchat_friend_module STATIC
   friend_service.cc
   orm_friend_repository.cc)
-target_link_libraries(zchat_friend_module PUBLIC zchat_repository)
+target_link_libraries(zchat_friend_module PUBLIC zchat_common)
 
 add_executable(zchat_friend_service
   friend_builder.cc
@@ -13,8 +13,4 @@ target_link_libraries(zchat_friend_service
     zchat_file_module
     zchat_friend_module
     zchat_message_module
-    zchat_user_module
-    gRPC::grpc++
-    grpc++
-    grpc
-    gpr)
+    zchat_user_module)
