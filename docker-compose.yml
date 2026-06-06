@@ -1,5 +1,5 @@
 x-common-environment: &common-environment
-  ZCHAT_MYSQL_HOST: MySQL_Server_8.0.46_Auto_Generated_Server_Certificate
+  ZCHAT_MYSQL_HOST: zchat-mysql
   ZCHAT_MYSQL_USER: testuser
   ZCHAT_MYSQL_PASSWORD: "123456"
   ZCHAT_REDIS_HOST: zchat-redis
@@ -18,12 +18,10 @@ x-mysql-client-environment: &mysql-client-environment
   SSL_CERT_FILE: /etc/ssl/certs/zchat-mysql-ca.pem
 
 x-mysql-ca-volume: &mysql-ca-volume
-  type: volume
-  source: mysql80-data
+  type: bind
+  source: ./server/certs/mysql/ca.pem
   target: /etc/ssl/certs/zchat-mysql-ca.pem
   read_only: true
-  volume:
-    subpath: ca.pem
 
 x-healthcheck-defaults: &healthcheck-defaults
   interval: 10s
@@ -33,7 +31,7 @@ x-healthcheck-defaults: &healthcheck-defaults
 
 services:
   zchat-mysql:
-    image: mysql:8.0
+    image: mysql:8.4.9
     container_name: zchat-mysql
     restart: always
     environment:
@@ -41,16 +39,18 @@ services:
       MYSQL_DATABASE: zchat
       MYSQL_USER: testuser
       MYSQL_PASSWORD: "123456"
-    command: ["--default-authentication-plugin=mysql_native_password"]
+    command:
+      - --ssl-ca=/etc/mysql/ssl/ca.pem
+      - --ssl-cert=/etc/mysql/ssl/server-cert.pem
+      - --ssl-key=/etc/mysql/ssl/server-key.pem
     ports:
       - "3306:3306"
     volumes:
       - mysql80-data:/var/lib/mysql
       - ./server/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./server/certs/mysql:/etc/mysql/ssl:ro
     networks:
-      zchat-network:
-        aliases:
-          - MySQL_Server_8.0.46_Auto_Generated_Server_Certificate
+      - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpassword --silent"]

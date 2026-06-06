@@ -28,9 +28,9 @@ COPY profiles ./profiles
 ARG BUILD_PRESET=conan2-release
 
 RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
-        conan install . --build=missing -pr:h profiles/linux-clang-debug -pr:b profiles/linux-clang-release ; \
+        conan install . --output-folder=/app/build/${BUILD_PRESET} --build=missing -pr:h profiles/linux-clang-debug -pr:b profiles/linux-clang-release ; \
     else \
-        conan install . --build=missing -pr:h profiles/linux-clang-release -pr:b profiles/linux-clang-release ; \
+        conan install . --output-folder=/app/build/${BUILD_PRESET} --build=missing -pr:h profiles/linux-clang-release -pr:b profiles/linux-clang-release ; \
     fi
 
 FROM conan-deps AS builder
@@ -42,9 +42,10 @@ ARG SERVICE_BINARY
 COPY CMakeLists.txt CMakePresets.json ./
 COPY server ./server
 
-RUN . /app/build/${BUILD_PRESET}/generators/conanrun.sh \
+RUN . /app/build/${BUILD_PRESET}/generators/conanbuild.sh \
+    && . /app/build/${BUILD_PRESET}/generators/conanrun.sh \
     && cmake --preset ${BUILD_PRESET} \
-    && cmake --build --preset ${BUILD_PRESET} --target ${SERVICE_TARGET} -j1 \
+    && cmake --build --preset ${BUILD_PRESET} --target ${SERVICE_TARGET} -j4 \
     && mkdir -p /app/lib \
     && ldd /app/build/${BUILD_PRESET}/bin/${SERVICE_BINARY} \
       | awk '/=>/ { print $3 } /^[[:space:]]*\// { print $1 }' \
@@ -53,7 +54,9 @@ RUN . /app/build/${BUILD_PRESET}/generators/conanrun.sh \
           case "${lib}" in \
             /root/.conan2/*) cp -L "${lib}" /app/lib/ ;; \
           esac; \
-        done
+        done \
+    && mkdir -p /app/lib/plugin \
+    && find /root/.conan2 -path '*/lib/plugin/*.so' -exec cp -L {} /app/lib/plugin/ \;
 
 # ==========================================
 # Runner
@@ -75,6 +78,7 @@ ARG SERVICE_CONFIG
 
 ENV SERVICE_BINARY=${SERVICE_BINARY}
 ENV LD_LIBRARY_PATH=/app/lib
+ENV MARIADB_PLUGIN_DIR=/app/lib/plugin
 
 COPY --from=builder /app/build/${BUILD_PRESET}/bin/${SERVICE_BINARY} /app/bin/${SERVICE_BINARY}
 COPY --from=builder /app/lib /app/lib

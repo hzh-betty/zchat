@@ -209,6 +209,14 @@ load_conan_run_env() {
     fi
 }
 
+load_conan_build_env() {
+    local conan_build_env="${BUILD_DIR}/generators/conanbuild.sh"
+    if [[ -f "${conan_build_env}" ]]; then
+        # shellcheck source=/dev/null
+        source "${conan_build_env}"
+    fi
+}
+
 require_file "${ENV_PATH}"
 for service in "${SERVICES[@]}"; do
     require_file "${CONFIG_PATHS[${service}]}"
@@ -236,11 +244,13 @@ if [[ "${BUILD_BEFORE_START}" -eq 1 ]]; then
         CONAN_BUILD_PROFILE="${ROOT_DIR}/profiles/linux-clang-release"
         echo "Installing Conan dependencies for ${BUILD_PRESET}"
         conan install "${ROOT_DIR}" \
+            --output-folder="${BUILD_DIR}" \
             --build=missing \
             -c "tools.build:jobs=${BUILD_JOBS}" \
             -pr:h "${CONAN_HOST_PROFILE}" \
             -pr:b "${CONAN_BUILD_PROFILE}"
     fi
+    load_conan_build_env
     load_conan_run_env
     echo "Configuring zchat services with preset ${BUILD_PRESET}"
     cmake --preset "${BUILD_PRESET}"
