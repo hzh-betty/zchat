@@ -25,7 +25,8 @@ FileApplicationService::FileApplicationService(FileRepository &repository)
 
 zchat::GetSingleFileRsp
 FileApplicationService::GetSingleFile(const zchat::GetSingleFileReq &request) {
-    ZCHAT_LOG_INFO("FileService::GetSingleFile request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("FileService::GetSingleFile request_id={}",
+                   request.request_id());
     auto file = repository_.GetFile(request.file_id());
     if (!file.ok()) {
         return ErrorResponse(request.request_id(), file.error());
@@ -39,13 +40,15 @@ FileApplicationService::GetSingleFile(const zchat::GetSingleFileReq &request) {
     response.set_errmsg("");
     response.mutable_file_data()->set_file_id(file.value()->file_id);
     response.mutable_file_data()->set_file_content(file.value()->file_content);
-    ZCHAT_LOG_INFO("FileService::GetSingleFile success: request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("FileService::GetSingleFile success: request_id={}",
+                   request.request_id());
     return response;
 }
 
 zchat::GetMultiFileRsp
 FileApplicationService::GetMultiFile(const zchat::GetMultiFileReq &request) {
-    ZCHAT_LOG_INFO("FileService::GetMultiFile request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("FileService::GetMultiFile request_id={}",
+                   request.request_id());
     zchat::GetMultiFileRsp response;
     response.set_request_id(request.request_id());
     response.set_success(true);
@@ -63,13 +66,15 @@ FileApplicationService::GetMultiFile(const zchat::GetMultiFileReq &request) {
             data->set_file_content(file.value()->file_content);
         }
     }
-    ZCHAT_LOG_INFO("FileService::GetMultiFile success: request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("FileService::GetMultiFile success: request_id={}",
+                   request.request_id());
     return response;
 }
 
 zchat::PutSingleFileRsp
 FileApplicationService::PutSingleFile(const zchat::PutSingleFileReq &request) {
-    ZCHAT_LOG_INFO("FileService::PutSingleFile request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("FileService::PutSingleFile request_id={}",
+                   request.request_id());
     const std::string file_id = NewId();
     const auto &upload = request.file_data();
     const auto stored = repository_.PutFile(FileRecord{
@@ -88,13 +93,16 @@ FileApplicationService::PutSingleFile(const zchat::PutSingleFileReq &request) {
     response.mutable_file_info()->set_file_id(file_id);
     response.mutable_file_info()->set_file_name(upload.file_name());
     response.mutable_file_info()->set_file_size(upload.file_size());
-    ZCHAT_LOG_INFO("FileService::PutSingleFile success: request_id={} file_id={}", request.request_id(), file_id);
+    ZCHAT_LOG_INFO(
+        "FileService::PutSingleFile success: request_id={} file_id={}",
+        request.request_id(), file_id);
     return response;
 }
 
 zchat::PutMultiFileRsp
 FileApplicationService::PutMultiFile(const zchat::PutMultiFileReq &request) {
-    ZCHAT_LOG_INFO("FileService::PutMultiFile request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("FileService::PutMultiFile request_id={}",
+                   request.request_id());
     zchat::PutMultiFileRsp response;
     response.set_request_id(request.request_id());
     response.set_success(true);
@@ -117,7 +125,8 @@ FileApplicationService::PutMultiFile(const zchat::PutMultiFileReq &request) {
         info->set_file_name(upload.file_name());
         info->set_file_size(upload.file_size());
     }
-    ZCHAT_LOG_INFO("FileService::PutMultiFile success: request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("FileService::PutMultiFile success: request_id={}",
+                   request.request_id());
     return response;
 }
 

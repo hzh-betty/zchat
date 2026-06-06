@@ -14,7 +14,8 @@ namespace zchat {
 BaiduSpeechRecognizer::BaiduSpeechRecognizer(const SpeechConfig &config)
     : app_id_(config.app_id), api_key_(config.api_key),
       secret_key_(config.secret_key) {
-    loop_thread_ = std::make_unique<trantor::EventLoopThread>("zchat-baidu-asr");
+    loop_thread_ =
+        std::make_unique<trantor::EventLoopThread>("zchat-baidu-asr");
     loop_thread_->run();
     client_ = drogon::HttpClient::newHttpClient("https://vop.baidu.com",
                                                 loop_thread_->getLoop());
@@ -35,7 +36,8 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     body["token"] = token_result.value();
     body["dev_pid"] = 1537;
     body["speech"] = Base64Encode(speech_data);
-    body["len"] = Json::Value::Int64(static_cast<Json::Int64>(speech_data.size()));
+    body["len"] =
+        Json::Value::Int64(static_cast<Json::Int64>(speech_data.size()));
 
     Json::StreamWriterBuilder writer;
     writer["indentation"] = "";
@@ -76,8 +78,7 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     if (err_no != 0) {
         std::string err_msg = root.get("err_msg", "unknown error").asString();
         return Result<std::string>::Fail(
-            speech_errors::RecognitionFailed(
-                "baidu speech recognition failed")
+            speech_errors::RecognitionFailed("baidu speech recognition failed")
                 .WithContext("provider_code", std::to_string(err_no))
                 .WithDetail(err_msg));
     }
@@ -94,8 +95,10 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
 Result<std::string> BaiduSpeechRecognizer::FetchAccessToken() {
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Post);
-    request->setPath(std::string("/oauth/2.0/token?grant_type=client_credentials&client_id=") +
-                     UrlEncode(api_key_) + "&client_secret=" + UrlEncode(secret_key_));
+    request->setPath(
+        std::string(
+            "/oauth/2.0/token?grant_type=client_credentials&client_id=") +
+        UrlEncode(api_key_) + "&client_secret=" + UrlEncode(secret_key_));
 
     auto token_client = drogon::HttpClient::newHttpClient(
         "https://aip.baidubce.com", loop_thread_->getLoop());

@@ -20,10 +20,10 @@
 #include "message/message_search_index.h"
 #include "message/message_service.h"
 #include "transmite/message_queue.h"
+#include "user.pb.h"
 #include "user/user_errors.h"
 #include "user/user_repository.h"
 #include "user/user_search_index.h"
-#include "user.pb.h"
 
 namespace {
 
@@ -274,8 +274,7 @@ int main() {
     assert(verify_code_phone_mismatch.code ==
            zchat::ErrorCode::kUserVerifyCodePhoneMismatch);
     const auto already_logged_in = zchat::user_errors::AlreadyLoggedIn();
-    assert(already_logged_in.code ==
-           zchat::ErrorCode::kUserAlreadyLoggedIn);
+    assert(already_logged_in.code == zchat::ErrorCode::kUserAlreadyLoggedIn);
 
     zchat::UserLoginRsp response;
     response.set_request_id(zchat::NewRequestId());
@@ -331,8 +330,7 @@ int main() {
     assert(user_document.find("\"user_id\":\"user-1\"") != std::string::npos);
     const std::string user_search =
         zchat::BuildElasticsearchUserSearchRequest("sender", {"user-1"});
-    assert(user_search.find("\"minimum_should_match\":1") !=
-           std::string::npos);
+    assert(user_search.find("\"minimum_should_match\":1") != std::string::npos);
     assert(user_search.find("\"user_id.keyword\":[\"user-1\"]") !=
            std::string::npos);
     const std::string user_index =
@@ -359,9 +357,8 @@ int main() {
     FakeFileRepository fake_files;
     FakeFriendRepository fake_friends;
     DisabledMessageSearchIndex disabled_search;
-    zchat::MessageService message_service(fake_messages, fake_users,
-                                          fake_files, fake_friends,
-                                          disabled_search);
+    zchat::MessageService message_service(fake_messages, fake_users, fake_files,
+                                          fake_friends, disabled_search);
     zchat::GetRecentMsgReq recent_request;
     recent_request.set_request_id("req-authz");
     recent_request.set_user_id("intruder");

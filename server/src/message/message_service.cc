@@ -10,20 +10,19 @@
 #include "message/message_errors.h"
 
 namespace zchat {
-namespace {
-
-} // namespace
+namespace {} // namespace
 
 MessageService::MessageService(MessageRepository &messages,
                                UserRepository &users, FileRepository &files,
                                FriendRepository &friends,
                                MessageSearchIndex &search_index)
-    : messages_(messages), users_(users), files_(files),
-      friends_(friends), search_index_(search_index) {}
+    : messages_(messages), users_(users), files_(files), friends_(friends),
+      search_index_(search_index) {}
 
 zchat::GetRecentMsgRsp
 MessageService::GetRecent(const zchat::GetRecentMsgReq &request) {
-    ZCHAT_LOG_INFO("MessageService::GetRecent request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("MessageService::GetRecent request_id={}",
+                   request.request_id());
     const auto auth = EnsureCanReadSession(
         request.request_id(), request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
@@ -38,13 +37,15 @@ MessageService::GetRecent(const zchat::GetRecentMsgReq &request) {
     }
     auto response = BuildMessageListResponse<zchat::GetRecentMsgRsp>(
         request.request_id(), messages.value());
-    ZCHAT_LOG_INFO("MessageService::GetRecent success: request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("MessageService::GetRecent success: request_id={}",
+                   request.request_id());
     return response;
 }
 
 zchat::GetHistoryMsgRsp
 MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
-    ZCHAT_LOG_INFO("MessageService::GetHistory request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("MessageService::GetHistory request_id={}",
+                   request.request_id());
     const auto auth = EnsureCanReadSession(
         request.request_id(), request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
@@ -59,12 +60,14 @@ MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
     }
     auto response = BuildMessageListResponse<zchat::GetHistoryMsgRsp>(
         request.request_id(), messages.value());
-    ZCHAT_LOG_INFO("MessageService::GetHistory success: request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("MessageService::GetHistory success: request_id={}",
+                   request.request_id());
     return response;
 }
 
 zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
-    ZCHAT_LOG_INFO("MessageService::Search request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("MessageService::Search request_id={}",
+                   request.request_id());
     const auto auth = EnsureCanReadSession(
         request.request_id(), request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
@@ -77,13 +80,15 @@ zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
         return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
                                                       messages.error());
     }
-    auto response = BuildMessageListResponse<zchat::MsgSearchRsp>(request.request_id(),
-                                                         messages.value());
-    ZCHAT_LOG_INFO("MessageService::Search success: request_id={}", request.request_id());
+    auto response = BuildMessageListResponse<zchat::MsgSearchRsp>(
+        request.request_id(), messages.value());
+    ZCHAT_LOG_INFO("MessageService::Search success: request_id={}",
+                   request.request_id());
     return response;
 }
 
-VoidResult MessageService::StoreQueuedMessage(const zchat::MessageInfo &message) {
+VoidResult
+MessageService::StoreQueuedMessage(const zchat::MessageInfo &message) {
     std::string file_content;
     MessageRecord record = FromProtoMessage(message, &file_content);
     if (!file_content.empty()) {
@@ -106,9 +111,9 @@ VoidResult MessageService::StoreQueuedMessage(const zchat::MessageInfo &message)
     return VoidResult::Ok();
 }
 
-VoidResult MessageService::EnsureCanReadSession(
-    const std::string &, const std::string &user_id,
-    const std::string &session_id) {
+VoidResult MessageService::EnsureCanReadSession(const std::string &,
+                                                const std::string &user_id,
+                                                const std::string &session_id) {
     if (user_id.empty()) {
         return VoidResult::Fail(common_errors::SessionExpired());
     }
@@ -133,7 +138,9 @@ Response MessageService::BuildMessageListResponse(const std::string &request_id,
     for (const auto &message : messages) {
         auto sender = users_.FindUserById(message.user_id);
         if (!sender.ok() || !sender.value().has_value()) {
-            ZCHAT_LOG_WARN("MessageService::BuildMessageListResponse FindUserById failed: user_id={}", message.user_id);
+            ZCHAT_LOG_WARN("MessageService::BuildMessageListResponse "
+                           "FindUserById failed: user_id={}",
+                           message.user_id);
             continue;
         }
         std::string file_content;

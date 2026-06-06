@@ -54,8 +54,9 @@ ParseSearchResponse(const std::string &body) {
     std::istringstream input(body);
     if (!Json::parseFromStream(builder, input, &root, &errors)) {
         return Result<std::vector<MessageRecord>>::Fail(
-            AppError::WithCode(ErrorCode::kExternalServiceError,
-                               "elasticsearch message search response parse failed")
+            AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "elasticsearch message search response parse failed")
                 .WithDetail(errors));
     }
 
@@ -108,8 +109,9 @@ VoidResult ConfiguredMessageSearchIndex::EnsureIndex() {
         client_->sendRequest(request, kRequestTimeoutSeconds);
     if (result != drogon::ReqResult::Ok || !response) {
         return VoidResult::Fail(
-            AppError::WithCode(ErrorCode::kExternalServiceError,
-                               "elasticsearch message index creation request failed")
+            AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "elasticsearch message index creation request failed")
                 .WithDetail(drogon::to_string(result)));
     }
     if (IsSuccessStatus(response->statusCode())) {
@@ -163,9 +165,9 @@ Result<std::vector<MessageRecord>>
 ConfiguredMessageSearchIndex::SearchMessages(const std::string &session_id,
                                              const std::string &keyword) {
     if (!client_) {
-        return Result<std::vector<MessageRecord>>::Fail(
-            AppError::WithCode(ErrorCode::kExternalServiceError,
-                               "elasticsearch message client is not initialized"));
+        return Result<std::vector<MessageRecord>>::Fail(AppError::WithCode(
+            ErrorCode::kExternalServiceError,
+            "elasticsearch message client is not initialized"));
     }
 
     auto request = drogon::HttpRequest::newHttpRequest();

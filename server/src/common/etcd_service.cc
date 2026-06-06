@@ -24,15 +24,16 @@ std::shared_ptr<etcd::Client> MakeEtcdClient(const EtcdConfig &config) {
             "etcd username and password must be configured together");
     }
     if (has_user) {
-        return std::make_shared<etcd::Client>(
-            config.endpoints, config.username, config.password,
-            config.auth_token_ttl_seconds);
+        return std::make_shared<etcd::Client>(config.endpoints, config.username,
+                                              config.password,
+                                              config.auth_token_ttl_seconds);
     }
     return std::make_shared<etcd::Client>(config.endpoints);
 }
 
-std::shared_ptr<etcd::KeepAlive> MakeKeepAlive(
-    const EtcdConfig &config, const std::shared_ptr<etcd::Client> &client) {
+std::shared_ptr<etcd::KeepAlive>
+MakeKeepAlive(const EtcdConfig &config,
+              const std::shared_ptr<etcd::Client> &client) {
     if (!config.username.empty()) {
         return std::make_shared<etcd::KeepAlive>(
             config.endpoints, config.username, config.password,
@@ -41,10 +42,11 @@ std::shared_ptr<etcd::KeepAlive> MakeKeepAlive(
     return std::make_shared<etcd::KeepAlive>(*client, config.lease_ttl_seconds);
 }
 
-std::unique_ptr<etcd::Watcher> MakeWatcher(
-    const EtcdConfig &config, const std::shared_ptr<etcd::Client> &client,
-    const std::string &base_path,
-    const std::function<void(etcd::Response)> &callback) {
+std::unique_ptr<etcd::Watcher>
+MakeWatcher(const EtcdConfig &config,
+            const std::shared_ptr<etcd::Client> &client,
+            const std::string &base_path,
+            const std::function<void(etcd::Response)> &callback) {
     if (!config.username.empty()) {
         return std::make_unique<etcd::Watcher>(
             config.endpoints, config.username, config.password, base_path,
@@ -108,7 +110,8 @@ std::string BuildAdvertiseAddress(const EtcdConfig &config, int port) {
 }
 
 std::string BuildInstanceId(const std::string &service_name) {
-    return service_name + "-" + std::to_string(static_cast<long long>(getpid()));
+    return service_name + "-" +
+           std::to_string(static_cast<long long>(getpid()));
 }
 
 EtcdRegistry::EtcdRegistry(const EtcdConfig &config)
@@ -125,19 +128,19 @@ VoidResult EtcdRegistry::Register(const std::string &service_name,
                                   const std::string &instance_id,
                                   const std::string &address) {
     if (!keep_alive_) {
-        return VoidResult::Fail(AppError::WithCode(
-            ErrorCode::kExternalServiceError,
-            "etcd keepalive is not initialized"));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "etcd keepalive is not initialized"));
     }
     registered_key_ = EtcdInstanceKey(config_, service_name, instance_id);
     const auto response =
         client_->put(registered_key_, address, keep_alive_->Lease()).get();
     if (!response.is_ok()) {
-        return VoidResult::Fail(EtcdError("etcd service registration failed",
-                                          response));
+        return VoidResult::Fail(
+            EtcdError("etcd service registration failed", response));
     }
-    ZCHAT_LOG_INFO("etcd registered service={} key={} address={}",
-                   service_name, registered_key_, address);
+    ZCHAT_LOG_INFO("etcd registered service={} key={} address={}", service_name,
+                   registered_key_, address);
     return VoidResult::Ok();
 }
 
@@ -158,8 +161,9 @@ Result<std::string> EtcdDiscovery::Endpoint(const std::string &service_name) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto keys = service_keys_.find(service_name);
     if (keys == service_keys_.end() || keys->second.empty()) {
-        return Result<std::string>::Fail(common_errors::ServiceEndpointNotFound()
-            .WithContext("service", service_name));
+        return Result<std::string>::Fail(
+            common_errors::ServiceEndpointNotFound().WithContext("service",
+                                                                 service_name));
     }
     std::size_t &next = next_index_[service_name];
     if (next >= keys->second.size()) {
@@ -168,8 +172,9 @@ Result<std::string> EtcdDiscovery::Endpoint(const std::string &service_name) {
     const std::string key = keys->second[next++];
     auto address = key_to_address_.find(key);
     if (address == key_to_address_.end() || address->second.empty()) {
-        return Result<std::string>::Fail(common_errors::ServiceEndpointNotFound()
-            .WithContext("service", service_name));
+        return Result<std::string>::Fail(
+            common_errors::ServiceEndpointNotFound().WithContext("service",
+                                                                 service_name));
     }
     return Result<std::string>::Ok(address->second);
 }
@@ -188,26 +193,27 @@ void EtcdDiscovery::LoadExisting() {
 }
 
 void EtcdDiscovery::Watch() {
-    watcher_ = MakeWatcher(config_, client_, config_.base_path,
-                           [this](etcd::Response response) {
-        if (!response.is_ok()) {
-            ZCHAT_LOG_WARN("etcd discovery watch failed: {}",
-                           response.error_message());
-            return;
-        }
-        for (const auto &event : response.events()) {
-            if (event.event_type() == etcd::Event::EventType::PUT &&
-                event.has_kv()) {
-                Upsert(event.kv().key(), event.kv().as_string());
-            } else if (event.event_type() == etcd::Event::EventType::DELETE_) {
-                if (event.has_prev_kv()) {
-                    Remove(event.prev_kv().key());
-                } else if (event.has_kv()) {
-                    Remove(event.kv().key());
+    watcher_ = MakeWatcher(
+        config_, client_, config_.base_path, [this](etcd::Response response) {
+            if (!response.is_ok()) {
+                ZCHAT_LOG_WARN("etcd discovery watch failed: {}",
+                               response.error_message());
+                return;
+            }
+            for (const auto &event : response.events()) {
+                if (event.event_type() == etcd::Event::EventType::PUT &&
+                    event.has_kv()) {
+                    Upsert(event.kv().key(), event.kv().as_string());
+                } else if (event.event_type() ==
+                           etcd::Event::EventType::DELETE_) {
+                    if (event.has_prev_kv()) {
+                        Remove(event.prev_kv().key());
+                    } else if (event.has_kv()) {
+                        Remove(event.kv().key());
+                    }
                 }
             }
-        }
-    });
+        });
 }
 
 void EtcdDiscovery::Upsert(const std::string &key, const std::string &address) {
@@ -222,8 +228,8 @@ void EtcdDiscovery::Upsert(const std::string &key, const std::string &address) {
     if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
         keys.push_back(key);
     }
-    ZCHAT_LOG_INFO("etcd discovered service={} key={} address={}",
-                   *service, key, address);
+    ZCHAT_LOG_INFO("etcd discovered service={} key={} address={}", *service,
+                   key, address);
 }
 
 void EtcdDiscovery::Remove(const std::string &key) {
@@ -234,8 +240,9 @@ void EtcdDiscovery::Remove(const std::string &key) {
     }
     auto keys = service_keys_.find(service->second);
     if (keys != service_keys_.end()) {
-        keys->second.erase(std::remove(keys->second.begin(), keys->second.end(), key),
-                           keys->second.end());
+        keys->second.erase(
+            std::remove(keys->second.begin(), keys->second.end(), key),
+            keys->second.end());
     }
     ZCHAT_LOG_INFO("etcd removed service={} key={}", service->second, key);
     key_to_address_.erase(key);

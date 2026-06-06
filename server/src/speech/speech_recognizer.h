@@ -24,7 +24,6 @@ class ConfiguredSpeechRecognizer final : public SpeechRecognizer {
     ~ConfiguredSpeechRecognizer() override = default;
 
     Result<std::string> Recognize(const std::string &speech_data) override;
-
 };
 
 } // namespace zchat

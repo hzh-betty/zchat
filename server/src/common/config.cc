@@ -1,8 +1,8 @@
 #include "common/config.h"
 
-#include <cstdlib>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -27,9 +27,9 @@ Json::Value ReadJsonFile(const std::string &path) {
 }
 
 std::string TrimRight(std::string value) {
-    value.erase(std::find_if(value.rbegin(), value.rend(), [](unsigned char ch) {
-                    return !std::isspace(ch);
-                }).base(),
+    value.erase(std::find_if(value.rbegin(), value.rend(),
+                             [](unsigned char ch) { return !std::isspace(ch); })
+                    .base(),
                 value.end());
     return value;
 }
@@ -77,7 +77,8 @@ std::string ResolveConfigValue(const std::string &value) {
             resolved.append(value, begin, std::string::npos);
             break;
         }
-        const std::string placeholder = value.substr(begin + 2, end - begin - 2);
+        const std::string placeholder =
+            value.substr(begin + 2, end - begin - 2);
         resolved.append(ResolvePlaceholder(placeholder));
         position = end + 2;
     }

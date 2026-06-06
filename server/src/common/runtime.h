@@ -19,8 +19,7 @@
 
 namespace zchat {
 
-std::string ConfigPath(int argc, char *argv[],
-                       const std::string &default_path);
+std::string ConfigPath(int argc, char *argv[], const std::string &default_path);
 std::shared_ptr<drogon::orm::DbClient> MakeDbClient(const MysqlConfig &config);
 drogon::nosql::RedisClientPtr MakeRedisClient(const RedisConfig &config);
 
@@ -36,8 +35,8 @@ int RunGrpcServer(const std::string &service_name, int port,
         builder.RegisterService(service);
         std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
         if (server == nullptr) {
-            ZCHAT_LOG_ERROR("{} failed: gRPC listen failed on {}",
-                            service_name, address);
+            ZCHAT_LOG_ERROR("{} failed: gRPC listen failed on {}", service_name,
+                            address);
             return EXIT_FAILURE;
         }
 

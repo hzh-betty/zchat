@@ -18,37 +18,37 @@ void FlushLogger();
 
 #define ZCHAT_LOG_TRACE(...)                                                   \
     do {                                                                       \
-        zchat::Logger()->trace("[{}:{}] {}", __FILE__, __LINE__,              \
+        zchat::Logger()->trace("[{}:{}] {}", __FILE__, __LINE__,               \
                                spdlog::fmt_lib::format(__VA_ARGS__));          \
     } while (false)
 
 #define ZCHAT_LOG_DEBUG(...)                                                   \
     do {                                                                       \
-        zchat::Logger()->debug("[{}:{}] {}", __FILE__, __LINE__,              \
+        zchat::Logger()->debug("[{}:{}] {}", __FILE__, __LINE__,               \
                                spdlog::fmt_lib::format(__VA_ARGS__));          \
     } while (false)
 
 #define ZCHAT_LOG_INFO(...)                                                    \
     do {                                                                       \
-        zchat::Logger()->info("[{}:{}] {}", __FILE__, __LINE__,               \
+        zchat::Logger()->info("[{}:{}] {}", __FILE__, __LINE__,                \
                               spdlog::fmt_lib::format(__VA_ARGS__));           \
     } while (false)
 
 #define ZCHAT_LOG_WARN(...)                                                    \
     do {                                                                       \
-        zchat::Logger()->warn("[{}:{}] {}", __FILE__, __LINE__,               \
+        zchat::Logger()->warn("[{}:{}] {}", __FILE__, __LINE__,                \
                               spdlog::fmt_lib::format(__VA_ARGS__));           \
     } while (false)
 
 #define ZCHAT_LOG_ERROR(...)                                                   \
     do {                                                                       \
-        zchat::Logger()->error("[{}:{}] {}", __FILE__, __LINE__,              \
+        zchat::Logger()->error("[{}:{}] {}", __FILE__, __LINE__,               \
                                spdlog::fmt_lib::format(__VA_ARGS__));          \
     } while (false)
 
 #define ZCHAT_LOG_FATAL(...)                                                   \
     do {                                                                       \
-        zchat::Logger()->critical("[{}:{}] {}", __FILE__, __LINE__,           \
+        zchat::Logger()->critical("[{}:{}] {}", __FILE__, __LINE__,            \
                                   spdlog::fmt_lib::format(__VA_ARGS__));       \
     } while (false)
 

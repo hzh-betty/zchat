@@ -11,9 +11,7 @@
 #include "user/user_errors.h"
 
 namespace zchat {
-namespace {
-
-} // namespace
+namespace {} // namespace
 
 TransmiteService::TransmiteService(TransmiteRepository &repository,
                                    UserRepository &users,

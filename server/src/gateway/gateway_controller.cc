@@ -27,10 +27,9 @@ drogon::HttpResponsePtr GatewayErrorResponse(const AppError &error) {
 }
 
 template <typename Request, typename Response>
-bool AuthenticateAndInjectUser(SessionStore &sessions, const std::string &body,
-                               std::string *forward_body,
-                               std::function<void(
-                                   const drogon::HttpResponsePtr &)> &callback) {
+bool AuthenticateAndInjectUser(
+    SessionStore &sessions, const std::string &body, std::string *forward_body,
+    std::function<void(const drogon::HttpResponsePtr &)> &callback) {
     Request request;
     if (!request.ParseFromString(body)) {
         ZCHAT_LOG_WARN("gateway auth protobuf parse failed, body size={}B",
@@ -41,7 +40,8 @@ bool AuthenticateAndInjectUser(SessionStore &sessions, const std::string &body,
     }
     auto user_id = sessions.GetUserId(request.session_id());
     if (!user_id.ok()) {
-        ZCHAT_LOG_WARN("gateway auth redis failed: {}", user_id.error().message);
+        ZCHAT_LOG_WARN("gateway auth redis failed: {}",
+                       user_id.error().message);
         callback(GatewayErrorResponse<Response>(user_id.error()));
         return false;
     }
@@ -246,8 +246,8 @@ void GatewayController::RegisterForwardPost(const std::string &path,
             std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
             std::string forward_body;
             if (!PrepareForwardBody(context_->sessions(), path,
-                                    std::string(request->body()),
-                                    &forward_body, callback)) {
+                                    std::string(request->body()), &forward_body,
+                                    callback)) {
                 return;
             }
             ZCHAT_LOG_DEBUG("forward http path={} service={} body={}B", path,

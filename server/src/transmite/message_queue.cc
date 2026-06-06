@@ -112,11 +112,11 @@ class AmqpPublisherRuntime {
         }
         if (!handler_.ready()) {
             const std::string handler_error = handler_.error();
-            const std::string error =
-                handler_error.empty() ? "rabbitmq connection is not ready"
-                                      : handler_error;
-            return VoidResult::Fail(AppError::WithCode(
-                ErrorCode::kExternalServiceError, error));
+            const std::string error = handler_error.empty()
+                                          ? "rabbitmq connection is not ready"
+                                          : handler_error;
+            return VoidResult::Fail(
+                AppError::WithCode(ErrorCode::kExternalServiceError, error));
         }
 
         PublishState state;
@@ -126,9 +126,9 @@ class AmqpPublisherRuntime {
         const int scheduled = event_base_once(base_.get(), -1, EV_TIMEOUT,
                                               PublishOnLoop, &state, &timeout);
         if (scheduled != 0) {
-            return VoidResult::Fail(AppError::WithCode(
-                ErrorCode::kExternalServiceError,
-                "rabbitmq publish scheduling failed"));
+            return VoidResult::Fail(
+                AppError::WithCode(ErrorCode::kExternalServiceError,
+                                   "rabbitmq publish scheduling failed"));
         }
         std::unique_lock<std::mutex> lock(state.mutex);
         state.done.wait(lock, [&state]() { return state.completed; });
@@ -158,14 +158,14 @@ class AmqpPublisherRuntime {
     VoidResult PublishOnLoop(const std::string &payload) {
         if (!channel_.publish(exchange_, routing_key_, payload,
                               AMQP::mandatory)) {
-            return VoidResult::Fail(AppError::WithCode(
-                ErrorCode::kExternalServiceError,
-                "rabbitmq publish request write failed"));
+            return VoidResult::Fail(
+                AppError::WithCode(ErrorCode::kExternalServiceError,
+                                   "rabbitmq publish request write failed"));
         }
         std::lock_guard<std::mutex> error_lock(error_mutex_);
         if (!error_.empty()) {
-            return VoidResult::Fail(AppError::WithCode(
-                ErrorCode::kExternalServiceError, error_));
+            return VoidResult::Fail(
+                AppError::WithCode(ErrorCode::kExternalServiceError, error_));
         }
         return VoidResult::Ok();
     }
@@ -204,17 +204,17 @@ class AmqpConsumerRuntime {
         channel_.declareExchange(exchange_, AMQP::direct, AMQP::durable);
         channel_.declareQueue(queue_, AMQP::durable);
         channel_.bindQueue(exchange_, queue_, routing_key_);
-        channel_.consume(queue_).onReceived(
-            [this](const AMQP::Message &message, std::uint64_t delivery_tag,
-                   bool) {
-                const std::string payload(message.body(), message.bodySize());
-                const auto handled = message_handler_(payload);
-                if (!handled.ok()) {
-                    ZCHAT_LOG_ERROR("RabbitMQ message handling failed: {}",
-                                    handled.error().message);
-                }
-                channel_.ack(delivery_tag);
-            });
+        channel_.consume(queue_).onReceived([this](const AMQP::Message &message,
+                                                   std::uint64_t delivery_tag,
+                                                   bool) {
+            const std::string payload(message.body(), message.bodySize());
+            const auto handled = message_handler_(payload);
+            if (!handled.ok()) {
+                ZCHAT_LOG_ERROR("RabbitMQ message handling failed: {}",
+                                handled.error().message);
+            }
+            channel_.ack(delivery_tag);
+        });
         thread_ = std::thread([this]() { event_base_dispatch(base_.get()); });
     }
 
@@ -250,17 +250,16 @@ class AmqpConsumerRuntime {
 ConfiguredMessageQueuePublisher::ConfiguredMessageQueuePublisher(
     const RabbitmqConfig &config)
     : exchange_(config.exchange), routing_key_(config.routing_key),
-      runtime_(std::make_unique<AmqpPublisherRuntime>(config)) {
-}
+      runtime_(std::make_unique<AmqpPublisherRuntime>(config)) {}
 
 ConfiguredMessageQueuePublisher::~ConfiguredMessageQueuePublisher() = default;
 
 VoidResult
 ConfiguredMessageQueuePublisher::Publish(const std::string &payload) {
     if (!runtime_) {
-        return VoidResult::Fail(AppError::WithCode(
-            ErrorCode::kExternalServiceError,
-            "rabbitmq publisher is not initialized"));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "rabbitmq publisher is not initialized"));
     }
     return runtime_->Publish(payload);
 }
@@ -268,14 +267,13 @@ ConfiguredMessageQueuePublisher::Publish(const std::string &payload) {
 ConfiguredMessageQueueConsumer::ConfiguredMessageQueueConsumer(
     const RabbitmqConfig &config, MessageHandler handler)
     : runtime_(
-          std::make_unique<AmqpConsumerRuntime>(config, std::move(handler))) {
-}
+          std::make_unique<AmqpConsumerRuntime>(config, std::move(handler))) {}
 
 ConfiguredMessageQueueConsumer::~ConfiguredMessageQueueConsumer() = default;
 
 std::string BuildRabbitmqAddress(const RabbitmqConfig &config) {
-    return "amqp://" + config.user + ":" + config.password + "@" +
-           config.host + ":" + std::to_string(config.port) + "/";
+    return "amqp://" + config.user + ":" + config.password + "@" + config.host +
+           ":" + std::to_string(config.port) + "/";
 }
 
 } // namespace zchat

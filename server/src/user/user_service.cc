@@ -15,8 +15,7 @@ namespace zchat {
 namespace {
 
 template <typename Response>
-Response ErrorResponse(const std::string &request_id,
-                       const AppError &error) {
+Response ErrorResponse(const std::string &request_id, const AppError &error) {
     return MakeErrorResponse<Response>(request_id, error);
 }
 
@@ -75,7 +74,8 @@ zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
 
     zchat::UserRegisterRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("RegisterByNickname success: request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("RegisterByNickname success: request_id={}",
+                   request.request_id());
     return response;
 }
 
@@ -101,7 +101,8 @@ UserApplicationService::LoginByNickname(const zchat::UserLoginReq &request) {
     zchat::UserLoginRsp response;
     MarkOk(request.request_id(), &response);
     response.set_login_session_id(session_id.value());
-    ZCHAT_LOG_INFO("LoginByNickname success: request_id={} user_id={}", request.request_id(), user.value()->user_id);
+    ZCHAT_LOG_INFO("LoginByNickname success: request_id={} user_id={}",
+                   request.request_id(), user.value()->user_id);
     return response;
 }
 
@@ -117,18 +118,19 @@ zchat::PhoneVerifyCodeRsp UserApplicationService::GetPhoneVerifyCode(
         sessions_.SaveVerifyCode(verify_code_id, request.phone_number());
     if (!saved.ok()) {
         return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
-                                                         saved.error());
+                                                        saved.error());
     }
     const auto sent = sms_.SendVerificationCode(request.phone_number());
     if (!sent.ok()) {
         sessions_.RemoveVerifyCode(verify_code_id);
         return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
-                                                         sent.error());
+                                                        sent.error());
     }
     zchat::PhoneVerifyCodeRsp response;
     MarkOk(request.request_id(), &response);
     response.set_verify_code_id(verify_code_id);
-    ZCHAT_LOG_INFO("GetPhoneVerifyCode success: request_id={} phone={}", request.request_id(), request.phone_number());
+    ZCHAT_LOG_INFO("GetPhoneVerifyCode success: request_id={} phone={}",
+                   request.request_id(), request.phone_number());
     return response;
 }
 
@@ -141,8 +143,8 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     }
     auto existing_user = users_.FindUserByPhone(request.phone_number());
     if (!existing_user.ok()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(
-            request.request_id(), existing_user.error());
+        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
+                                                      existing_user.error());
     }
     if (existing_user.value().has_value()) {
         return ErrorResponse<zchat::PhoneRegisterRsp>(
@@ -184,7 +186,8 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
     sessions_.RemoveVerifyCode(request.verify_code_id());
     zchat::PhoneRegisterRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("RegisterByPhone success: request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("RegisterByPhone success: request_id={}",
+                   request.request_id());
     return response;
 }
 
@@ -192,13 +195,13 @@ zchat::PhoneLoginRsp
 UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
     ZCHAT_LOG_INFO("LoginByPhone request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(
-            request.request_id(), user_errors::InvalidPhone());
+        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                   user_errors::InvalidPhone());
     }
     auto existing_user = users_.FindUserByPhone(request.phone_number());
     if (!existing_user.ok()) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(
-            request.request_id(), existing_user.error());
+        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                   existing_user.error());
     }
     if (!existing_user.value().has_value()) {
         return ErrorResponse<zchat::PhoneLoginRsp>(
@@ -263,7 +266,8 @@ UserApplicationService::GetUserInfo(const zchat::GetUserInfoReq &request) {
     zchat::GetUserInfoRsp response;
     MarkOk(request.request_id(), &response);
     *response.mutable_user_info() = ToProtoUser(user.value().value(), avatar);
-    ZCHAT_LOG_INFO("GetUserInfo success: request_id={} user_id={}", request.request_id(), user_id.value());
+    ZCHAT_LOG_INFO("GetUserInfo success: request_id={} user_id={}",
+                   request.request_id(), user_id.value());
     return response;
 }
 
@@ -306,8 +310,8 @@ UserApplicationService::SetAvatar(const zchat::SetUserAvatarReq &request) {
     const auto file_result = files_.PutFile(FileRecord{
         file_id, "avatar", request.avatar().size(), request.avatar()});
     if (!file_result.ok()) {
-        return ErrorResponse<zchat::SetUserAvatarRsp>(
-            request.request_id(), file_result.error());
+        return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
+                                                      file_result.error());
     }
     const auto updated = users_.UpdateUserAvatar(user_id.value(), file_id);
     if (!updated.ok()) {
@@ -330,14 +334,14 @@ UserApplicationService::SetNickname(const zchat::SetUserNicknameReq &request) {
     ZCHAT_LOG_INFO("SetNickname request_id={}", request.request_id());
     const auto user_id = UserIdFromSession(request.session_id());
     if (!user_id.ok()) {
-        return ErrorResponse<zchat::SetUserNicknameRsp>(
-            request.request_id(), user_id.error());
+        return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
+                                                        user_id.error());
     }
     const auto updated =
         users_.UpdateUserNickname(user_id.value(), request.nickname());
     if (!updated.ok()) {
-        return ErrorResponse<zchat::SetUserNicknameRsp>(
-            request.request_id(), updated.error());
+        return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
+                                                        updated.error());
     }
     const auto indexed = IndexUserById(user_id.value());
     if (!indexed.ok()) {
@@ -355,14 +359,14 @@ zchat::SetUserDescriptionRsp UserApplicationService::SetDescription(
     ZCHAT_LOG_INFO("SetDescription request_id={}", request.request_id());
     const auto user_id = UserIdFromSession(request.session_id());
     if (!user_id.ok()) {
-        return ErrorResponse<zchat::SetUserDescriptionRsp>(
-            request.request_id(), user_id.error());
+        return ErrorResponse<zchat::SetUserDescriptionRsp>(request.request_id(),
+                                                           user_id.error());
     }
     const auto updated =
         users_.UpdateUserDescription(user_id.value(), request.description());
     if (!updated.ok()) {
-        return ErrorResponse<zchat::SetUserDescriptionRsp>(
-            request.request_id(), updated.error());
+        return ErrorResponse<zchat::SetUserDescriptionRsp>(request.request_id(),
+                                                           updated.error());
     }
     const auto indexed = IndexUserById(user_id.value());
     if (!indexed.ok()) {
@@ -371,7 +375,8 @@ zchat::SetUserDescriptionRsp UserApplicationService::SetDescription(
     }
     zchat::SetUserDescriptionRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("SetDescription success: request_id={}", request.request_id());
+    ZCHAT_LOG_INFO("SetDescription success: request_id={}",
+                   request.request_id());
     return response;
 }
 
@@ -380,14 +385,14 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
     ZCHAT_LOG_INFO("SetPhone request_id={}", request.request_id());
     const auto user_id = UserIdFromSession(request.session_id());
     if (!user_id.ok()) {
-        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
-            request.request_id(), user_id.error());
+        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(request.request_id(),
+                                                           user_id.error());
     }
     const auto code = ValidateVerifyCode(request.phone_verify_code_id(),
                                          request.phone_verify_code());
     if (!code.ok()) {
-        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
-            request.request_id(), code.error());
+        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(request.request_id(),
+                                                           code.error());
     }
     if (code.value() != request.phone_number()) {
         return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
@@ -396,8 +401,8 @@ UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
     const auto updated =
         users_.UpdateUserPhone(user_id.value(), request.phone_number());
     if (!updated.ok()) {
-        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
-            request.request_id(), updated.error());
+        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(request.request_id(),
+                                                           updated.error());
     }
     const auto indexed = IndexUserById(user_id.value());
     if (!indexed.ok()) {
@@ -475,8 +480,8 @@ VoidResult UserApplicationService::IndexUserById(const std::string &user_id) {
     return IndexUser(user.value().value());
 }
 
-Result<std::string> UserApplicationService::LoginUser(
-    const std::string &user_id) {
+Result<std::string>
+UserApplicationService::LoginUser(const std::string &user_id) {
     auto online = sessions_.IsOnline(user_id);
     if (!online.ok()) {
         return Result<std::string>::Fail(online.error());

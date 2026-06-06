@@ -10,8 +10,8 @@
 #include <drogon/orm/DbClient.h>
 
 #include "common/domain_records.h"
-#include "common/result.h"
 #include "common/orm_helpers.h"
+#include "common/result.h"
 
 namespace zchat {
 

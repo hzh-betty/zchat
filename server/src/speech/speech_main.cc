@@ -5,9 +5,8 @@
 #include "speech/speech_builder.h"
 
 int main(int argc, char *argv[]) {
-    const zchat::AppConfig config =
-        zchat::LoadConfig(
-            zchat::ConfigPath(argc, argv, "server/config/speech.json"));
+    const zchat::AppConfig config = zchat::LoadConfig(
+        zchat::ConfigPath(argc, argv, "server/config/speech.json"));
     auto server = std::make_unique<zchat::SpeechBuilder>(config);
     return server->Start();
 }

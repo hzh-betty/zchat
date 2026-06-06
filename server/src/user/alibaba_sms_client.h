@@ -29,11 +29,11 @@ class AlibabaSmsClient final : public SmsClient {
   private:
     std::string FormatUtcTimestamp() const;
     bool HasRequiredConfig(std::string *message) const;
-    std::string ComputeSignature(
-        const std::map<std::string, std::string> &params,
-        const std::string &secret) const;
-    std::string BuildQueryString(
-        const std::map<std::string, std::string> &params) const;
+    std::string
+    ComputeSignature(const std::map<std::string, std::string> &params,
+                     const std::string &secret) const;
+    std::string
+    BuildQueryString(const std::map<std::string, std::string> &params) const;
     VoidResult SendRequest(const std::map<std::string, std::string> &params,
                            bool check_verify_result = false);
 

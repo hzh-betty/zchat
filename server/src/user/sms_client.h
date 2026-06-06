@@ -31,7 +31,6 @@ class ConfiguredSmsClient final : public SmsClient {
 
     VoidResult CheckVerificationCode(const std::string &phone,
                                      const std::string &code) override;
-
 };
 
 } // namespace zchat

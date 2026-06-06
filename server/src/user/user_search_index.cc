@@ -53,8 +53,9 @@ Result<std::vector<UserRecord>> ParseSearchResponse(const std::string &body) {
     std::istringstream input(body);
     if (!Json::parseFromStream(builder, input, &root, &errors)) {
         return Result<std::vector<UserRecord>>::Fail(
-            AppError::WithCode(ErrorCode::kExternalServiceError,
-                               "elasticsearch user search response parse failed")
+            AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "elasticsearch user search response parse failed")
                 .WithDetail(errors));
     }
     std::vector<UserRecord> users;
@@ -87,9 +88,9 @@ ConfiguredUserSearchIndex::ConfiguredUserSearchIndex(
 
 VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
     if (!client_) {
-        return VoidResult::Fail(AppError::WithCode(
-            ErrorCode::kExternalServiceError,
-            "elasticsearch user client is not initialized"));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user client is not initialized"));
     }
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Put);
@@ -102,8 +103,9 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
         client_->sendRequest(request, kRequestTimeoutSeconds);
     if (result != drogon::ReqResult::Ok || !response) {
         return VoidResult::Fail(
-            AppError::WithCode(ErrorCode::kExternalServiceError,
-                               "elasticsearch user index creation request failed")
+            AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "elasticsearch user index creation request failed")
                 .WithDetail(drogon::to_string(result)));
     }
     if (IsSuccessStatus(response->statusCode())) {
@@ -123,9 +125,9 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
 
 VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
     if (!client_) {
-        return VoidResult::Fail(AppError::WithCode(
-            ErrorCode::kExternalServiceError,
-            "elasticsearch user client is not initialized"));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user client is not initialized"));
     }
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Put);

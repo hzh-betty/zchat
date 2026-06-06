@@ -26,19 +26,19 @@ constexpr char kCodeTypeNumber[] = "1";
 AlibabaSmsClient::AlibabaSmsClient(const SmsConfig &config)
     : access_key_id_(config.access_key_id),
       access_key_secret_(config.access_key_secret),
-      sign_name_(config.sign_name),
-      template_code_(config.template_code) {
-    loop_thread_ = std::make_unique<trantor::EventLoopThread>("zchat-alibaba-sms");
+      sign_name_(config.sign_name), template_code_(config.template_code) {
+    loop_thread_ =
+        std::make_unique<trantor::EventLoopThread>("zchat-alibaba-sms");
     loop_thread_->run();
-    client_ =
-        drogon::HttpClient::newHttpClient(kDypnsEndpoint, loop_thread_->getLoop());
+    client_ = drogon::HttpClient::newHttpClient(kDypnsEndpoint,
+                                                loop_thread_->getLoop());
 }
 
 VoidResult AlibabaSmsClient::SendVerificationCode(const std::string &phone) {
     std::string config_error;
     if (!HasRequiredConfig(&config_error)) {
-        return VoidResult::Fail(AppError::WithCode(
-            ErrorCode::kExternalServiceError, config_error));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError, config_error));
     }
     std::map<std::string, std::string> params;
     params["Action"] = "SendSmsVerifyCode";
@@ -62,8 +62,8 @@ VoidResult AlibabaSmsClient::CheckVerificationCode(const std::string &phone,
                                                    const std::string &code) {
     std::string config_error;
     if (!HasRequiredConfig(&config_error)) {
-        return VoidResult::Fail(AppError::WithCode(
-            ErrorCode::kExternalServiceError, config_error));
+        return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError, config_error));
     }
     std::map<std::string, std::string> params;
     params["Action"] = "CheckSmsVerifyCode";
@@ -91,8 +91,9 @@ bool AlibabaSmsClient::HasRequiredConfig(std::string *message) const {
     return true;
 }
 
-VoidResult AlibabaSmsClient::SendRequest(
-    const std::map<std::string, std::string> &params, bool check_verify_result) {
+VoidResult
+AlibabaSmsClient::SendRequest(const std::map<std::string, std::string> &params,
+                              bool check_verify_result) {
     std::string signature = ComputeSignature(params, access_key_secret_);
     std::map<std::string, std::string> all_params = params;
     all_params["Signature"] = signature;
@@ -131,9 +132,11 @@ VoidResult AlibabaSmsClient::SendRequest(
     }
 
     if (response->statusCode() != 200) {
-        std::string code_resp = root.get("Code", root.get("code", "")).asString();
+        std::string code_resp =
+            root.get("Code", root.get("code", "")).asString();
         std::string message =
-            root.get("Message", root.get("message", "unknown error")).asString();
+            root.get("Message", root.get("message", "unknown error"))
+                .asString();
         return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "alibaba sms request failed")
@@ -145,7 +148,8 @@ VoidResult AlibabaSmsClient::SendRequest(
     std::string code_resp = root.get("Code", root.get("code", "")).asString();
     if (code_resp != "OK") {
         std::string message =
-            root.get("Message", root.get("message", "unknown error")).asString();
+            root.get("Message", root.get("message", "unknown error"))
+                .asString();
         if (code_resp.empty() && message == "unknown error") {
             return VoidResult::Fail(
                 AppError::WithCode(ErrorCode::kExternalServiceError,
@@ -156,7 +160,8 @@ VoidResult AlibabaSmsClient::SendRequest(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "alibaba sms operation failed")
                 .WithContext("provider_code", code_resp)
-                .WithDetail(message + " body=" + std::string(response->body())));
+                .WithDetail(message +
+                            " body=" + std::string(response->body())));
     }
 
     if (check_verify_result) {
@@ -164,14 +169,15 @@ VoidResult AlibabaSmsClient::SendRequest(
             root.isMember("Model") ? root["Model"] : root["model"];
         if (model.isObject()) {
             std::string verify_result =
-                model.get("VerifyResult", model.get("verifyResult", "")).asString();
+                model.get("VerifyResult", model.get("verifyResult", ""))
+                    .asString();
             if (verify_result != "PASS") {
                 return VoidResult::Fail(user_errors::VerifyCodeCheckFailed());
             }
         } else {
-            return VoidResult::Fail(
-                AppError::WithCode(ErrorCode::kExternalServiceError,
-                                   "alibaba sms check response is missing model"));
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "alibaba sms check response is missing model"));
         }
     }
 

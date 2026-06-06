@@ -28,7 +28,8 @@ trantor::InetAddress ResolveAddress(const std::string &host, int port) {
 
     std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> resolved(result,
                                                                 freeaddrinfo);
-    for (addrinfo *item = resolved.get(); item != nullptr; item = item->ai_next) {
+    for (addrinfo *item = resolved.get(); item != nullptr;
+         item = item->ai_next) {
         if (item->ai_family == AF_INET) {
             return trantor::InetAddress(
                 *reinterpret_cast<sockaddr_in *>(item->ai_addr));

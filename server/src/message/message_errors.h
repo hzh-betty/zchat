@@ -6,8 +6,7 @@
 namespace zchat::message_errors {
 
 inline AppError MessageNotFound() {
-    return AppError::WithCode(ErrorCode::kMessageNotFound,
-                              "message not found");
+    return AppError::WithCode(ErrorCode::kMessageNotFound, "message not found");
 }
 
 inline AppError SessionAccessDenied() {

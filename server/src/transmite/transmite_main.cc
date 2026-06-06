@@ -5,9 +5,8 @@
 #include "transmite/transmite_builder.h"
 
 int main(int argc, char *argv[]) {
-    const zchat::AppConfig config =
-        zchat::LoadConfig(
-            zchat::ConfigPath(argc, argv, "server/config/transmite.json"));
+    const zchat::AppConfig config = zchat::LoadConfig(
+        zchat::ConfigPath(argc, argv, "server/config/transmite.json"));
     auto server = std::make_unique<zchat::TransmiteBuilder>(config);
     return server->Start();
 }

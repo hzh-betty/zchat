@@ -9,7 +9,7 @@ VoidResult ConfiguredSmsClient::SendVerificationCode(const std::string &) {
 }
 
 VoidResult ConfiguredSmsClient::CheckVerificationCode(const std::string &,
-                                                       const std::string &) {
+                                                      const std::string &) {
     return VoidResult::Fail(user_errors::SmsClientNotConfigured());
 }
 

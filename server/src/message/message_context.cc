@@ -1,8 +1,8 @@
 #include "message/message_context.h"
 
+#include "base.pb.h"
 #include "common/result.h"
 #include "common/runtime.h"
-#include "base.pb.h"
 #include "message/message_errors.h"
 
 namespace zchat {
@@ -14,13 +14,15 @@ MessageContext::MessageContext(const AppConfig &config)
       message_service_(std::make_shared<MessageService>(
           message_repository_, user_repository_, file_repository_,
           friend_repository_, search_index_)),
-      queue_consumer_(config.rabbitmq, [this](const std::string &payload) {
-          zchat::MessageInfo message;
-          if (!message.ParseFromString(payload)) {
-              return VoidResult::Fail(message_errors::QueuePayloadParseFailed());
-          }
-          return message_service_->StoreQueuedMessage(message);
-      }),
+      queue_consumer_(config.rabbitmq,
+                      [this](const std::string &payload) {
+                          zchat::MessageInfo message;
+                          if (!message.ParseFromString(payload)) {
+                              return VoidResult::Fail(
+                                  message_errors::QueuePayloadParseFailed());
+                          }
+                          return message_service_->StoreQueuedMessage(message);
+                      }),
       grpc_service_(message_service_) {}
 
 } // namespace zchat
