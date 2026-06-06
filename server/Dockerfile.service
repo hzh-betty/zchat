@@ -36,8 +36,6 @@ RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
 FROM conan-deps AS builder
 
 ARG BUILD_PRESET=conan2-release
-ARG SERVICE_TARGET
-ARG SERVICE_BINARY
 
 COPY CMakeLists.txt CMakePresets.json ./
 COPY server ./server
@@ -45,9 +43,18 @@ COPY server ./server
 RUN . /app/build/${BUILD_PRESET}/generators/conanbuild.sh \
     && . /app/build/${BUILD_PRESET}/generators/conanrun.sh \
     && cmake --preset ${BUILD_PRESET} \
-    && cmake --build --preset ${BUILD_PRESET} --target ${SERVICE_TARGET} -j4 \
+    && cmake --build --preset ${BUILD_PRESET} --target \
+        zchat_file_service \
+        zchat_speech_service \
+        zchat_transmite_service \
+        zchat_message_service \
+        zchat_friend_service \
+        zchat_user_service \
+        zchat_gateway \
+        -j4 \
     && mkdir -p /app/lib \
-    && ldd /app/build/${BUILD_PRESET}/bin/${SERVICE_BINARY} \
+    && find /app/build/${BUILD_PRESET}/bin -maxdepth 1 -type f -perm -111 \
+      -exec ldd {} \; \
       | awk '/=>/ { print $3 } /^[[:space:]]*\// { print $1 }' \
       | sort -u \
       | while read -r lib; do \
@@ -73,15 +80,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 ARG BUILD_PRESET=conan2-release
-ARG SERVICE_BINARY
-ARG SERVICE_CONFIG
 
-ENV SERVICE_BINARY=${SERVICE_BINARY}
 ENV LD_LIBRARY_PATH=/app/lib
 ENV MARIADB_PLUGIN_DIR=/app/lib/plugin
 
-COPY --from=builder /app/build/${BUILD_PRESET}/bin/${SERVICE_BINARY} /app/bin/${SERVICE_BINARY}
+COPY --from=builder /app/build/${BUILD_PRESET}/bin /app/bin
 COPY --from=builder /app/lib /app/lib
-COPY --from=builder /app/server/config/${SERVICE_CONFIG} /app/server/config/${SERVICE_CONFIG}
+COPY --from=builder /app/server/config /app/server/config
 
 CMD ["/bin/sh", "-c", "exec /app/bin/${SERVICE_BINARY}"]
