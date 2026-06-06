@@ -3,41 +3,73 @@
 
 用法:
     # 设置环境变量 (从 .env 文件读取)
-    python set_env.py
+    python server/scripts/set_env.py
 
     # 指定 .env 文件路径
-    python set_env.py /path/to/.env
+    python server/scripts/set_env.py /path/to/.env
 
     # 导出当前环境变量为 .env 文件
-    python set_env.py --export
+    python server/scripts/set_env.py --export
 
     # 清除 zchat 相关环境变量
-    python set_env.py --unset
+    python server/scripts/set_env.py --unset
 
     # 查看当前 zchat 环境变量
-    python set_env.py --show
+    python server/scripts/set_env.py --show
 """
 
 import argparse
 import os
 import sys
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DEFAULT_ENV_FILE = os.path.join(REPO_ROOT, ".env")
+
 ENV_KEYS = [
+    "MYSQL_ROOT_PASSWORD_FILE",
+    "MYSQL_DATABASE",
+    "MYSQL_USER",
+    "MYSQL_PASSWORD_FILE",
+    "RABBITMQ_DEFAULT_USER",
+    "RABBITMQ_DEFAULT_PASS_FILE",
     "ZCHAT_ADVERTISE_HOST",
-    "ZCHAT_MYSQL_USER",
-    "ZCHAT_MYSQL_PASSWORD",
-    "ZCHAT_REDIS_PASSWORD",
+    "ZCHAT_MYSQL_HOST",
+    "ZCHAT_MYSQL_PORT",
+    "ZCHAT_MYSQL_PUBLISHED_PORT",
+    "ZCHAT_REDIS_HOST",
+    "ZCHAT_REDIS_PORT",
+    "ZCHAT_REDIS_PASSWORD_FILE",
+    "ZCHAT_REDIS_PUBLISHED_PORT",
+    "ZCHAT_ETCD_HOST",
+    "ZCHAT_ETCD_PORT",
     "ZCHAT_ETCD_USERNAME",
-    "ZCHAT_ETCD_PASSWORD",
+    "ZCHAT_ETCD_PASSWORD_FILE",
+    "ZCHAT_ETCD_CLIENT_PUBLISHED_PORT",
+    "ZCHAT_ETCD_PEER_PUBLISHED_PORT",
     "ZCHAT_SPEECH_APP_ID",
-    "ZCHAT_SPEECH_API_KEY",
-    "ZCHAT_SPEECH_SECRET_KEY",
+    "ZCHAT_SPEECH_API_KEY_FILE",
+    "ZCHAT_SPEECH_SECRET_KEY_FILE",
+    "ZCHAT_ES_HOST",
+    "ZCHAT_ES_PORT",
     "ZCHAT_ELASTICSEARCH_USER",
-    "ZCHAT_ELASTICSEARCH_PASSWORD",
-    "ZCHAT_RABBITMQ_USER",
-    "ZCHAT_RABBITMQ_PASSWORD",
-    "ZCHAT_SMS_ACCESS_KEY_ID",
-    "ZCHAT_SMS_ACCESS_KEY_SECRET",
+    "ZCHAT_ELASTICSEARCH_PASSWORD_FILE",
+    "ZCHAT_ES_PUBLISHED_PORT",
+    "ZCHAT_RABBITMQ_HOST",
+    "ZCHAT_RABBITMQ_PORT",
+    "ZCHAT_RABBITMQ_PUBLISHED_PORT",
+    "ZCHAT_RABBITMQ_MANAGEMENT_PUBLISHED_PORT",
+    "ZCHAT_SPEECH_SERVICE_PORT",
+    "ZCHAT_FILE_SERVICE_PORT",
+    "ZCHAT_USER_SERVICE_PORT",
+    "ZCHAT_TRANSMITE_SERVICE_PORT",
+    "ZCHAT_MESSAGE_SERVICE_PORT",
+    "ZCHAT_FRIEND_SERVICE_PORT",
+    "ZCHAT_GATEWAY_HTTP_PORT",
+    "ZCHAT_GATEWAY_WEBSOCKET_PORT",
+    "ZCHAT_GATEWAY_HTTP_PUBLISHED_PORT",
+    "ZCHAT_GATEWAY_WEBSOCKET_PUBLISHED_PORT",
+    "ZCHAT_SMS_ACCESS_KEY_ID_FILE",
+    "ZCHAT_SMS_ACCESS_KEY_SECRET_FILE",
     "ZCHAT_SMS_SIGN_NAME",
     "ZCHAT_SMS_TEMPLATE_CODE",
 ]
@@ -107,7 +139,7 @@ def write_rc(env_vars: dict[str, str], rc_path: str, fmt: str) -> None:
 def cmd_set(env_file: str) -> None:
     if not os.path.exists(env_file):
         print(f"错误: 找不到 {env_file}", file=sys.stderr)
-        print("提示: 复制 .env.example 为 .env 并填入真实值", file=sys.stderr)
+        print("提示: 复制仓库根目录 .env.example 为 .env 并填入真实值", file=sys.stderr)
         sys.exit(1)
 
     env_vars = parse_env_file(env_file)
@@ -132,7 +164,7 @@ def cmd_export(env_file: str) -> None:
 
     with open(env_file, "w", encoding="utf-8") as f:
         f.write("# zchat 服务器环境变量\n")
-        f.write("# 由 set_env.py --export 自动生成\n\n")
+        f.write("# 由 server/scripts/set_env.py --export 自动生成\n\n")
         for key in ENV_KEYS:
             f.write(f"{key}={env_vars[key]}\n")
 
@@ -183,7 +215,7 @@ def cmd_show() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="zchat 环境变量管理工具")
-    parser.add_argument("env_file", nargs="?", default="config/.env", help=".env 文件路径 (默认: config/.env)")
+    parser.add_argument("env_file", nargs="?", default=DEFAULT_ENV_FILE, help="环境变量文件路径 (默认: 仓库根目录 .env)")
     parser.add_argument("--export", action="store_true", help="导出当前环境变量到 .env 文件")
     parser.add_argument("--unset", action="store_true", help="清除 zchat 相关环境变量")
     parser.add_argument("--show", action="store_true", help="查看当前 zchat 环境变量 (脱敏)")
