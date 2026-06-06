@@ -1,12 +1,25 @@
 from conan import ConanFile
 from conan.tools.cmake import CMakeDeps, CMakeToolchain
 
+DEPENDENCY_VERSIONS = {
+    "amqp-cpp": "4.3.27",
+    "cmake": "4.3.2",
+    "drogon": "1.9.13",
+    "etcd-cpp-apiv3": "0.15.4",
+    "grpc": "1.78.1",
+    "libevent": "2.1.12",
+    "ninja": "1.13.2",
+    "protobuf": "6.33.5",
+    "spdlog": "1.17.0",
+}
+
 required_conan_version = ">=2.28"
 
 
 class ZChatRecipe(ConanFile):
     name = "zchat"
     version = "1.0.0"
+    package_type = "application"
 
     settings = "os", "compiler", "build_type", "arch"
     default_options = {
@@ -65,19 +78,22 @@ class ZChatRecipe(ConanFile):
 
     def requirements(self):
         # 核心直接依赖库
-        self.requires("drogon/1.9.13")
-        self.requires("amqp-cpp/4.3.27")
-        self.requires("etcd-cpp-apiv3/0.15.4") # etcd-cpp-apiv3 间接依赖grpc
-        self.requires("spdlog/1.17.0")
-        self.requires("libevent/2.1.12")
+        self.requires(f"drogon/{DEPENDENCY_VERSIONS['drogon']}")
+        self.requires(f"amqp-cpp/{DEPENDENCY_VERSIONS['amqp-cpp']}")
+        self.requires(f"etcd-cpp-apiv3/{DEPENDENCY_VERSIONS['etcd-cpp-apiv3']}")
+        self.requires(f"grpc/{DEPENDENCY_VERSIONS['grpc']}")
+        self.requires(f"protobuf/{DEPENDENCY_VERSIONS['protobuf']}")
+        self.requires(f"spdlog/{DEPENDENCY_VERSIONS['spdlog']}")
+        self.requires(f"libevent/{DEPENDENCY_VERSIONS['libevent']}")
+
+    def build_requirements(self):
+        self.tool_requires(f"cmake/{DEPENDENCY_VERSIONS['cmake']}")
+        self.tool_requires(f"ninja/{DEPENDENCY_VERSIONS['ninja']}")
 
     def layout(self):
-        build_type = str(self.settings.build_type).lower()
-        build_folder = f"build/conan2-{build_type}"
-
         self.folders.source = "."
-        self.folders.build = build_folder
-        self.folders.generators = f"{build_folder}/generators"
+        self.folders.build = "."
+        self.folders.generators = "generators"
 
     def generate(self):
         deps = CMakeDeps(self)

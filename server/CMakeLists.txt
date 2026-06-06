@@ -1,18 +1,3 @@
-cmake_minimum_required(VERSION 3.20)
-
-project(zchat LANGUAGES CXX)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-
-# 将自定义的 cmake 模块路径追加进去（供 Drogon 等查找补丁使用）
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-
 # 寻找核心依赖包
 find_package(Drogon REQUIRED)
 find_package(c-ares CONFIG REQUIRED)
@@ -22,26 +7,22 @@ find_package(Protobuf REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Libevent CONFIG REQUIRED)
 
-if(NOT CMAKE_BUILD_TYPE)
-  message(FATAL_ERROR "CMAKE_BUILD_TYPE is required for Conan package lookup")
-endif()
-string(TOUPPER "${CMAKE_BUILD_TYPE}" ZCHAT_CONAN_BUILD_TYPE)
-set(ZCHAT_GRPC_PACKAGE_FOLDER "${grpc_PACKAGE_FOLDER_${ZCHAT_CONAN_BUILD_TYPE}}")
-if(NOT ZCHAT_GRPC_PACKAGE_FOLDER)
-  message(FATAL_ERROR "gRPC Conan package folder not found for ${CMAKE_BUILD_TYPE}")
-endif()
-find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin
-  HINTS "${ZCHAT_GRPC_PACKAGE_FOLDER}/bin"
-  REQUIRED)
-
-# 使用标准的 find_package 查找 amqpcpp
 find_package(amqpcpp CONFIG REQUIRED)
 
 find_package(etcd-cpp-apiv3 REQUIRED)
+if(TARGET etcd-cpp-apiv3_DEPS_TARGET)
+  get_target_property(ZCHAT_ETCD_LINK_LIBRARIES
+    etcd-cpp-apiv3_DEPS_TARGET INTERFACE_LINK_LIBRARIES)
+  if(ZCHAT_ETCD_LINK_LIBRARIES)
+    string(REPLACE "grpc::grpc" "gRPC::grpc++"
+      ZCHAT_ETCD_LINK_LIBRARIES "${ZCHAT_ETCD_LINK_LIBRARIES}")
+    set_target_properties(etcd-cpp-apiv3_DEPS_TARGET PROPERTIES
+      INTERFACE_LINK_LIBRARIES "${ZCHAT_ETCD_LINK_LIBRARIES}")
+  endif()
+endif()
 
 add_subdirectory(proto)
 add_subdirectory(src/common)
-add_subdirectory(src/repository)
 add_subdirectory(src/file)
 add_subdirectory(src/user)
 add_subdirectory(src/friend)

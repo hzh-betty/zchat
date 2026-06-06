@@ -11,3 +11,4 @@ AGENTS.md
 logs/
 run/
 CMakeUserPresets.json
+server/certs/

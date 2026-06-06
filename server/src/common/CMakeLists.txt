@@ -4,6 +4,7 @@ add_library(zchat_common STATIC
   etcd_service.cc
   logger.cc
   notify_publisher.cc
+  orm_helpers.cc
   proto_mapper.cc
   protobuf_http.cc
   runtime.cc
