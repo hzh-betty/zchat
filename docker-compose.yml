@@ -15,11 +15,11 @@ x-mysql-client-environment: &mysql-client-environment
   SSL_CERT_FILE: /etc/ssl/certs/zchat-mysql-ca.pem
 
 x-docker-service-hosts: &docker-service-hosts
-  ZCHAT_MYSQL_HOST: zchat-mysql
-  ZCHAT_REDIS_HOST: zchat-redis
-  ZCHAT_ETCD_HOST: zchat-etcd
-  ZCHAT_RABBITMQ_HOST: zchat-rabbitmq
-  ZCHAT_ES_HOST: zchat-elasticsearch
+  ZCHAT_MYSQL_HOST: mysql
+  ZCHAT_REDIS_HOST: redis
+  ZCHAT_ETCD_HOST: etcd
+  ZCHAT_RABBITMQ_HOST: rabbitmq
+  ZCHAT_ES_HOST: elasticsearch
 
 x-service-ports: &service-ports
   ZCHAT_SPEECH_SERVICE_PORT: ${ZCHAT_SPEECH_SERVICE_PORT:-10001}
@@ -44,7 +44,7 @@ x-healthcheck-defaults: &healthcheck-defaults
   start_period: 10s
 
 services:
-  zchat-mysql:
+  mysql:
     image: mysql:8.4.9
     restart: always
     environment:
@@ -73,7 +73,7 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -P \"$${ZCHAT_MYSQL_PORT:-3306}\" -uroot -p\"$$(cat \"$${MYSQL_ROOT_PASSWORD_FILE}\")\" --silent"]
 
-  zchat-redis:
+  redis:
     image: redis:8.6.3-alpine
     restart: always
     environment:
@@ -98,13 +98,13 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD-SHELL", "if [ -s \"$${ZCHAT_REDIS_PASSWORD_FILE}\" ]; then redis-cli -p \"$${ZCHAT_REDIS_PORT:-6379}\" -a \"$$(cat \"$${ZCHAT_REDIS_PASSWORD_FILE}\")\" ping; else redis-cli -p \"$${ZCHAT_REDIS_PORT:-6379}\" ping; fi"]
 
-  zchat-etcd:
+  etcd:
     image: quay.io/coreos/etcd:v3.5.18
     restart: always
     command:
       - /usr/local/bin/etcd
       - --data-dir=/etcd-data
-      - --advertise-client-urls=http://zchat-etcd:${ZCHAT_ETCD_PORT:-2379}
+      - --advertise-client-urls=http://etcd:${ZCHAT_ETCD_PORT:-2379}
       - --listen-client-urls=http://0.0.0.0:${ZCHAT_ETCD_PORT:-2379}
     ports:
       - "127.0.0.1:${ZCHAT_ETCD_CLIENT_PUBLISHED_PORT:-2379}:${ZCHAT_ETCD_PORT:-2379}"
@@ -124,7 +124,7 @@ services:
           "--endpoints=http://127.0.0.1:${ZCHAT_ETCD_PORT:-2379}"
         ]
 
-  zchat-rabbitmq:
+  rabbitmq:
     image: rabbitmq:3-management-alpine
     restart: always
     environment:
@@ -154,7 +154,7 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
 
-  zchat-elasticsearch:
+  elasticsearch:
     image: elasticsearch:8.8.2
     restart: always
     environment:
@@ -191,9 +191,9 @@ services:
       - mysql_password
       - etcd_password
     depends_on:
-      zchat-mysql:
+      mysql:
         condition: service_healthy
-      zchat-etcd:
+      etcd:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck-defaults
@@ -216,7 +216,7 @@ services:
       - speech_api_key
       - speech_secret_key
     depends_on:
-      zchat-etcd:
+      etcd:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck-defaults
@@ -252,15 +252,15 @@ services:
       - elasticsearch_password
       - rabbitmq_default_pass
     depends_on:
-      zchat-mysql:
+      mysql:
         condition: service_healthy
-      zchat-redis:
+      redis:
         condition: service_healthy
-      zchat-etcd:
+      etcd:
         condition: service_healthy
-      zchat-rabbitmq:
+      rabbitmq:
         condition: service_healthy
-      zchat-elasticsearch:
+      elasticsearch:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck-defaults
@@ -293,13 +293,13 @@ services:
       - elasticsearch_password
       - rabbitmq_default_pass
     depends_on:
-      zchat-mysql:
+      mysql:
         condition: service_healthy
-      zchat-etcd:
+      etcd:
         condition: service_healthy
-      zchat-rabbitmq:
+      rabbitmq:
         condition: service_healthy
-      zchat-elasticsearch:
+      elasticsearch:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck-defaults
@@ -331,13 +331,13 @@ services:
       - etcd_password
       - elasticsearch_password
     depends_on:
-      zchat-mysql:
+      mysql:
         condition: service_healthy
-      zchat-redis:
+      redis:
         condition: service_healthy
-      zchat-etcd:
+      etcd:
         condition: service_healthy
-      zchat-elasticsearch:
+      elasticsearch:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck-defaults
@@ -375,13 +375,13 @@ services:
       - sms_access_key_id
       - sms_access_key_secret
     depends_on:
-      zchat-mysql:
+      mysql:
         condition: service_healthy
-      zchat-redis:
+      redis:
         condition: service_healthy
-      zchat-etcd:
+      etcd:
         condition: service_healthy
-      zchat-elasticsearch:
+      elasticsearch:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck-defaults
@@ -405,9 +405,9 @@ services:
       - "${ZCHAT_GATEWAY_HTTP_PUBLISHED_PORT:-8000}:${ZCHAT_GATEWAY_HTTP_PORT:-8000}"
       - "${ZCHAT_GATEWAY_WEBSOCKET_PUBLISHED_PORT:-8001}:${ZCHAT_GATEWAY_WEBSOCKET_PORT:-8001}"
     depends_on:
-      zchat-redis:
+      redis:
         condition: service_healthy
-      zchat-etcd:
+      etcd:
         condition: service_healthy
       file-service:
         condition: service_healthy

@@ -16,11 +16,11 @@ openssl req -new -x509 -nodes -days 3650 \
 openssl genrsa -out "${cert_dir}/server-key.pem" 2048
 openssl req -new \
   -key "${cert_dir}/server-key.pem" \
-  -subj "/CN=zchat-mysql" \
+  -subj "/CN=mysql" \
   -out "${cert_dir}/server.csr"
 
 cat >"${cert_dir}/server-ext.cnf" <<EOF
-subjectAltName=DNS:zchat-mysql
+subjectAltName=DNS:mysql
 extendedKeyUsage=serverAuth
 EOF
 
