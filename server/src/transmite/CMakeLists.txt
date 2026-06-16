@@ -7,14 +7,11 @@ target_link_libraries(zchat_message_queue
     libevent::pthreads)
 
 add_library(zchat_transmite_module STATIC
-  transmite_service.cc
-  orm_transmite_repository.cc)
+  transmite_service.cc)
 target_link_libraries(zchat_transmite_module
   PUBLIC
-    zchat_message_module
     zchat_message_queue
-    zchat_common
-    zchat_user_module)
+    zchat_common)
 
 add_executable(zchat_transmite_service
   transmite_builder.cc

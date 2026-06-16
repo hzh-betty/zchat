@@ -8,19 +8,16 @@
 #include "common/proto_mapper.h"
 #include "common/uuid.h"
 #include "notify.pb.h"
-#include "user/user_errors.h"
 
 namespace zchat {
 namespace {} // namespace
 
-TransmiteService::TransmiteService(TransmiteRepository &repository,
-                                   UserRepository &users,
-                                   MessageQueuePublisher &queue,
-                                   MessageSearchIndex &search_index,
+TransmiteService::TransmiteService(MessageQueuePublisher &queue,
                                    SessionStore &sessions,
-                                   NotifyPublisher &notifier)
-    : repository_(repository), users_(users), queue_(queue),
-      search_index_(search_index), sessions_(sessions), notifier_(notifier) {}
+                                   NotifyPublisher &notifier,
+                                   ServiceClients &clients)
+    : queue_(queue), sessions_(sessions), notifier_(notifier),
+      clients_(clients) {}
 
 zchat::NewMessageRsp
 TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
@@ -34,18 +31,26 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
             request.request_id(), common_errors::SessionExpired());
     }
 
+    zchat::GetUserInfoReq user_request;
+    user_request.set_user_id(user_id.value().value());
+    auto user_response = clients_.GetUser(user_request);
+    if (!user_response.ok() || !user_response.value().success()) {
+        AppError error = common_errors::InternalServiceError();
+        if (!user_response.ok()) {
+            error = user_response.error();
+        }
+        return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
+                                                       error);
+    }
+    const zchat::UserInfo &sender = user_response.value().user_info();
+
     std::string file_content;
     MessageRecord message =
         ToMessageRecord(request, NewId(), user_id.value().value(),
                         UnixTimeSeconds(), &file_content);
-    auto sender = users_.FindUserById(user_id.value().value());
-    if (!sender.ok() || !sender.value().has_value()) {
-        return MakeErrorResponse<zchat::NewMessageRsp>(
-            request.request_id(), user_errors::UserNotFound());
-    }
 
     std::string queue_payload;
-    ToProtoMessage(message, sender.value().value(), file_content)
+    ToProtoMessage(message, FromProtoUser(sender), file_content)
         .SerializeToString(&queue_payload);
     const auto published = queue_.Publish(queue_payload);
     if (!published.ok()) {
@@ -53,16 +58,18 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
                                                        published.error());
     }
 
-    auto members =
-        repository_.ListChatSessionMembers(request.chat_session_id());
-    if (members.ok()) {
+    zchat::GetChatSessionMemberIdsReq members_request;
+    members_request.set_request_id(request.request_id());
+    members_request.set_chat_session_id(request.chat_session_id());
+    auto members_response = clients_.GetChatSessionMemberIds(members_request);
+    if (members_response.ok() && members_response.value().success()) {
         zchat::NotifyMessage notify;
         notify.set_notify_type(zchat::CHAT_MESSAGE_NOTIFY);
         *notify.mutable_new_message_info()->mutable_message_info() =
-            ToProtoMessage(message, sender.value().value(), file_content);
+            ToProtoMessage(message, FromProtoUser(sender), file_content);
         std::string payload;
         notify.SerializeToString(&payload);
-        for (const auto &member_id : members.value()) {
+        for (const auto &member_id : members_response.value().member_id()) {
             if (member_id != user_id.value().value()) {
                 notifier_.Publish(member_id, payload);
             }
@@ -71,10 +78,10 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
                        "sender={} targets={}",
                        request.request_id(), message.message_id,
                        request.chat_session_id(), user_id.value().value(),
-                       members.value().size() - 1);
+                       members_response.value().member_id_size() - 1);
     } else {
         ZCHAT_LOG_WARN("new message notify skipped request={} members_ok={}",
-                       request.request_id(), members.ok());
+                       request.request_id(), members_response.ok());
     }
 
     zchat::NewMessageRsp response;
