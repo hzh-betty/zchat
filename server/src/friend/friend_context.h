@@ -10,14 +10,12 @@
 
 #include "common/config.h"
 #include "common/notify_publisher.h"
+#include "common/search/user_search_index.h"
+#include "common/service_clients.h"
 #include "common/session_store.h"
-#include "file/file_repository.h"
 #include "friend/friend_grpc_service.h"
 #include "friend/friend_repository.h"
 #include "friend/friend_service.h"
-#include "message/message_repository.h"
-#include "user/user_repository.h"
-#include "user/user_search_index.h"
 
 namespace zchat {
 
@@ -34,12 +32,10 @@ class FriendContext : public NonCopyable {
     std::shared_ptr<drogon::orm::DbClient> db_;
     drogon::nosql::RedisClientPtr redis_;
     OrmFriendRepository friend_repository_;
-    OrmUserRepository user_repository_;
-    OrmFileRepository file_repository_;
-    OrmMessageRepository message_repository_;
     ConfiguredUserSearchIndex search_index_;
     SessionStore sessions_;
     NotifyPublisher notifier_;
+    ServiceClients clients_;
     std::shared_ptr<FriendApplicationService> friend_service_;
     FriendGrpcService grpc_service_;
 };

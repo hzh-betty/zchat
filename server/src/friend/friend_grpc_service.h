@@ -48,6 +48,10 @@ class FriendGrpcService final : public zchat::FriendService::Service,
     GetChatSessionMember(grpc::ServerContext *context,
                          const zchat::GetChatSessionMemberReq *request,
                          zchat::GetChatSessionMemberRsp *response) override;
+    grpc::Status GetChatSessionMemberIds(
+        grpc::ServerContext *context,
+        const zchat::GetChatSessionMemberIdsReq *request,
+        zchat::GetChatSessionMemberIdsRsp *response) override;
     grpc::Status GetPendingFriendEventList(
         grpc::ServerContext *context,
         const zchat::GetPendingFriendEventListReq *request,

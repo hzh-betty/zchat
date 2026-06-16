@@ -4,21 +4,18 @@
 #include "common/noncopyable.h"
 
 #include "common/notify_publisher.h"
+#include "common/search/user_search_index.h"
+#include "common/service_clients.h"
 #include "common/session_store.h"
-#include "file/file_repository.h"
 #include "friend.pb.h"
 #include "friend/friend_repository.h"
-#include "message/message_repository.h"
 #include "notify.pb.h"
-#include "user/user_repository.h"
-#include "user/user_search_index.h"
 
 namespace zchat {
 
 class FriendApplicationService : public NonCopyable {
   public:
-    FriendApplicationService(FriendRepository &friends, UserRepository &users,
-                             FileRepository &files, MessageRepository &messages,
+    FriendApplicationService(FriendRepository &friends, ServiceClients &clients,
                              SessionStore &sessions, NotifyPublisher &notifier,
                              UserSearchIndex &search_index);
 
@@ -38,12 +35,15 @@ class FriendApplicationService : public NonCopyable {
     CreateChatSession(const zchat::ChatSessionCreateReq &request);
     zchat::GetChatSessionMemberRsp
     GetChatSessionMember(const zchat::GetChatSessionMemberReq &request);
+    zchat::GetChatSessionMemberIdsRsp
+    GetChatSessionMemberIds(const zchat::GetChatSessionMemberIdsReq &request);
     zchat::FriendSearchRsp SearchFriend(const zchat::FriendSearchReq &request);
 
   private:
     std::string ResolveUserId(const std::string &session_id,
                               const std::string &optional_user_id);
-    std::string AvatarForUser(const UserRecord &user);
+    std::string AvatarForUserId(const std::string &avatar_id);
+    zchat::UserInfo UserInfoForId(const std::string &user_id);
     zchat::ChatSessionInfo
     BuildChatSessionInfo(const ChatSessionRecord &session,
                          const std::string &current_user_id);
@@ -51,9 +51,7 @@ class FriendApplicationService : public NonCopyable {
                     const zchat::NotifyMessage &msg);
 
     FriendRepository &friends_;
-    UserRepository &users_;
-    FileRepository &files_;
-    MessageRepository &messages_;
+    ServiceClients &clients_;
     SessionStore &sessions_;
     NotifyPublisher &notifier_;
     UserSearchIndex &search_index_;

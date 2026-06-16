@@ -104,6 +104,17 @@ grpc::Status FriendGrpcService::GetChatSessionMember(
     return grpc::Status::OK;
 }
 
+grpc::Status FriendGrpcService::GetChatSessionMemberIds(
+    grpc::ServerContext *, const zchat::GetChatSessionMemberIdsReq *request,
+    zchat::GetChatSessionMemberIdsRsp *response) {
+    ZCHAT_LOG_INFO("FriendService::GetChatSessionMemberIds request_id={}",
+                   request->request_id());
+    *response = service_->GetChatSessionMemberIds(*request);
+    LogBoundaryResponseError("FriendService", "GetChatSessionMemberIds",
+                             request->request_id(), *response);
+    return grpc::Status::OK;
+}
+
 grpc::Status FriendGrpcService::GetPendingFriendEventList(
     grpc::ServerContext *, const zchat::GetPendingFriendEventListReq *request,
     zchat::GetPendingFriendEventListRsp *response) {
