@@ -1,4 +1,4 @@
-#include "user/user_search_index.h"
+#include "common/search/user_search_index.h"
 
 #include <sstream>
 #include <utility>

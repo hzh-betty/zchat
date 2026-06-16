@@ -1,4 +1,4 @@
-#include "message/message_search_index.h"
+#include "common/search/message_search_index.h"
 
 #include <sstream>
 #include <utility>

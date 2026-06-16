@@ -24,3 +24,5 @@ target_include_directories(zchat_common
 target_link_options(zchat_common
   PUBLIC
     -Wl,--copy-dt-needed-entries)
+
+add_subdirectory(search)

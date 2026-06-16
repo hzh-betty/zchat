@@ -1,5 +1,5 @@
-#ifndef ZCHAT_SERVER_SRC_USER_USER_SEARCH_INDEX_H_
-#define ZCHAT_SERVER_SRC_USER_USER_SEARCH_INDEX_H_
+#ifndef ZCHAT_SERVER_SRC_COMMON_SEARCH_USER_SEARCH_INDEX_H_
+#define ZCHAT_SERVER_SRC_COMMON_SEARCH_USER_SEARCH_INDEX_H_
 
 #include "common/noncopyable.h"
 
@@ -56,4 +56,4 @@ std::string BuildElasticsearchUserIndexDefinition();
 
 } // namespace zchat
 
-#endif // ZCHAT_SERVER_SRC_USER_USER_SEARCH_INDEX_H_
+#endif // ZCHAT_SERVER_SRC_COMMON_SEARCH_USER_SEARCH_INDEX_H_
