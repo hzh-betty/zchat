@@ -8,6 +8,7 @@ add_library(zchat_common STATIC
   proto_mapper.cc
   protobuf_http.cc
   runtime.cc
+  service_clients.cc
   session_store.cc
   uuid.cc)
 target_link_libraries(zchat_common

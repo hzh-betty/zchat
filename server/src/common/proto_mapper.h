@@ -11,6 +11,7 @@ namespace zchat {
 
 zchat::UserInfo ToProtoUser(const UserRecord &user,
                             const std::string &avatar_content);
+UserRecord FromProtoUser(const zchat::UserInfo &user);
 zchat::MessageInfo ToProtoMessage(const MessageRecord &message,
                                   const UserRecord &sender,
                                   const std::string &file_content);

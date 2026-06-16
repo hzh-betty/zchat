@@ -15,6 +15,15 @@ zchat::UserInfo ToProtoUser(const UserRecord &user,
     return proto;
 }
 
+UserRecord FromProtoUser(const zchat::UserInfo &user) {
+    UserRecord record;
+    record.user_id = user.user_id();
+    record.nickname = user.nickname();
+    record.description = user.description();
+    record.phone = user.phone();
+    return record;
+}
+
 zchat::MessageInfo ToProtoMessage(const MessageRecord &message,
                                   const UserRecord &sender,
                                   const std::string &file_content) {
