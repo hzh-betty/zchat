@@ -5,19 +5,18 @@
 
 #include <string>
 
+#include "common/search/user_search_index.h"
+#include "common/service_clients.h"
 #include "common/session_store.h"
-#include "file.pb.h"
-#include "file/file_repository.h"
 #include "user.pb.h"
 #include "user/sms_client.h"
 #include "user/user_repository.h"
-#include "user/user_search_index.h"
 
 namespace zchat {
 
 class UserApplicationService : public NonCopyable {
   public:
-    UserApplicationService(UserRepository &users, FileRepository &files,
+    UserApplicationService(UserRepository &users, ServiceClients &clients,
                            SmsClient &sms, SessionStore &sessions,
                            UserSearchIndex &search_index);
 
@@ -53,8 +52,11 @@ class UserApplicationService : public NonCopyable {
     VoidResult IndexUserById(const std::string &user_id);
     Result<std::string> LoginUser(const std::string &user_id);
 
+    std::string GetAvatarContent(const std::string &avatar_id);
+    Result<std::string> PutAvatarContent(const std::string &avatar_content);
+
     UserRepository &users_;
-    FileRepository &files_;
+    ServiceClients &clients_;
     SmsClient &sms_;
     SessionStore &sessions_;
     UserSearchIndex &search_index_;

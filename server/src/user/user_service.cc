@@ -29,11 +29,11 @@ void MarkOk(const std::string &request_id, Response *response) {
 } // namespace
 
 UserApplicationService::UserApplicationService(UserRepository &users,
-                                               FileRepository &files,
+                                               ServiceClients &clients,
                                                SmsClient &sms,
                                                SessionStore &sessions,
                                                UserSearchIndex &search_index)
-    : users_(users), files_(files), sms_(sms), sessions_(sessions),
+    : users_(users), clients_(clients), sms_(sms), sessions_(sessions),
       search_index_(search_index) {}
 
 zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
@@ -247,13 +247,7 @@ UserApplicationService::GetUserInfo(const zchat::GetUserInfoReq &request) {
         return ErrorResponse<zchat::GetUserInfoRsp>(
             request.request_id(), user_errors::UserNotFound());
     }
-    std::string avatar;
-    if (!user.value()->avatar_id.empty()) {
-        auto file = files_.GetFile(user.value()->avatar_id);
-        if (file.ok() && file.value().has_value()) {
-            avatar = file.value()->file_content;
-        }
-    }
+    std::string avatar = GetAvatarContent(user.value()->avatar_id);
     zchat::GetUserInfoRsp response;
     MarkOk(request.request_id(), &response);
     *response.mutable_user_info() = ToProtoUser(user.value().value(), avatar);
@@ -276,13 +270,7 @@ zchat::GetMultiUserInfoRsp UserApplicationService::GetMultiUserInfo(
     response.set_success(true);
     response.set_errmsg("");
     for (const auto &user : users.value()) {
-        std::string avatar;
-        if (!user.avatar_id.empty()) {
-            auto file = files_.GetFile(user.avatar_id);
-            if (file.ok() && file.value().has_value()) {
-                avatar = file.value()->file_content;
-            }
-        }
+        std::string avatar = GetAvatarContent(user.avatar_id);
         (*response.mutable_users_info())[user.user_id] =
             ToProtoUser(user, avatar);
     }
@@ -297,14 +285,13 @@ UserApplicationService::SetAvatar(const zchat::SetUserAvatarReq &request) {
         return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
                                                       user_id.error());
     }
-    const std::string file_id = NewId();
-    const auto file_result = files_.PutFile(FileRecord{
-        file_id, "avatar", request.avatar().size(), request.avatar()});
-    if (!file_result.ok()) {
+    const auto file_id = PutAvatarContent(request.avatar());
+    if (!file_id.ok()) {
         return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
-                                                      file_result.error());
+                                                      file_id.error());
     }
-    const auto updated = users_.UpdateUserAvatar(user_id.value(), file_id);
+    const auto updated =
+        users_.UpdateUserAvatar(user_id.value(), file_id.value());
     if (!updated.ok()) {
         return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
                                                       updated.error());
@@ -491,6 +478,23 @@ UserApplicationService::LoginUser(const std::string &user_id) {
         return Result<std::string>::Fail(online_set.error());
     }
     return Result<std::string>::Ok(session_id);
+}
+
+std::string
+UserApplicationService::GetAvatarContent(const std::string &avatar_id) {
+    if (avatar_id.empty()) {
+        return std::string();
+    }
+    auto file = clients_.GetFile(avatar_id);
+    if (!file.ok() || !file.value().has_value()) {
+        return std::string();
+    }
+    return file.value()->file_content;
+}
+
+Result<std::string>
+UserApplicationService::PutAvatarContent(const std::string &avatar_content) {
+    return clients_.PutFile("avatar", avatar_content);
 }
 
 } // namespace zchat
