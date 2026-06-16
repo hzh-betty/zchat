@@ -7,6 +7,7 @@ import argparse
 import os
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -46,26 +47,40 @@ class ProjectPaths:
         return self.root_dir / "build" / preset
 
 
+_PATHS: ProjectPaths | None = None
+
+
+def get_paths() -> ProjectPaths:
+    global _PATHS
+    if _PATHS is None:
+        _PATHS = ProjectPaths.from_script()
+    return _PATHS
+
+
+def set_paths(paths: ProjectPaths | None = None) -> None:
+    global _PATHS
+    _PATHS = paths
+
+
 @dataclass(frozen=True)
 class Service:
     binary_name: str
     config_name: str
     aliases: tuple[str, ...]
+    env_port_key: str = ""
 
     def config_path(self, paths: ProjectPaths) -> Path:
         return paths.server_dir / "config" / self.config_name
 
 
-PATHS = ProjectPaths.from_script()
-
 SERVICES = (
-    Service("zchat_file_service", "file.json", ("file",)),
-    Service("zchat_speech_service", "speech.json", ("speech",)),
-    Service("zchat_transmite_service", "transmite.json", ("transmite", "transfer")),
-    Service("zchat_message_service", "message.json", ("message",)),
-    Service("zchat_friend_service", "friend.json", ("friend",)),
-    Service("zchat_user_service", "user.json", ("user",)),
-    Service("zchat_gateway", "gateway.json", ("gateway",)),
+    Service("zchat_file_service", "file.json", ("file",), "ZCHAT_FILE_SERVICE_PORT"),
+    Service("zchat_speech_service", "speech.json", ("speech",), "ZCHAT_SPEECH_SERVICE_PORT"),
+    Service("zchat_transmite_service", "transmite.json", ("transmite", "transfer"), "ZCHAT_TRANSMITE_SERVICE_PORT"),
+    Service("zchat_message_service", "message.json", ("message",), "ZCHAT_MESSAGE_SERVICE_PORT"),
+    Service("zchat_friend_service", "friend.json", ("friend",), "ZCHAT_FRIEND_SERVICE_PORT"),
+    Service("zchat_user_service", "user.json", ("user",), "ZCHAT_USER_SERVICE_PORT"),
+    Service("zchat_gateway", "gateway.json", ("gateway",), "ZCHAT_GATEWAY_HTTP_PORT"),
 )
 
 SERVICE_BY_NAME = {service.binary_name: service for service in SERVICES}
@@ -77,7 +92,8 @@ SERVICE_BY_ALIAS = {
 
 
 def run_command(args: Sequence[str], *, env: dict[str, str], cwd: Path | None = None) -> None:
-    subprocess.run(args, cwd=cwd or PATHS.root_dir, env=env, check=True)
+    paths = get_paths()
+    subprocess.run(args, cwd=cwd or paths.root_dir, env=env, check=True)
 
 
 def require_file(path: Path) -> None:
@@ -98,15 +114,17 @@ def parse_env_file(path: Path) -> dict[str, str]:
 
 
 def conan_home_env() -> dict[str, str]:
+    paths = get_paths()
     env = dict(os.environ)
-    env.setdefault("CONAN_HOME", str(PATHS.root_dir / "build/conan-home"))
+    env.setdefault("CONAN_HOME", str(paths.root_dir / "build/conan-home"))
     return env
 
 
 def service_env() -> dict[str, str]:
-    require_file(PATHS.env_file)
+    paths = get_paths()
+    require_file(paths.env_file)
     env = conan_home_env()
-    env.update(parse_env_file(PATHS.env_file))
+    env.update(parse_env_file(paths.env_file))
     return env
 
 
@@ -114,15 +132,23 @@ def source_env_script(script: Path, base_env: dict[str, str]) -> dict[str, str]:
     if not script.is_file():
         return dict(base_env)
 
+    paths = get_paths()
     command = f"set -a; source {shlex.quote(str(script))}; env -0"
-    result = subprocess.run(
-        ["bash", "-lc", command],
-        cwd=PATHS.root_dir,
-        env=base_env,
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", command],
+            cwd=paths.root_dir,
+            env=base_env,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr_output = exc.stderr.decode(errors="replace") if exc.stderr else ""
+        print(f"Failed to source {script}:", file=sys.stderr)
+        if stderr_output:
+            print(stderr_output, end="", file=sys.stderr)
+        raise
 
     env: dict[str, str] = {}
     for entry in result.stdout.split(b"\0"):
@@ -133,19 +159,21 @@ def source_env_script(script: Path, base_env: dict[str, str]) -> dict[str, str]:
 
 
 def conan_profiles(preset: str) -> tuple[Path, Path]:
+    paths = get_paths()
     host_profile_name = "linux-clang-debug" if preset == "conan2-debug" else "linux-clang-release"
-    return PATHS.root_dir / "profiles" / host_profile_name, PATHS.root_dir / "profiles/linux-clang-release"
+    return paths.root_dir / "profiles" / host_profile_name, paths.root_dir / "profiles/linux-clang-release"
 
 
 def install_conan(preset: str, jobs: int, env: dict[str, str]) -> None:
+    paths = get_paths()
     host_profile, build_profile = conan_profiles(preset)
     print(f"Installing Conan dependencies for {preset}")
     run_command(
         [
             "conan",
             "install",
-            str(PATHS.root_dir),
-            f"--output-folder={PATHS.build_dir(preset)}",
+            str(paths.root_dir),
+            f"--output-folder={paths.build_dir(preset)}",
             "--build=missing",
             "-c",
             f"tools.build:jobs={jobs}",
@@ -158,9 +186,15 @@ def install_conan(preset: str, jobs: int, env: dict[str, str]) -> None:
     )
 
 
+def conan_generators_exist(preset: str) -> bool:
+    paths = get_paths()
+    return (paths.build_dir(preset) / "generators").is_dir()
+
+
 def build_services(preset: str, jobs: int, env: dict[str, str], services: Sequence[Service]) -> dict[str, str]:
-    build_env = source_env_script(PATHS.build_dir(preset) / "generators/conanbuild.sh", env)
-    run_env = source_env_script(PATHS.build_dir(preset) / "generators/conanrun.sh", build_env)
+    paths = get_paths()
+    build_env = source_env_script(paths.build_dir(preset) / "generators/conanbuild.sh", env)
+    run_env = source_env_script(paths.build_dir(preset) / "generators/conanrun.sh", build_env)
 
     print(f"Configuring zchat services with preset {preset}")
     run_command(["cmake", "--preset", preset], env=run_env)
@@ -211,12 +245,25 @@ def pid_is_running(pid: int) -> bool:
 
 
 def print_last_log_lines(log_file: Path, limit: int = 40) -> None:
-    try:
-        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-    except FileNotFoundError:
+    if not log_file.is_file():
         return
-    for line in lines[-limit:]:
-        print(line, file=sys.stderr)
+    result = subprocess.run(
+        ["tail", "-n", str(limit), str(log_file)],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    if result.stdout:
+        print(result.stdout, end="", file=sys.stderr)
+
+
+def port_is_listening(port: int, *, host: str = "127.0.0.1", timeout: float = 0.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 class LocalServiceManager:
@@ -236,7 +283,7 @@ class LocalServiceManager:
 
     def find_pids(self, service: Service) -> list[int]:
         result = subprocess.run(
-            ["pgrep", "-f", self.process_pattern(service)],
+            ["pgrep", "-f", "--", self.process_pattern(service)],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -257,14 +304,7 @@ class LocalServiceManager:
             print(f"Stopping {service.binary_name} (pid {pid})")
             self._terminate_pid(pid, service.binary_name)
 
-        subprocess.run(
-            ["pkill", "-f", self.process_pattern(service)],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-    def start(self, service: Service, *, grace_seconds: float) -> None:
+    def launch(self, service: Service) -> subprocess.Popen | None:
         binary = self.binary_path(service)
         config = service.config_path(self.paths)
         log_file = self.log_file(service)
@@ -275,11 +315,11 @@ class LocalServiceManager:
         running_pids = self.find_pids(service)
         if running_pids:
             print(f"{service.binary_name} is already running (pid {running_pids[0]})")
-            return
+            return None
 
         print(f"Starting {service.binary_name}")
         with log_file.open("ab") as log_handle:
-            process = subprocess.Popen(
+            return subprocess.Popen(
                 [str(binary), str(config)],
                 cwd=self.paths.root_dir,
                 env=self.env,
@@ -288,19 +328,43 @@ class LocalServiceManager:
                 start_new_session=True,
             )
 
-        time.sleep(grace_seconds)
-        if not pid_is_running(process.pid):
-            print(f"{service.binary_name} failed to start. Last log lines:", file=sys.stderr)
-            print_last_log_lines(log_file)
-            raise SystemExit(1)
+    def wait_for_startup(
+        self, service: Service, process: subprocess.Popen | None, *, grace_seconds: float
+    ) -> None:
+        if process is None:
+            return
+
+        log_file = self.log_file(service)
+        deadline = time.monotonic() + grace_seconds
+        while time.monotonic() < deadline:
+            if not pid_is_running(process.pid):
+                print(f"{service.binary_name} failed to start. Last log lines:", file=sys.stderr)
+                print_last_log_lines(log_file)
+                raise SystemExit(1)
+            time.sleep(0.1)
 
     def verify(self, service: Service) -> bool:
-        if self.find_pids(service):
-            return True
+        if not self.find_pids(service):
+            print(f"{service.binary_name} exited after startup. Last log lines:", file=sys.stderr)
+            print_last_log_lines(self.log_file(service))
+            return False
 
-        print(f"{service.binary_name} exited after startup. Last log lines:", file=sys.stderr)
-        print_last_log_lines(self.log_file(service))
-        return False
+        if service.env_port_key:
+            port_str = self.env.get(service.env_port_key, "")
+            if port_str:
+                try:
+                    port = int(port_str)
+                except ValueError:
+                    pass
+                else:
+                    if not port_is_listening(port):
+                        print(
+                            f"{service.binary_name} is running but port {port} is not listening",
+                            file=sys.stderr,
+                        )
+                        return False
+
+        return True
 
     @staticmethod
     def _terminate_pid(pid: int, service_name: str) -> None:
@@ -323,8 +387,9 @@ class LocalServiceManager:
 
 
 def validate_service_configs(services: Sequence[Service]) -> None:
+    paths = get_paths()
     for service in services:
-        require_file(service.config_path(PATHS))
+        require_file(service.config_path(paths))
 
 
 def cmd_install(args: argparse.Namespace) -> None:
@@ -334,34 +399,61 @@ def cmd_install(args: argparse.Namespace) -> None:
 def cmd_build(args: argparse.Namespace) -> None:
     services = selected_services(args.service)
     env = conan_home_env()
-    install_conan(args.preset, args.jobs, env)
+    if not args.force_install and conan_generators_exist(args.preset):
+        print("Conan dependencies already installed, skipping install (use --force-install to override)")
+    else:
+        install_conan(args.preset, args.jobs, env)
     build_services(args.preset, args.jobs, env, services)
 
 
 def cmd_start(args: argparse.Namespace) -> None:
+    paths = get_paths()
     services = selected_services(args.service)
     env = service_env()
     validate_service_configs(services)
-    PATHS.log_dir.mkdir(parents=True, exist_ok=True)
+    paths.log_dir.mkdir(parents=True, exist_ok=True)
 
     if args.build:
-        install_conan(args.preset, args.jobs, env)
+        if not args.force_install and conan_generators_exist(args.preset):
+            print("Conan dependencies already installed, skipping install (use --force-install to override)")
+        else:
+            install_conan(args.preset, args.jobs, env)
         env = build_services(args.preset, args.jobs, env, services)
     else:
-        env = source_env_script(PATHS.build_dir(args.preset) / "generators/conanrun.sh", env)
+        env = source_env_script(paths.build_dir(args.preset) / "generators/conanrun.sh", env)
 
-    manager = LocalServiceManager(paths=PATHS, preset=args.preset, env=env)
+    manager = LocalServiceManager(paths=paths, preset=args.preset, env=env)
 
     if args.restart:
         for service in selected_services(args.service, reverse=True):
             manager.stop(service)
 
+    launched: list[tuple[Service, subprocess.Popen | None]] = []
     for service in services:
-        manager.start(service, grace_seconds=args.startup_grace_seconds)
+        process = manager.launch(service)
+        launched.append((service, process))
+
+    deadline = time.monotonic() + args.startup_grace_seconds
+    while time.monotonic() < deadline:
+        any_exited = any(
+            process is not None and process.poll() is not None for _, process in launched
+        )
+        if any_exited:
+            break
+        time.sleep(0.1)
 
     startup_failed = False
+    for service, process in launched:
+        if process is not None and process.poll() is not None:
+            print(f"{service.binary_name} failed to start. Last log lines:", file=sys.stderr)
+            print_last_log_lines(manager.log_file(service))
+            startup_failed = True
+    if startup_failed:
+        raise SystemExit(1)
+
     for service in services:
-        startup_failed = not manager.verify(service) or startup_failed
+        if not manager.verify(service):
+            startup_failed = True
     if startup_failed:
         raise SystemExit(1)
 
@@ -372,36 +464,17 @@ def cmd_start(args: argparse.Namespace) -> None:
         print(f"{services[0].binary_name} is running.")
     print(f"Build preset: {args.preset}")
     print(f"HTTP gateway: http://127.0.0.1:{env.get('ZCHAT_GATEWAY_HTTP_PORT', '8000')}")
-    print(f"Logs: {PATHS.log_dir}")
+    print(f"Logs: {paths.log_dir}")
 
 
 def cmd_restart(args: argparse.Namespace) -> None:
-    services = selected_services(args.service)
-    env = service_env()
-    validate_service_configs(services)
-    PATHS.log_dir.mkdir(parents=True, exist_ok=True)
-
-    if args.build:
-        install_conan(args.preset, args.jobs, env)
-        env = build_services(args.preset, args.jobs, env, services)
-    else:
-        env = source_env_script(PATHS.build_dir(args.preset) / "generators/conanrun.sh", env)
-
-    manager = LocalServiceManager(paths=PATHS, preset=args.preset, env=env)
-    for service in selected_services(args.service, reverse=True):
-        manager.stop(service)
-    for service in services:
-        manager.start(service, grace_seconds=args.startup_grace_seconds)
-
-    startup_failed = False
-    for service in services:
-        startup_failed = not manager.verify(service) or startup_failed
-    if startup_failed:
-        raise SystemExit(1)
+    args.restart = True
+    cmd_start(args)
 
 
 def cmd_stop(args: argparse.Namespace) -> None:
-    manager = LocalServiceManager(paths=PATHS, preset=args.preset, env=conan_home_env())
+    paths = get_paths()
+    manager = LocalServiceManager(paths=paths, preset=args.preset, env=conan_home_env())
     for service in selected_services(args.service, reverse=True):
         manager.stop(service)
 
@@ -413,6 +486,7 @@ def add_preset_args(parser: argparse.ArgumentParser) -> None:
 def add_build_args(parser: argparse.ArgumentParser) -> None:
     add_preset_args(parser)
     parser.add_argument("--jobs", type=int, default=DEFAULT_BUILD_JOBS, help="Parallel build jobs")
+    parser.add_argument("--force-install", action="store_true", help="Force Conan install even if cached")
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:

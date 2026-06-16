@@ -160,15 +160,6 @@ zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
         return ErrorResponse<zchat::PhoneRegisterRsp>(
             request.request_id(), user_errors::VerifyCodePhoneMismatch());
     }
-    auto existing = users_.FindUserByPhone(request.phone_number());
-    if (!existing.ok()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
-                                                      existing.error());
-    }
-    if (existing.value().has_value()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(
-            request.request_id(), user_errors::PhoneAlreadyRegistered());
-    }
     UserRecord user;
     user.user_id = NewId();
     user.nickname = user.user_id;
