@@ -3,19 +3,16 @@
 
 #include "common/noncopyable.h"
 
-#include "file/file_repository.h"
-#include "friend/friend_repository.h"
+#include "common/search/message_search_index.h"
+#include "common/service_clients.h"
 #include "message.pb.h"
 #include "message/message_repository.h"
-#include "message/message_search_index.h"
-#include "user/user_repository.h"
 
 namespace zchat {
 
 class MessageService : public NonCopyable {
   public:
-    MessageService(MessageRepository &messages, UserRepository &users,
-                   FileRepository &files, FriendRepository &friends,
+    MessageService(MessageRepository &messages, ServiceClients &clients,
                    MessageSearchIndex &search_index);
     ~MessageService() = default;
 
@@ -33,9 +30,7 @@ class MessageService : public NonCopyable {
                                     const std::string &session_id);
 
     MessageRepository &messages_;
-    UserRepository &users_;
-    FileRepository &files_;
-    FriendRepository &friends_;
+    ServiceClients &clients_;
     MessageSearchIndex &search_index_;
 };
 

@@ -8,14 +8,12 @@
 #include <drogon/orm/DbClient.h>
 
 #include "common/config.h"
-#include "file/file_repository.h"
-#include "friend/friend_repository.h"
+#include "common/search/message_search_index.h"
+#include "common/service_clients.h"
 #include "message/message_grpc_service.h"
 #include "message/message_repository.h"
-#include "message/message_search_index.h"
 #include "message/message_service.h"
 #include "transmite/message_queue.h"
-#include "user/user_repository.h"
 
 namespace zchat {
 
@@ -30,9 +28,7 @@ class MessageContext : public NonCopyable {
     AppConfig config_;
     std::shared_ptr<drogon::orm::DbClient> db_;
     OrmMessageRepository message_repository_;
-    OrmUserRepository user_repository_;
-    OrmFileRepository file_repository_;
-    OrmFriendRepository friend_repository_;
+    ServiceClients clients_;
     ConfiguredMessageSearchIndex search_index_;
     std::shared_ptr<MessageService> message_service_;
     ConfiguredMessageQueueConsumer queue_consumer_;
