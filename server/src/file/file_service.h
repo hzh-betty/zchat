@@ -3,6 +3,10 @@
 
 #include "common/noncopyable.h"
 
+#include <cstdint>
+#include <optional>
+#include <string>
+
 #include "file.pb.h"
 #include "file/file_repository.h"
 
@@ -20,6 +24,12 @@ class FileApplicationService : public NonCopyable {
     zchat::PutSingleFileRsp
     PutSingleFile(const zchat::PutSingleFileReq &request);
     zchat::PutMultiFileRsp PutMultiFile(const zchat::PutMultiFileReq &request);
+
+    Result<std::optional<FileRecord>>
+    GetFileForDownload(const std::string &file_id);
+    Result<std::string> StoreFileContent(const std::string &file_name,
+                                         std::uint64_t file_size,
+                                         const std::string &file_content);
 
   private:
     FileRepository &repository_;

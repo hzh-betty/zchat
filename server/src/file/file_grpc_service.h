@@ -31,6 +31,14 @@ class FileGrpcService final : public zchat::FileService::Service,
     grpc::Status PutMultiFile(grpc::ServerContext *context,
                               const zchat::PutMultiFileReq *request,
                               zchat::PutMultiFileRsp *response) override;
+    grpc::Status
+    GetSingleFileStream(grpc::ServerContext *context,
+                        const zchat::GetSingleFileReq *request,
+                        grpc::ServerWriter<zchat::FileChunk> *writer) override;
+    grpc::Status
+    PutSingleFileStream(grpc::ServerContext *context,
+                        grpc::ServerReader<zchat::FileChunk> *reader,
+                        zchat::PutSingleFileRsp *response) override;
 
   private:
     std::shared_ptr<FileApplicationService> service_;

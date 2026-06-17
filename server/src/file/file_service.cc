@@ -130,4 +130,24 @@ FileApplicationService::PutMultiFile(const zchat::PutMultiFileReq &request) {
     return response;
 }
 
+Result<std::optional<FileRecord>>
+FileApplicationService::GetFileForDownload(const std::string &file_id) {
+    return repository_.GetFile(file_id);
+}
+
+Result<std::string>
+FileApplicationService::StoreFileContent(const std::string &file_name,
+                                         std::uint64_t file_size,
+                                         const std::string &file_content) {
+    const std::string file_id = NewId();
+    const auto stored = repository_.PutFile(
+        FileRecord{file_id, file_name, file_size, file_content});
+    if (!stored.ok()) {
+        return Result<std::string>::Fail(stored.error());
+    }
+    ZCHAT_LOG_INFO("FileService::StoreFileContent success: file_id={}",
+                   file_id);
+    return Result<std::string>::Ok(file_id);
+}
+
 } // namespace zchat
