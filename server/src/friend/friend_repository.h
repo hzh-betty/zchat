@@ -29,6 +29,9 @@ class FriendRepository : public NonCopyable {
     virtual Result<bool> RelationExists(const std::string &user_id,
                                         const std::string &peer_id) = 0;
     virtual Result<std::vector<std::string>>
+    ListExistingPeers(const std::string &user_id,
+                      const std::vector<std::string> &peer_ids) = 0;
+    virtual Result<std::vector<std::string>>
     ListFriendIds(const std::string &user_id) = 0;
     virtual VoidResult InsertFriendApply(const FriendApplyRecord &apply) = 0;
     virtual VoidResult DeleteFriendApply(const std::string &user_id,
@@ -40,9 +43,9 @@ class FriendRepository : public NonCopyable {
     virtual VoidResult InsertChatSession(const ChatSessionRecord &session) = 0;
     virtual VoidResult InsertChatSessionMember(const std::string &session_id,
                                                const std::string &user_id) = 0;
-    virtual VoidResult InsertChatSessionMembers(
-        const std::string &session_id,
-        const std::vector<std::string> &user_ids) = 0;
+    virtual VoidResult
+    InsertChatSessionMembers(const std::string &session_id,
+                             const std::vector<std::string> &user_ids) = 0;
     virtual VoidResult DeleteSingleChatSession(const std::string &user_id,
                                                const std::string &peer_id) = 0;
     virtual Result<std::vector<ChatSessionRecord>>
@@ -68,6 +71,9 @@ class OrmFriendRepository final : public FriendRepository,
     Result<bool> RelationExists(const std::string &user_id,
                                 const std::string &peer_id) override;
     Result<std::vector<std::string>>
+    ListExistingPeers(const std::string &user_id,
+                      const std::vector<std::string> &peer_ids) override;
+    Result<std::vector<std::string>>
     ListFriendIds(const std::string &user_id) override;
     VoidResult InsertFriendApply(const FriendApplyRecord &apply) override;
     VoidResult DeleteFriendApply(const std::string &user_id,
@@ -79,9 +85,9 @@ class OrmFriendRepository final : public FriendRepository,
     VoidResult InsertChatSession(const ChatSessionRecord &session) override;
     VoidResult InsertChatSessionMember(const std::string &session_id,
                                        const std::string &user_id) override;
-    VoidResult InsertChatSessionMembers(
-        const std::string &session_id,
-        const std::vector<std::string> &user_ids) override;
+    VoidResult
+    InsertChatSessionMembers(const std::string &session_id,
+                             const std::vector<std::string> &user_ids) override;
     VoidResult DeleteSingleChatSession(const std::string &user_id,
                                        const std::string &peer_id) override;
     Result<std::vector<ChatSessionRecord>>

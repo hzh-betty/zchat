@@ -3,6 +3,9 @@
 
 #include "common/noncopyable.h"
 
+#include <string>
+#include <unordered_map>
+
 #include "common/notify_publisher.h"
 #include "common/service_clients.h"
 #include "common/session_store.h"
@@ -40,11 +43,11 @@ class FriendApplicationService : public NonCopyable {
   private:
     std::string ResolveUserId(const std::string &session_id,
                               const std::string &optional_user_id);
-    std::string AvatarForUserId(const std::string &avatar_id);
     zchat::UserInfo UserInfoForId(const std::string &user_id);
-    zchat::ChatSessionInfo
-    BuildChatSessionInfo(const ChatSessionRecord &session,
-                         const std::string &current_user_id);
+    zchat::ChatSessionInfo BuildChatSessionInfo(
+        const ChatSessionRecord &session, const std::string &current_user_id,
+        const std::unordered_map<std::string, zchat::UserInfo> &peer_infos,
+        const std::unordered_map<std::string, zchat::MessageInfo> &recent_msgs);
     void NotifyUser(const std::string &user_id,
                     const zchat::NotifyMessage &msg);
     void NotifyUsers(const std::vector<std::string> &user_ids,

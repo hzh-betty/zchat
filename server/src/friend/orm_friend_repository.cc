@@ -45,6 +45,38 @@ Result<bool> OrmFriendRepository::RelationExists(const std::string &user_id,
     });
 }
 
+Result<std::vector<std::string>> OrmFriendRepository::ListExistingPeers(
+    const std::string &user_id, const std::vector<std::string> &peer_ids) {
+    if (peer_ids.empty()) {
+        return Result<std::vector<std::string>>::Ok({});
+    }
+    return RunDb([&]() -> Result<std::vector<std::string>> {
+        std::string sql =
+            "SELECT peer_id FROM `relation` WHERE user_id=? AND peer_id IN (";
+        for (std::size_t i = 0; i < peer_ids.size(); ++i) {
+            if (i > 0) {
+                sql += ",";
+            }
+            sql += "?";
+        }
+        sql += ")";
+        auto binder = (*db_ << sql);
+        binder << user_id;
+        for (const auto &pid : peer_ids) {
+            binder << pid;
+        }
+        binder << drogon::orm::Mode::Blocking;
+        drogon::orm::Result result(nullptr);
+        binder >> [&result](const drogon::orm::Result &r) { result = r; };
+        binder.exec();
+        std::vector<std::string> existing;
+        for (const auto &row : result) {
+            existing.push_back(FieldString(row, "peer_id"));
+        }
+        return Result<std::vector<std::string>>::Ok(std::move(existing));
+    });
+}
+
 Result<std::vector<std::string>>
 OrmFriendRepository::ListFriendIds(const std::string &user_id) {
     return RunDb([&]() {
@@ -136,8 +168,7 @@ OrmFriendRepository::InsertChatSessionMember(const std::string &session_id,
 }
 
 VoidResult OrmFriendRepository::InsertChatSessionMembers(
-    const std::string &session_id,
-    const std::vector<std::string> &user_ids) {
+    const std::string &session_id, const std::vector<std::string> &user_ids) {
     if (user_ids.empty()) {
         return VoidResult::Ok();
     }

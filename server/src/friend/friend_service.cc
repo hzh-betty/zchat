@@ -1,6 +1,8 @@
 #include "friend/friend_service.h"
 
 #include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "common/common_errors.h"
@@ -88,11 +90,55 @@ zchat::GetChatSessionListRsp FriendApplicationService::GetChatSessionList(
         return ErrorResponse<zchat::GetChatSessionListRsp>(request.request_id(),
                                                            sessions.error());
     }
+
+    std::vector<std::string> peer_ids;
+    std::vector<std::string> session_ids;
+    for (const auto &session : sessions.value()) {
+        session_ids.push_back(session.chat_session_id);
+        if (session.chat_session_type == ChatSessionType::kSingle) {
+            auto peer_id =
+                friends_.FindSingleChatPeer(session.chat_session_id, user_id);
+            if (peer_id.ok() && peer_id.value().has_value()) {
+                peer_ids.push_back(peer_id.value().value());
+            }
+        }
+    }
+
+    zchat::GetMultiUserInfoReq multi_user_req;
+    multi_user_req.set_request_id(request.request_id());
+    for (const auto &pid : peer_ids) {
+        multi_user_req.add_users_id(pid);
+    }
+    auto multi_user_rsp = clients_.GetMultiUserInfo(multi_user_req);
+    std::unordered_map<std::string, zchat::UserInfo> peer_infos;
+    if (multi_user_rsp.ok() && multi_user_rsp.value().success()) {
+        for (const auto &pid : peer_ids) {
+            auto it = multi_user_rsp.value().users_info().find(pid);
+            if (it != multi_user_rsp.value().users_info().end()) {
+                peer_infos[pid] = it->second;
+            }
+        }
+    }
+
+    zchat::GetMultiRecentMsgReq multi_recent_req;
+    multi_recent_req.set_request_id(request.request_id());
+    for (const auto &sid : session_ids) {
+        multi_recent_req.add_chat_session_id(sid);
+    }
+    multi_recent_req.set_msg_count(1);
+    auto multi_recent_rsp = clients_.GetMultiRecentMsg(multi_recent_req);
+    std::unordered_map<std::string, zchat::MessageInfo> recent_msgs;
+    if (multi_recent_rsp.ok() && multi_recent_rsp.value().success()) {
+        for (const auto &entry : multi_recent_rsp.value().recent_messages()) {
+            recent_msgs[entry.first] = entry.second;
+        }
+    }
+
     zchat::GetChatSessionListRsp response;
     MarkOk(request.request_id(), &response);
     for (const auto &session : sessions.value()) {
         *response.add_chat_session_info_list() =
-            BuildChatSessionInfo(session, user_id);
+            BuildChatSessionInfo(session, user_id, peer_infos, recent_msgs);
     }
     ZCHAT_LOG_INFO("FriendService::GetChatSessionList success: request_id={}",
                    request.request_id());
@@ -116,12 +162,23 @@ FriendApplicationService::GetPendingFriendEvents(
         return ErrorResponse<zchat::GetPendingFriendEventListRsp>(
             request.request_id(), applies.error());
     }
+    zchat::GetMultiUserInfoReq multi_req;
+    multi_req.set_request_id(request.request_id());
+    for (const auto &apply : applies.value()) {
+        multi_req.add_users_id(apply.user_id);
+    }
+    auto multi_rsp = clients_.GetMultiUserInfo(multi_req);
     zchat::GetPendingFriendEventListRsp response;
     MarkOk(request.request_id(), &response);
     for (const auto &apply : applies.value()) {
         auto *event = response.add_event();
         event->set_event_id(apply.event_id);
-        *event->mutable_sender() = UserInfoForId(apply.user_id);
+        if (multi_rsp.ok() && multi_rsp.value().success()) {
+            auto it = multi_rsp.value().users_info().find(apply.user_id);
+            if (it != multi_rsp.value().users_info().end()) {
+                *event->mutable_sender() = it->second;
+            }
+        }
     }
     ZCHAT_LOG_INFO(
         "FriendService::GetPendingFriendEvents success: request_id={}",
@@ -304,7 +361,10 @@ zchat::ChatSessionCreateRsp FriendApplicationService::CreateChatSession(
                                                           ins_member.error());
     }
     ChatSessionRecord session{session_id, name, ChatSessionType::kGroup};
-    zchat::ChatSessionInfo info = BuildChatSessionInfo(session, user_id);
+    const std::unordered_map<std::string, zchat::UserInfo> empty_peers;
+    const std::unordered_map<std::string, zchat::MessageInfo> empty_msgs;
+    zchat::ChatSessionInfo info =
+        BuildChatSessionInfo(session, user_id, empty_peers, empty_msgs);
     zchat::NotifyMessage notify;
     notify.set_notify_type(zchat::CHAT_SESSION_CREATE_NOTIFY);
     *notify.mutable_new_chat_session_info()->mutable_chat_session_info() = info;
@@ -391,9 +451,19 @@ FriendApplicationService::SearchFriend(const zchat::FriendSearchReq &request) {
     }
     zchat::FriendSearchRsp response;
     MarkOk(request.request_id(), &response);
+    std::vector<std::string> candidate_ids;
     for (const auto &user_info : search_response.value().user_info()) {
-        auto relation = friends_.RelationExists(user_id, user_info.user_id());
-        if (relation.ok() && relation.value()) {
+        candidate_ids.push_back(user_info.user_id());
+    }
+    std::unordered_set<std::string> existing_set;
+    auto existing = friends_.ListExistingPeers(user_id, candidate_ids);
+    if (existing.ok()) {
+        for (const auto &pid : existing.value()) {
+            existing_set.insert(pid);
+        }
+    }
+    for (const auto &user_info : search_response.value().user_info()) {
+        if (existing_set.count(user_info.user_id()) > 0) {
             continue;
         }
         *response.add_user_info() = user_info;
@@ -417,18 +487,6 @@ FriendApplicationService::ResolveUserId(const std::string &session_id,
     return resolved;
 }
 
-std::string
-FriendApplicationService::AvatarForUserId(const std::string &avatar_id) {
-    if (avatar_id.empty()) {
-        return std::string();
-    }
-    auto file = clients_.GetFile(avatar_id);
-    if (!file.ok() || !file.value().has_value()) {
-        return std::string();
-    }
-    return file.value()->file_content;
-}
-
 zchat::UserInfo
 FriendApplicationService::UserInfoForId(const std::string &user_id) {
     zchat::GetUserInfoReq req;
@@ -441,7 +499,9 @@ FriendApplicationService::UserInfoForId(const std::string &user_id) {
 }
 
 zchat::ChatSessionInfo FriendApplicationService::BuildChatSessionInfo(
-    const ChatSessionRecord &session, const std::string &current_user_id) {
+    const ChatSessionRecord &session, const std::string &current_user_id,
+    const std::unordered_map<std::string, zchat::UserInfo> &peer_infos,
+    const std::unordered_map<std::string, zchat::MessageInfo> &recent_msgs) {
     zchat::ChatSessionInfo info;
     info.set_chat_session_id(session.chat_session_id);
     info.set_chat_session_name(session.chat_session_name);
@@ -450,21 +510,16 @@ zchat::ChatSessionInfo FriendApplicationService::BuildChatSessionInfo(
                                                    current_user_id);
         if (peer_id.ok() && peer_id.value().has_value()) {
             info.set_single_chat_friend_id(peer_id.value().value());
-            zchat::UserInfo peer_info = UserInfoForId(peer_id.value().value());
-            if (!peer_info.user_id().empty()) {
-                info.set_chat_session_name(peer_info.nickname());
-                info.set_avatar(peer_info.avatar());
+            auto it = peer_infos.find(peer_id.value().value());
+            if (it != peer_infos.end()) {
+                info.set_chat_session_name(it->second.nickname());
+                info.set_avatar(it->second.avatar());
             }
         }
     }
-    zchat::GetRecentMsgReq recent_req;
-    recent_req.set_request_id("internal");
-    recent_req.set_chat_session_id(session.chat_session_id);
-    recent_req.set_msg_count(1);
-    auto recent_rsp = clients_.GetRecentMsg(recent_req);
-    if (recent_rsp.ok() && recent_rsp.value().success() &&
-        recent_rsp.value().msg_list_size() > 0) {
-        *info.mutable_prev_message() = recent_rsp.value().msg_list(0);
+    auto msg_it = recent_msgs.find(session.chat_session_id);
+    if (msg_it != recent_msgs.end()) {
+        *info.mutable_prev_message() = msg_it->second;
     }
     return info;
 }
