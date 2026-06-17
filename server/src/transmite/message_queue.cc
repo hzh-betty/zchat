@@ -129,8 +129,8 @@ class AmqpPublisherRuntime {
         state->payload = payload;
         auto *state_holder = new std::shared_ptr<PublishState>(state);
         timeval timeout{};
-        const int scheduled = event_base_once(base_.get(), -1, EV_TIMEOUT,
-                                              PublishOnLoop, state_holder, &timeout);
+        const int scheduled = event_base_once(
+            base_.get(), -1, EV_TIMEOUT, PublishOnLoop, state_holder, &timeout);
         if (scheduled != 0) {
             delete state_holder;
             return VoidResult::Fail(
@@ -141,8 +141,7 @@ class AmqpPublisherRuntime {
         if (!state->done.wait_for(lock, std::chrono::seconds(3),
                                   [&state]() { return state->completed; })) {
             return VoidResult::Fail(AppError::WithCode(
-                ErrorCode::kExternalServiceError,
-                "rabbitmq publish timeout"));
+                ErrorCode::kExternalServiceError, "rabbitmq publish timeout"));
         }
         return state->result;
     }
@@ -221,19 +220,18 @@ class AmqpConsumerRuntime {
         channel_.declareExchange(exchange_, AMQP::direct, AMQP::durable);
         channel_.declareQueue(queue_, AMQP::durable);
         channel_.bindQueue(exchange_, queue_, routing_key_);
-        channel_.setQos(static_cast<std::uint16_t>(
-            pool_size > 0 ? pool_size * 2 : 8));
-        channel_.consume(queue_).onReceived(
-            [this](const AMQP::Message &message,
-                   std::uint64_t delivery_tag, bool) {
-                const std::string payload(message.body(),
-                                          message.bodySize());
-                {
-                    std::lock_guard<std::mutex> lock(queue_mutex_);
-                    pending_tasks_.push({payload, delivery_tag});
-                }
-                queue_cv_.notify_one();
-            });
+        channel_.setQos(
+            static_cast<std::uint16_t>(pool_size > 0 ? pool_size * 2 : 8));
+        channel_.consume(queue_).onReceived([this](const AMQP::Message &message,
+                                                   std::uint64_t delivery_tag,
+                                                   bool) {
+            const std::string payload(message.body(), message.bodySize());
+            {
+                std::lock_guard<std::mutex> lock(queue_mutex_);
+                pending_tasks_.push({payload, delivery_tag});
+            }
+            queue_cv_.notify_one();
+        });
         StartAckDrainer();
         thread_ = std::thread([this]() { event_base_dispatch(base_.get()); });
     }
@@ -312,11 +310,9 @@ class AmqpConsumerRuntime {
             std::lock_guard<std::mutex> lock(ack_mutex_);
             pending_acks_.push(delivery_tag);
         }
-        auto *tag_ptr = new std::uint64_t(delivery_tag);
         timeval timeout{};
-        event_base_once(base_.get(), -1, EV_TIMEOUT, DrainAcksCallback,
-                        this, &timeout);
-        (void)tag_ptr;
+        event_base_once(base_.get(), -1, EV_TIMEOUT, DrainAcksCallback, this,
+                        &timeout);
     }
 
     static void DrainAcksCallback(evutil_socket_t, short, void *context) {
@@ -336,8 +332,7 @@ class AmqpConsumerRuntime {
         }
     }
 
-    void StartAckDrainer() {
-    }
+    void StartAckDrainer() {}
 
     std::unique_ptr<event_base, EventBaseDeleter> base_;
     RuntimeHandler handler_;
@@ -379,10 +374,9 @@ ConfiguredMessageQueuePublisher::Publish(const std::string &payload) {
 }
 
 ConfiguredMessageQueueConsumer::ConfiguredMessageQueueConsumer(
-    const RabbitmqConfig &config, MessageHandler handler,
-    std::size_t pool_size)
-    : runtime_(std::make_unique<AmqpConsumerRuntime>(
-          config, std::move(handler), pool_size)) {}
+    const RabbitmqConfig &config, MessageHandler handler, std::size_t pool_size)
+    : runtime_(std::make_unique<AmqpConsumerRuntime>(config, std::move(handler),
+                                                     pool_size)) {}
 
 ConfiguredMessageQueueConsumer::~ConfiguredMessageQueueConsumer() = default;
 
