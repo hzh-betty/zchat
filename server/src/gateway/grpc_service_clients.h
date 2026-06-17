@@ -5,7 +5,9 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 
 #include <drogon/HttpResponse.h>
 
@@ -30,8 +32,15 @@ class GrpcServiceClients : public NonCopyable {
     Forward(const std::string &path, const std::string &body,
             std::function<void(const drogon::HttpResponsePtr &)> &&callback);
 
+    std::shared_ptr<grpc::Channel>
+    GetOrCreateChannel(const std::string &endpoint);
+
+    EtcdDiscovery &discovery() { return discovery_; }
+
   private:
     EtcdDiscovery discovery_;
+    std::mutex channel_mutex_;
+    std::unordered_map<std::string, std::shared_ptr<grpc::Channel>> channels_;
 };
 
 } // namespace zchat

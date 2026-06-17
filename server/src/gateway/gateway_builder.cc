@@ -1,5 +1,7 @@
 #include "gateway/gateway_builder.h"
 
+#include <chrono>
+
 #include "common/runtime.h"
 #include "gateway/websocket_controller.h"
 
@@ -12,6 +14,15 @@ int GatewayBuilder::Start() {
     controller_ = std::make_unique<GatewayController>(context_);
     controller_->RegisterRoutes();
     ZchatWebSocketController::SetContext(context_);
+    drogon::app().getLoop()->runEvery(
+        std::chrono::seconds(120), [context = context_]() {
+            auto &connections = context->connections();
+            auto &sessions = context->sessions();
+            connections.ForEachBoundUser(
+                [&sessions](const std::string &user_id) {
+                    sessions.RefreshOnline(user_id);
+                });
+        });
     return RunDrogonGateway("zchat_gateway", config_.server.http_port,
                             config_.server.websocket_port);
 }

@@ -4,15 +4,20 @@
 
 namespace zchat {
 
-namespace {
-
-std::shared_ptr<grpc::Channel> EndpointChannel(const std::string &endpoint) {
-    return grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
-}
-
-} // namespace
-
 ServiceClients::ServiceClients(const EtcdConfig &config) : discovery_(config) {}
+
+std::shared_ptr<grpc::Channel>
+ServiceClients::GetOrCreateChannel(const std::string &endpoint) {
+    std::lock_guard<std::mutex> lock(channel_mutex_);
+    auto it = channels_.find(endpoint);
+    if (it != channels_.end()) {
+        return it->second;
+    }
+    auto channel =
+        grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
+    channels_[endpoint] = channel;
+    return channel;
+}
 
 Result<zchat::GetUserInfoRsp>
 ServiceClients::GetUser(const zchat::GetUserInfoReq &request) {
@@ -20,9 +25,11 @@ ServiceClients::GetUser(const zchat::GetUserInfoReq &request) {
     if (!endpoint.ok()) {
         return Result<zchat::GetUserInfoRsp>::Fail(endpoint.error());
     }
-    auto stub = zchat::UserService::NewStub(EndpointChannel(endpoint.value()));
+    auto stub =
+        zchat::UserService::NewStub(GetOrCreateChannel(endpoint.value()));
     zchat::GetUserInfoRsp response;
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + kGrpcDeadline);
     const grpc::Status status = stub->GetUserInfo(&context, request, &response);
     if (!status.ok()) {
         return Result<zchat::GetUserInfoRsp>::Fail(
@@ -39,9 +46,11 @@ ServiceClients::GetMultiUserInfo(const zchat::GetMultiUserInfoReq &request) {
     if (!endpoint.ok()) {
         return Result<zchat::GetMultiUserInfoRsp>::Fail(endpoint.error());
     }
-    auto stub = zchat::UserService::NewStub(EndpointChannel(endpoint.value()));
+    auto stub =
+        zchat::UserService::NewStub(GetOrCreateChannel(endpoint.value()));
     zchat::GetMultiUserInfoRsp response;
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + kGrpcDeadline);
     const grpc::Status status =
         stub->GetMultiUserInfo(&context, request, &response);
     if (!status.ok()) {
@@ -62,9 +71,10 @@ ServiceClients::GetChatSessionMemberIds(
             endpoint.error());
     }
     auto stub =
-        zchat::FriendService::NewStub(EndpointChannel(endpoint.value()));
+        zchat::FriendService::NewStub(GetOrCreateChannel(endpoint.value()));
     zchat::GetChatSessionMemberIdsRsp response;
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + kGrpcDeadline);
     const grpc::Status status =
         stub->GetChatSessionMemberIds(&context, request, &response);
     if (!status.ok()) {
@@ -83,9 +93,10 @@ ServiceClients::GetRecentMsg(const zchat::GetRecentMsgReq &request) {
         return Result<zchat::GetRecentMsgRsp>::Fail(endpoint.error());
     }
     auto stub =
-        zchat::MsgStorageService::NewStub(EndpointChannel(endpoint.value()));
+        zchat::MsgStorageService::NewStub(GetOrCreateChannel(endpoint.value()));
     zchat::GetRecentMsgRsp response;
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + kGrpcDeadline);
     const grpc::Status status =
         stub->GetRecentMsg(&context, request, &response);
     if (!status.ok()) {
@@ -103,11 +114,13 @@ ServiceClients::GetFile(const std::string &file_id) {
     if (!endpoint.ok()) {
         return Result<std::optional<FileRecord>>::Fail(endpoint.error());
     }
-    auto stub = zchat::FileService::NewStub(EndpointChannel(endpoint.value()));
+    auto stub =
+        zchat::FileService::NewStub(GetOrCreateChannel(endpoint.value()));
     zchat::GetSingleFileReq request;
     request.set_file_id(file_id);
     zchat::GetSingleFileRsp response;
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + kFileGrpcDeadline);
     const grpc::Status status =
         stub->GetSingleFile(&context, request, &response);
     if (!status.ok()) {
@@ -133,7 +146,8 @@ Result<std::string> ServiceClients::PutFile(const std::string &file_name,
     if (!endpoint.ok()) {
         return Result<std::string>::Fail(endpoint.error());
     }
-    auto stub = zchat::FileService::NewStub(EndpointChannel(endpoint.value()));
+    auto stub =
+        zchat::FileService::NewStub(GetOrCreateChannel(endpoint.value()));
     zchat::PutSingleFileReq request;
     request.mutable_file_data()->set_file_name(file_name);
     request.mutable_file_data()->set_file_size(
@@ -141,6 +155,7 @@ Result<std::string> ServiceClients::PutFile(const std::string &file_name,
     request.mutable_file_data()->set_file_content(file_content);
     zchat::PutSingleFileRsp response;
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + kFileGrpcDeadline);
     const grpc::Status status =
         stub->PutSingleFile(&context, request, &response);
     if (!status.ok()) {

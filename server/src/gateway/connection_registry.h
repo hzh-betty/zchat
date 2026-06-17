@@ -4,6 +4,7 @@
 #include "common/noncopyable.h"
 
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -80,6 +81,22 @@ class ConnectionRegistry : public NonCopyable {
         } else {
             ZCHAT_LOG_DEBUG("skip notify user={} reason=expired-connection",
                             user_id);
+        }
+    }
+
+    void ForEachBoundUser(const std::function<void(const std::string &)> &fn) {
+        std::vector<std::string> user_ids;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            user_ids.reserve(connections_by_user_.size());
+            for (const auto &[user_id, conn] : connections_by_user_) {
+                if (!conn.expired()) {
+                    user_ids.push_back(user_id);
+                }
+            }
+        }
+        for (const auto &user_id : user_ids) {
+            fn(user_id);
         }
     }
 

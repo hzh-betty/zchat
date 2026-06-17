@@ -80,7 +80,18 @@ VoidResult SessionStore::SetOnline(const std::string &user_id) {
             [](const drogon::nosql::RedisResult &result) {
                 return result.getStringForDisplaying();
             },
-            "set zchat:online:%s 1", user_id.c_str());
+            "setex zchat:online:%s 300 1", user_id.c_str());
+        return VoidResult::Ok();
+    });
+}
+
+VoidResult SessionStore::RefreshOnline(const std::string &user_id) {
+    return RunRedis([&]() {
+        redis_->execCommandSync<long long>(
+            [](const drogon::nosql::RedisResult &result) {
+                return result.asInteger();
+            },
+            "expire zchat:online:%s 300", user_id.c_str());
         return VoidResult::Ok();
     });
 }

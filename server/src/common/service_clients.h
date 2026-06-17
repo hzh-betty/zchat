@@ -7,6 +7,12 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <chrono>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "common/config.h"
 #include "common/domain_records.h"
 #include "common/etcd_service.h"
@@ -39,7 +45,15 @@ class ServiceClients : public NonCopyable {
                                 const std::string &file_content);
 
   private:
+    std::shared_ptr<grpc::Channel>
+    GetOrCreateChannel(const std::string &endpoint);
+
+    static constexpr auto kGrpcDeadline = std::chrono::seconds(5);
+    static constexpr auto kFileGrpcDeadline = std::chrono::seconds(30);
+
     EtcdDiscovery discovery_;
+    std::mutex channel_mutex_;
+    std::unordered_map<std::string, std::shared_ptr<grpc::Channel>> channels_;
 };
 
 } // namespace zchat

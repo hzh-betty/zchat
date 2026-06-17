@@ -25,6 +25,7 @@ class SessionStore : public NonCopyable {
     VoidResult RemoveSession(const std::string &session_id);
 
     VoidResult SetOnline(const std::string &user_id);
+    VoidResult RefreshOnline(const std::string &user_id);
     VoidResult SetOffline(const std::string &user_id);
     Result<bool> IsOnline(const std::string &user_id);
 
