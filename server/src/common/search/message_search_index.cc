@@ -163,7 +163,8 @@ ConfiguredMessageSearchIndex::IndexMessage(const MessageRecord &message) {
 
 Result<std::vector<MessageRecord>>
 ConfiguredMessageSearchIndex::SearchMessages(const std::string &session_id,
-                                             const std::string &keyword) {
+                                             const std::string &keyword,
+                                             int offset, int limit) {
     if (!client_) {
         return Result<std::vector<MessageRecord>>::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
@@ -174,7 +175,8 @@ ConfiguredMessageSearchIndex::SearchMessages(const std::string &session_id,
     request->setMethod(drogon::Post);
     request->setPath(std::string(kIndexPath) + "/_search");
     request->setContentTypeCode(drogon::CT_APPLICATION_JSON);
-    request->setBody(BuildElasticsearchSearchRequest(session_id, keyword));
+    request->setBody(
+        BuildElasticsearchSearchRequest(session_id, keyword, offset, limit));
     AddAuthHeader(request);
 
     const auto [result, response] =
@@ -209,9 +211,11 @@ std::string BuildElasticsearchMessageDocument(const MessageRecord &message) {
 }
 
 std::string BuildElasticsearchSearchRequest(const std::string &session_id,
-                                            const std::string &keyword) {
+                                            const std::string &keyword,
+                                            int offset, int limit) {
     Json::Value root(Json::objectValue);
-    root["size"] = 100;
+    root["from"] = offset;
+    root["size"] = limit;
     root["sort"][0]["create_time"]["order"] = "asc";
 
     Json::Value filters(Json::arrayValue);

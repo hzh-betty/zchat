@@ -23,8 +23,8 @@ class MessageSearchIndex : public NonCopyable {
 
     virtual VoidResult IndexMessage(const MessageRecord &message) = 0;
     virtual Result<std::vector<MessageRecord>>
-    SearchMessages(const std::string &session_id,
-                   const std::string &keyword) = 0;
+    SearchMessages(const std::string &session_id, const std::string &keyword,
+                   int offset, int limit) = 0;
 };
 
 class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
@@ -34,8 +34,8 @@ class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
 
     VoidResult IndexMessage(const MessageRecord &message) override;
     Result<std::vector<MessageRecord>>
-    SearchMessages(const std::string &session_id,
-                   const std::string &keyword) override;
+    SearchMessages(const std::string &session_id, const std::string &keyword,
+                   int offset, int limit) override;
 
   private:
     VoidResult EnsureIndex();
@@ -50,7 +50,8 @@ class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
 
 std::string BuildElasticsearchMessageDocument(const MessageRecord &message);
 std::string BuildElasticsearchSearchRequest(const std::string &session_id,
-                                            const std::string &keyword);
+                                            const std::string &keyword,
+                                            int offset, int limit);
 std::string BuildElasticsearchMessageIndexDefinition();
 
 } // namespace zchat

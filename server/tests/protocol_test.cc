@@ -41,12 +41,7 @@ class FakeMessageRepository final : public zchat::MessageRepository {
     }
     zchat::Result<std::vector<zchat::MessageRecord>>
     ListMessagesByTime(const std::string &session_id, std::int64_t,
-                       std::int64_t) override {
-        return ListRecentMessages(session_id, 1);
-    }
-    zchat::Result<std::vector<zchat::MessageRecord>>
-    SearchMessages(const std::string &session_id,
-                   const std::string &) override {
+                       std::int64_t, int, std::optional<std::string>) override {
         return ListRecentMessages(session_id, 1);
     }
     zchat::Result<std::optional<zchat::MessageRecord>>

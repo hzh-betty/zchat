@@ -1,6 +1,7 @@
 #include "message/message_service.h"
 
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -51,8 +52,21 @@ MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
         return MakeErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
                                                           auth.error());
     }
+    int max_count =
+        request.has_max_count() ? static_cast<int>(request.max_count()) : 50;
+    if (max_count < 1) {
+        max_count = 1;
+    }
+    if (max_count > 200) {
+        max_count = 200;
+    }
+    std::optional<std::string> before_msg_id;
+    if (request.has_before_msg_id() && !request.before_msg_id().empty()) {
+        before_msg_id = request.before_msg_id();
+    }
     auto messages = messages_.ListMessagesByTime(
-        request.chat_session_id(), request.start_time(), request.over_time());
+        request.chat_session_id(), request.start_time(), request.over_time(),
+        max_count, before_msg_id);
     if (!messages.ok()) {
         return MakeErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
                                                           messages.error());
@@ -73,8 +87,19 @@ zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
         return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
                                                       auth.error());
     }
-    auto messages = search_index_.SearchMessages(request.chat_session_id(),
-                                                 request.search_key());
+    int offset = request.has_offset() ? request.offset() : 0;
+    if (offset < 0) {
+        offset = 0;
+    }
+    int limit = request.has_limit() ? request.limit() : 50;
+    if (limit < 1) {
+        limit = 1;
+    }
+    if (limit > 100) {
+        limit = 100;
+    }
+    auto messages = search_index_.SearchMessages(
+        request.chat_session_id(), request.search_key(), offset, limit);
     if (!messages.ok()) {
         return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
                                                       messages.error());

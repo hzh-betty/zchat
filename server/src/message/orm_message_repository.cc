@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <utility>
 
+#include <drogon/orm/SqlBinder.h>
+
 namespace zchat {
 
 OrmMessageRepository::OrmMessageRepository(
@@ -43,43 +45,54 @@ OrmMessageRepository::ListRecentMessages(const std::string &session_id,
     });
 }
 
-Result<std::vector<MessageRecord>>
-OrmMessageRepository::ListMessagesByTime(const std::string &session_id,
-                                         std::int64_t start_time,
-                                         std::int64_t end_time) {
-    return RunDb([&]() {
-        const auto result = db_->execSqlSync(
+Result<std::vector<MessageRecord>> OrmMessageRepository::ListMessagesByTime(
+    const std::string &session_id, std::int64_t start_time,
+    std::int64_t end_time, int max_count,
+    std::optional<std::string> before_msg_id) {
+    return RunDb([&]() -> Result<std::vector<MessageRecord>> {
+        const bool has_cursor =
+            before_msg_id.has_value() && !before_msg_id.value().empty();
+        std::int64_t cursor_time = 0;
+        std::int64_t cursor_id = 0;
+        if (has_cursor) {
+            const auto cursor = db_->execSqlSync(
+                "SELECT UNIX_TIMESTAMP(create_time) AS create_time,id FROM "
+                "`message` WHERE message_id=? LIMIT 1",
+                before_msg_id.value());
+            if (cursor.empty()) {
+                return Result<std::vector<MessageRecord>>::Ok({});
+            }
+            cursor_time = FieldInt64(cursor[0], "create_time");
+            cursor_id = FieldInt64(cursor[0], "id");
+        }
+
+        std::string sql =
             "SELECT message_id,session_id,user_id,message_type,"
             "UNIX_TIMESTAMP(create_time) AS create_time,content,file_id,"
             "file_name,file_size FROM `message` WHERE session_id=? "
             "AND create_time>=FROM_UNIXTIME(?) AND "
-            "create_time<=FROM_UNIXTIME(?) "
-            "ORDER BY create_time ASC,id ASC",
-            session_id, start_time, end_time);
-        std::vector<MessageRecord> messages;
-        for (const auto &row : result) {
-            messages.push_back(ToMessageRecord(row));
+            "create_time<=FROM_UNIXTIME(?)";
+        if (has_cursor) {
+            sql += " AND (create_time,id) < (FROM_UNIXTIME(?),?)";
         }
-        return Result<std::vector<MessageRecord>>::Ok(std::move(messages));
-    });
-}
+        sql += " ORDER BY create_time DESC,id DESC LIMIT ?";
 
-Result<std::vector<MessageRecord>>
-OrmMessageRepository::SearchMessages(const std::string &session_id,
-                                     const std::string &keyword) {
-    return RunDb([&]() {
-        const std::string like = "%" + keyword + "%";
-        const auto result = db_->execSqlSync(
-            "SELECT message_id,session_id,user_id,message_type,"
-            "UNIX_TIMESTAMP(create_time) AS create_time,content,file_id,"
-            "file_name,file_size FROM `message` WHERE session_id=? "
-            "AND message_type=0 AND content LIKE ? ORDER BY create_time ASC,id "
-            "ASC",
-            session_id, like);
+        auto binder = (*db_ << sql);
+        binder << session_id << start_time << end_time;
+        if (has_cursor) {
+            binder << cursor_time << cursor_id;
+        }
+        binder << max_count;
+        binder << drogon::orm::Mode::Blocking;
+        drogon::orm::Result result(nullptr);
+        binder >> [&result](const drogon::orm::Result &r) { result = r; };
+        binder.exec();
+
         std::vector<MessageRecord> messages;
         for (const auto &row : result) {
             messages.push_back(ToMessageRecord(row));
         }
+        std::reverse(messages.begin(), messages.end());
         return Result<std::vector<MessageRecord>>::Ok(std::move(messages));
     });
 }

@@ -28,10 +28,8 @@ class MessageRepository : public NonCopyable {
     ListRecentMessages(const std::string &session_id, int count) = 0;
     virtual Result<std::vector<MessageRecord>>
     ListMessagesByTime(const std::string &session_id, std::int64_t start_time,
-                       std::int64_t end_time) = 0;
-    virtual Result<std::vector<MessageRecord>>
-    SearchMessages(const std::string &session_id,
-                   const std::string &keyword) = 0;
+                       std::int64_t end_time, int max_count,
+                       std::optional<std::string> before_msg_id) = 0;
     virtual Result<std::optional<MessageRecord>>
     LastMessage(const std::string &session_id) = 0;
 };
@@ -48,10 +46,8 @@ class OrmMessageRepository final : public MessageRepository,
     ListRecentMessages(const std::string &session_id, int count) override;
     Result<std::vector<MessageRecord>>
     ListMessagesByTime(const std::string &session_id, std::int64_t start_time,
-                       std::int64_t end_time) override;
-    Result<std::vector<MessageRecord>>
-    SearchMessages(const std::string &session_id,
-                   const std::string &keyword) override;
+                       std::int64_t end_time, int max_count,
+                       std::optional<std::string> before_msg_id) override;
     Result<std::optional<MessageRecord>>
     LastMessage(const std::string &session_id) override;
 };
