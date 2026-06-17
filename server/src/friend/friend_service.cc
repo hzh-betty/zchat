@@ -300,8 +300,8 @@ zchat::ChatSessionCreateRsp FriendApplicationService::CreateChatSession(
     }
     auto ins_member = friends_.InsertChatSessionMembers(session_id, members);
     if (!ins_member.ok()) {
-        return ErrorResponse<zchat::ChatSessionCreateRsp>(
-            request.request_id(), ins_member.error());
+        return ErrorResponse<zchat::ChatSessionCreateRsp>(request.request_id(),
+                                                          ins_member.error());
     }
     ChatSessionRecord session{session_id, name, ChatSessionType::kGroup};
     zchat::ChatSessionInfo info = BuildChatSessionInfo(session, user_id);
@@ -406,14 +406,15 @@ FriendApplicationService::SearchFriend(const zchat::FriendSearchReq &request) {
 std::string
 FriendApplicationService::ResolveUserId(const std::string &session_id,
                                         const std::string &optional_user_id) {
-    if (!optional_user_id.empty()) {
-        return optional_user_id;
-    }
     auto user_id = sessions_.GetUserId(session_id);
     if (!user_id.ok() || !user_id.value().has_value()) {
         return std::string();
     }
-    return user_id.value().value();
+    const std::string &resolved = user_id.value().value();
+    if (!optional_user_id.empty() && optional_user_id != resolved) {
+        return std::string();
+    }
+    return resolved;
 }
 
 std::string
@@ -476,8 +477,7 @@ void FriendApplicationService::NotifyUser(const std::string &user_id,
 }
 
 void FriendApplicationService::NotifyUsers(
-    const std::vector<std::string> &user_ids,
-    const zchat::NotifyMessage &msg) {
+    const std::vector<std::string> &user_ids, const zchat::NotifyMessage &msg) {
     std::string payload;
     msg.SerializeToString(&payload);
     auto outcome = notifier_.PublishBatch(user_ids, payload);
