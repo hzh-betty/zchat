@@ -280,8 +280,8 @@ zchat::GetMultiUserInfoRsp UserApplicationService::GetMultiUserInfo(
 zchat::SearchUsersRsp
 UserApplicationService::SearchUsers(const zchat::SearchUsersReq &request) {
     ZCHAT_LOG_INFO("SearchUsers request_id={}", request.request_id());
-    auto users = search_index_.SearchUsers(
-        request.search_key(), {request.exclude_user_id()});
+    auto users = search_index_.SearchUsers(request.search_key(),
+                                           {request.exclude_user_id()});
     if (!users.ok()) {
         return ErrorResponse<zchat::SearchUsersRsp>(request.request_id(),
                                                     users.error());
@@ -482,22 +482,19 @@ VoidResult UserApplicationService::IndexUserById(const std::string &user_id) {
 
 Result<std::string>
 UserApplicationService::LoginUser(const std::string &user_id) {
-    auto online = sessions_.IsOnline(user_id);
-    if (!online.ok()) {
-        return Result<std::string>::Fail(online.error());
-    }
-    if (online.value()) {
-        return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
-    }
     const std::string session_id = NewId();
     auto saved = sessions_.SaveSession(session_id, user_id);
     if (!saved.ok()) {
         return Result<std::string>::Fail(saved.error());
     }
-    auto online_set = sessions_.SetOnline(user_id);
+    auto online_set = sessions_.SetOnlineIfAbsent(user_id);
     if (!online_set.ok()) {
         sessions_.RemoveSession(session_id);
         return Result<std::string>::Fail(online_set.error());
+    }
+    if (!online_set.value()) {
+        sessions_.RemoveSession(session_id);
+        return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
     }
     return Result<std::string>::Ok(session_id);
 }

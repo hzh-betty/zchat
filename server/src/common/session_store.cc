@@ -99,6 +99,17 @@ VoidResult SessionStore::SetOnline(const std::string &user_id) {
     });
 }
 
+Result<bool> SessionStore::SetOnlineIfAbsent(const std::string &user_id) {
+    return RunRedis([&]() -> Result<bool> {
+        const std::string result = redis_->execCommandSync<std::string>(
+            [](const drogon::nosql::RedisResult &r) {
+                return r.getStringForDisplaying();
+            },
+            "set zchat:online:%s 1 NX EX 300", user_id.c_str());
+        return Result<bool>::Ok(result == "OK");
+    });
+}
+
 VoidResult SessionStore::RefreshOnline(const std::string &user_id) {
     return RunRedis([&]() {
         redis_->execCommandSync<long long>(
