@@ -1,18 +1,14 @@
 #ifndef ZCHAT_SERVER_SRC_COMMON_SERVICE_CLIENTS_H_
 #define ZCHAT_SERVER_SRC_COMMON_SERVICE_CLIENTS_H_
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include <grpcpp/grpcpp.h>
 
-#include <chrono>
-#include <mutex>
-#include <string>
-#include <unordered_map>
-#include <vector>
-
+#include "common/channel_pool.h"
 #include "common/config.h"
 #include "common/domain_records.h"
 #include "common/etcd_service.h"
@@ -51,16 +47,45 @@ class ServiceClients : public NonCopyable {
                                 const std::string &file_content);
 
   private:
-    std::shared_ptr<grpc::Channel>
-    GetOrCreateChannel(const std::string &endpoint);
+    template <typename Service, typename Req, typename Rsp>
+    Result<Rsp>
+    CallUnary(const char *service_name, std::chrono::seconds deadline,
+              grpc::Status (Service::Stub::*method)(grpc::ClientContext *,
+                                                    const Req &, Rsp *),
+              const Req &request);
 
     static constexpr auto kGrpcDeadline = std::chrono::seconds(5);
     static constexpr auto kFileGrpcDeadline = std::chrono::seconds(30);
 
     EtcdDiscovery discovery_;
-    std::mutex channel_mutex_;
-    std::unordered_map<std::string, std::shared_ptr<grpc::Channel>> channels_;
+    ChannelPool channel_pool_;
 };
+
+template <typename Service, typename Req, typename Rsp>
+Result<Rsp> ServiceClients::CallUnary(
+    const char *service_name, std::chrono::seconds deadline,
+    grpc::Status (Service::Stub::*method)(grpc::ClientContext *, const Req &,
+                                          Rsp *),
+    const Req &request) {
+    auto endpoint = discovery_.Endpoint(service_name);
+    if (!endpoint.ok()) {
+        return Result<Rsp>::Fail(endpoint.error());
+    }
+    auto stub =
+        Service::NewStub(channel_pool_.GetOrCreateChannel(endpoint.value()));
+    Rsp response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + deadline);
+    const grpc::Status status =
+        (stub.get()->*method)(&context, request, &response);
+    if (!status.ok()) {
+        return Result<Rsp>::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               std::string(service_name) + " grpc call failed")
+                .WithDetail(status.error_message()));
+    }
+    return Result<Rsp>::Ok(std::move(response));
+}
 
 } // namespace zchat
 

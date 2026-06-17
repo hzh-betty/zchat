@@ -1,13 +1,12 @@
 #ifndef ZCHAT_SERVER_SRC_GATEWAY_GRPC_SERVICE_CLIENTS_H_
 #define ZCHAT_SERVER_SRC_GATEWAY_GRPC_SERVICE_CLIENTS_H_
 
+#include "common/channel_pool.h"
 #include "common/noncopyable.h"
 
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <unordered_map>
 
 #include <grpcpp/grpcpp.h>
 
@@ -23,14 +22,15 @@ class GrpcServiceClients : public NonCopyable {
     ~GrpcServiceClients() = default;
 
     std::shared_ptr<grpc::Channel>
-    GetOrCreateChannel(const std::string &endpoint);
+    GetOrCreateChannel(const std::string &endpoint) {
+        return channel_pool_.GetOrCreateChannel(endpoint);
+    }
 
     EtcdDiscovery &discovery() { return discovery_; }
 
   private:
     EtcdDiscovery discovery_;
-    std::mutex channel_mutex_;
-    std::unordered_map<std::string, std::shared_ptr<grpc::Channel>> channels_;
+    ChannelPool channel_pool_;
 };
 
 } // namespace zchat

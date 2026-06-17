@@ -1,4 +1,5 @@
 add_library(zchat_common STATIC
+  channel_pool.cc
   config.cc
   crypto.cc
   etcd_service.cc
