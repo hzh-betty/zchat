@@ -5,6 +5,7 @@ add_executable(zchat_gateway
   gateway_main.cc
   grpc_service_clients.cc
   notify_subscriber.cc
+  route_table.cc
   websocket_controller.cc)
 target_link_libraries(zchat_gateway
   PRIVATE
