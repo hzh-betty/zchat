@@ -56,9 +56,20 @@ message PutMultiFileRsp {
     repeated FileMessageInfo file_info = 4;
 }
 
+message FileChunk {
+    string file_id = 1;     // 文件ID（下载时由服务端填充，上传时留空）
+    string file_name = 2;   // 文件名（仅首块携带）
+    int64 file_size = 3;    // 文件总大小（仅首块携带）
+    int64 offset = 4;       // 当前块在文件中的字节偏移
+    bytes chunk_data = 5;   // 分块数据
+    bool last = 6;          // 是否最后一块
+}
+
 service FileService {
     rpc GetSingleFile(GetSingleFileReq) returns (GetSingleFileRsp);
     rpc GetMultiFile(GetMultiFileReq) returns (GetMultiFileRsp);
     rpc PutSingleFile(PutSingleFileReq) returns (PutSingleFileRsp);
     rpc PutMultiFile(PutMultiFileReq) returns (PutMultiFileRsp);
+    rpc GetSingleFileStream(GetSingleFileReq) returns (stream FileChunk);
+    rpc PutSingleFileStream(stream FileChunk) returns (PutSingleFileRsp);
 }

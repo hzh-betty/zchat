@@ -11,6 +11,8 @@ message GetHistoryMsgReq {
     int64 over_time = 4;
     optional string user_id = 5;
     optional string session_id = 6;
+    optional int32 max_count = 7;       // 每页条数，缺省 50，上限 200
+    optional string before_msg_id = 8;  // 游标：返回该 message_id 之前的消息，首页不传
 }
 message GetHistoryMsgRsp {
     string request_id = 1;
@@ -40,6 +42,8 @@ message MsgSearchReq {
     optional string session_id = 3;
     string chat_session_id = 4;
     string search_key = 5;
+    optional int32 offset = 6;  // 搜索结果偏移，缺省 0
+    optional int32 limit = 7;   // 每页条数，缺省 50，上限 100
 }
 message MsgSearchRsp {
     string request_id = 1;
@@ -48,8 +52,21 @@ message MsgSearchRsp {
     repeated MessageInfo msg_list = 4;
 }
 
+message GetMultiRecentMsgReq {
+    string request_id = 1;
+    repeated string chat_session_id = 2;
+    int64 msg_count = 3;
+}
+message GetMultiRecentMsgRsp {
+    string request_id = 1;
+    bool success = 2;
+    string errmsg = 3;
+    map<string, MessageInfo> recent_messages = 4;
+}
+
 service MsgStorageService {
     rpc GetHistoryMsg(GetHistoryMsgReq) returns (GetHistoryMsgRsp);
     rpc GetRecentMsg(GetRecentMsgReq) returns (GetRecentMsgRsp);
+    rpc GetMultiRecentMsg(GetMultiRecentMsgReq) returns (GetMultiRecentMsgRsp);
     rpc MsgSearch(MsgSearchReq) returns (MsgSearchRsp);
 }
