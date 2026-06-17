@@ -2,6 +2,9 @@
 
 #include <utility>
 
+#include <drogon/orm/DbClient.h>
+#include <drogon/orm/SqlBinder.h>
+
 namespace zchat {
 
 OrmFriendRepository::OrmFriendRepository(
@@ -128,6 +131,33 @@ OrmFriendRepository::InsertChatSessionMember(const std::string &session_id,
             "INSERT IGNORE INTO `chat_session_member` (session_id,user_id) "
             "VALUES (?,?)",
             session_id, user_id);
+        return VoidResult::Ok();
+    });
+}
+
+VoidResult OrmFriendRepository::InsertChatSessionMembers(
+    const std::string &session_id,
+    const std::vector<std::string> &user_ids) {
+    if (user_ids.empty()) {
+        return VoidResult::Ok();
+    }
+    return RunDb([&]() {
+        std::string sql =
+            "INSERT IGNORE INTO `chat_session_member` (session_id,user_id) "
+            "VALUES ";
+        for (std::size_t i = 0; i < user_ids.size(); ++i) {
+            if (i > 0) {
+                sql += ",";
+            }
+            sql += "(?,?)";
+        }
+        auto binder = (*db_ << sql);
+        for (const auto &uid : user_ids) {
+            binder << session_id << uid;
+        }
+        binder << drogon::orm::Mode::Blocking;
+        binder >> [](const drogon::orm::Result &) {};
+        binder.exec();
         return VoidResult::Ok();
     });
 }

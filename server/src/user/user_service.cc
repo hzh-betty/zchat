@@ -280,8 +280,8 @@ zchat::GetMultiUserInfoRsp UserApplicationService::GetMultiUserInfo(
 zchat::SearchUsersRsp
 UserApplicationService::SearchUsers(const zchat::SearchUsersReq &request) {
     ZCHAT_LOG_INFO("SearchUsers request_id={}", request.request_id());
-    auto users =
-        users_.SearchUsers(request.search_key(), request.exclude_user_id());
+    auto users = search_index_.SearchUsers(
+        request.search_key(), {request.exclude_user_id()});
     if (!users.ok()) {
         return ErrorResponse<zchat::SearchUsersRsp>(request.request_id(),
                                                     users.error());

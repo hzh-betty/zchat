@@ -1,6 +1,8 @@
 #include "transmite/transmite_service.h"
 
+#include <future>
 #include <string>
+#include <vector>
 
 #include "common/common_errors.h"
 #include "common/error_response.h"
@@ -52,16 +54,25 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
     std::string queue_payload;
     ToProtoMessage(message, FromProtoUser(sender), file_content)
         .SerializeToString(&queue_payload);
-    const auto published = queue_.Publish(queue_payload);
+
+    zchat::GetChatSessionMemberIdsReq members_request;
+    members_request.set_request_id(request.request_id());
+    members_request.set_chat_session_id(request.chat_session_id());
+
+    auto publish_fut = std::async(std::launch::async, [&]() {
+        return queue_.Publish(queue_payload);
+    });
+    auto members_fut = std::async(std::launch::async, [&]() {
+        return clients_.GetChatSessionMemberIds(members_request);
+    });
+
+    const auto published = publish_fut.get();
     if (!published.ok()) {
         return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
                                                        published.error());
     }
 
-    zchat::GetChatSessionMemberIdsReq members_request;
-    members_request.set_request_id(request.request_id());
-    members_request.set_chat_session_id(request.chat_session_id());
-    auto members_response = clients_.GetChatSessionMemberIds(members_request);
+    auto members_response = members_fut.get();
     if (members_response.ok() && members_response.value().success()) {
         zchat::NotifyMessage notify;
         notify.set_notify_type(zchat::CHAT_MESSAGE_NOTIFY);
@@ -69,16 +80,38 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
             ToProtoMessage(message, FromProtoUser(sender), file_content);
         std::string payload;
         notify.SerializeToString(&payload);
+
+        std::vector<std::string> targets;
         for (const auto &member_id : members_response.value().member_id()) {
             if (member_id != user_id.value().value()) {
-                notifier_.Publish(member_id, payload);
+                targets.push_back(member_id);
             }
         }
+
+        int notify_total = static_cast<int>(targets.size());
+        int notify_failed = 0;
+        if (!targets.empty()) {
+            auto outcome = notifier_.PublishBatch(targets, payload);
+            if (outcome.ok()) {
+                notify_failed = static_cast<int>(outcome.value().failed.size());
+                for (const auto &failed_id : outcome.value().failed) {
+                    ZCHAT_LOG_WARN(
+                        "notify publish failed request={} member={}",
+                        request.request_id(), failed_id);
+                }
+            } else {
+                notify_failed = notify_total;
+                ZCHAT_LOG_WARN(
+                    "notify publish batch failed request={} error={}",
+                    request.request_id(), FormatErrorForLog(outcome.error()));
+            }
+        }
+
         ZCHAT_LOG_INFO("new message accepted request={} message={} chat={} "
-                       "sender={} targets={}",
+                       "sender={} targets={} notify_total={} notify_failed={}",
                        request.request_id(), message.message_id,
                        request.chat_session_id(), user_id.value().value(),
-                       members_response.value().member_id_size() - 1);
+                       notify_total, notify_total, notify_failed);
     } else {
         ZCHAT_LOG_WARN("new message notify skipped request={} members_ok={}",
                        request.request_id(), members_response.ok());

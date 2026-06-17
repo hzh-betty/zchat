@@ -1,12 +1,17 @@
 #include "transmite/message_queue.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <mutex>
+#include <queue>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include <amqpcpp.h>
 #include <amqpcpp/libevent.h>
@@ -119,26 +124,33 @@ class AmqpPublisherRuntime {
                 AppError::WithCode(ErrorCode::kExternalServiceError, error));
         }
 
-        PublishState state;
-        state.runtime = this;
-        state.payload = &payload;
+        auto state = std::make_shared<PublishState>();
+        state->runtime = this;
+        state->payload = payload;
+        auto *state_holder = new std::shared_ptr<PublishState>(state);
         timeval timeout{};
         const int scheduled = event_base_once(base_.get(), -1, EV_TIMEOUT,
-                                              PublishOnLoop, &state, &timeout);
+                                              PublishOnLoop, state_holder, &timeout);
         if (scheduled != 0) {
+            delete state_holder;
             return VoidResult::Fail(
                 AppError::WithCode(ErrorCode::kExternalServiceError,
                                    "rabbitmq publish scheduling failed"));
         }
-        std::unique_lock<std::mutex> lock(state.mutex);
-        state.done.wait(lock, [&state]() { return state.completed; });
-        return state.result;
+        std::unique_lock<std::mutex> lock(state->mutex);
+        if (!state->done.wait_for(lock, std::chrono::seconds(3),
+                                  [&state]() { return state->completed; })) {
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "rabbitmq publish timeout"));
+        }
+        return state->result;
     }
 
   private:
     struct PublishState {
         AmqpPublisherRuntime *runtime = nullptr;
-        const std::string *payload = nullptr;
+        std::string payload;
         std::mutex mutex;
         std::condition_variable done;
         bool completed = false;
@@ -146,8 +158,11 @@ class AmqpPublisherRuntime {
     };
 
     static void PublishOnLoop(evutil_socket_t, short, void *context) {
-        auto *state = static_cast<PublishState *>(context);
-        state->result = state->runtime->PublishOnLoop(*state->payload);
+        auto *state_holder =
+            static_cast<std::shared_ptr<PublishState> *>(context);
+        auto state = *state_holder;
+        delete state_holder;
+        state->result = state->runtime->PublishOnLoop(state->payload);
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->completed = true;
@@ -187,16 +202,18 @@ class AmqpConsumerRuntime {
   public:
     using MessageHandler = ConfiguredMessageQueueConsumer::MessageHandler;
 
-    AmqpConsumerRuntime(const RabbitmqConfig &config, MessageHandler handler)
+    AmqpConsumerRuntime(const RabbitmqConfig &config, MessageHandler handler,
+                        std::size_t pool_size)
         : base_(CreateEventBase()), handler_(base_.get()),
           address_(BuildRabbitmqAddress(config)),
           connection_(&handler_, address_), channel_(&connection_),
           exchange_(config.exchange), queue_(config.queue),
           routing_key_(config.routing_key),
-          message_handler_(std::move(handler)) {
+          message_handler_(std::move(handler)), pool_size_(pool_size) {
         if (!base_) {
             return;
         }
+        StartWorkerPool(pool_size);
         channel_.onError([](const char *message) {
             ZCHAT_LOG_ERROR("RabbitMQ consumer channel error: {}",
                             message == nullptr ? "unknown" : message);
@@ -204,17 +221,20 @@ class AmqpConsumerRuntime {
         channel_.declareExchange(exchange_, AMQP::direct, AMQP::durable);
         channel_.declareQueue(queue_, AMQP::durable);
         channel_.bindQueue(exchange_, queue_, routing_key_);
-        channel_.consume(queue_).onReceived([this](const AMQP::Message &message,
-                                                   std::uint64_t delivery_tag,
-                                                   bool) {
-            const std::string payload(message.body(), message.bodySize());
-            const auto handled = message_handler_(payload);
-            if (!handled.ok()) {
-                ZCHAT_LOG_ERROR("RabbitMQ message handling failed: {}",
-                                handled.error().message);
-            }
-            channel_.ack(delivery_tag);
-        });
+        channel_.setQos(static_cast<std::uint16_t>(
+            pool_size > 0 ? pool_size * 2 : 8));
+        channel_.consume(queue_).onReceived(
+            [this](const AMQP::Message &message,
+                   std::uint64_t delivery_tag, bool) {
+                const std::string payload(message.body(),
+                                          message.bodySize());
+                {
+                    std::lock_guard<std::mutex> lock(queue_mutex_);
+                    pending_tasks_.push({payload, delivery_tag});
+                }
+                queue_cv_.notify_one();
+            });
+        StartAckDrainer();
         thread_ = std::thread([this]() { event_base_dispatch(base_.get()); });
     }
 
@@ -227,6 +247,7 @@ class AmqpConsumerRuntime {
         if (!base_) {
             return;
         }
+        StopWorkerPool();
         connection_.close();
         event_base_loopbreak(base_.get());
         if (thread_.joinable()) {
@@ -235,6 +256,89 @@ class AmqpConsumerRuntime {
     }
 
   private:
+    struct Task {
+        std::string payload;
+        std::uint64_t delivery_tag = 0;
+    };
+
+    void StartWorkerPool(std::size_t pool_size) {
+        stopping_.store(false);
+        for (std::size_t i = 0; i < pool_size; ++i) {
+            workers_.emplace_back([this]() { WorkerLoop(); });
+        }
+    }
+
+    void StopWorkerPool() {
+        stopping_.store(true);
+        queue_cv_.notify_all();
+        for (auto &worker : workers_) {
+            if (worker.joinable()) {
+                worker.join();
+            }
+        }
+        workers_.clear();
+    }
+
+    void WorkerLoop() {
+        while (true) {
+            Task task;
+            {
+                std::unique_lock<std::mutex> lock(queue_mutex_);
+                queue_cv_.wait(lock, [this]() {
+                    return stopping_.load() || !pending_tasks_.empty();
+                });
+                if (stopping_.load() && pending_tasks_.empty()) {
+                    return;
+                }
+                if (pending_tasks_.empty()) {
+                    continue;
+                }
+                task = std::move(pending_tasks_.front());
+                pending_tasks_.pop();
+            }
+
+            const auto handled = message_handler_(task.payload);
+            if (!handled.ok()) {
+                ZCHAT_LOG_ERROR("RabbitMQ message handling failed: {}",
+                                handled.error().message);
+            }
+
+            EnqueueAck(task.delivery_tag);
+        }
+    }
+
+    void EnqueueAck(std::uint64_t delivery_tag) {
+        {
+            std::lock_guard<std::mutex> lock(ack_mutex_);
+            pending_acks_.push(delivery_tag);
+        }
+        auto *tag_ptr = new std::uint64_t(delivery_tag);
+        timeval timeout{};
+        event_base_once(base_.get(), -1, EV_TIMEOUT, DrainAcksCallback,
+                        this, &timeout);
+        (void)tag_ptr;
+    }
+
+    static void DrainAcksCallback(evutil_socket_t, short, void *context) {
+        auto *self = static_cast<AmqpConsumerRuntime *>(context);
+        self->DrainAcks();
+    }
+
+    void DrainAcks() {
+        std::queue<std::uint64_t> acks;
+        {
+            std::lock_guard<std::mutex> lock(ack_mutex_);
+            acks.swap(pending_acks_);
+        }
+        while (!acks.empty()) {
+            channel_.ack(acks.front());
+            acks.pop();
+        }
+    }
+
+    void StartAckDrainer() {
+    }
+
     std::unique_ptr<event_base, EventBaseDeleter> base_;
     RuntimeHandler handler_;
     AMQP::Address address_;
@@ -244,7 +348,17 @@ class AmqpConsumerRuntime {
     std::string queue_;
     std::string routing_key_;
     MessageHandler message_handler_;
+    std::size_t pool_size_;
     std::thread thread_;
+
+    std::mutex queue_mutex_;
+    std::condition_variable queue_cv_;
+    std::queue<Task> pending_tasks_;
+    std::atomic_bool stopping_{false};
+    std::vector<std::thread> workers_;
+
+    std::mutex ack_mutex_;
+    std::queue<std::uint64_t> pending_acks_;
 };
 
 ConfiguredMessageQueuePublisher::ConfiguredMessageQueuePublisher(
@@ -265,9 +379,10 @@ ConfiguredMessageQueuePublisher::Publish(const std::string &payload) {
 }
 
 ConfiguredMessageQueueConsumer::ConfiguredMessageQueueConsumer(
-    const RabbitmqConfig &config, MessageHandler handler)
-    : runtime_(
-          std::make_unique<AmqpConsumerRuntime>(config, std::move(handler))) {}
+    const RabbitmqConfig &config, MessageHandler handler,
+    std::size_t pool_size)
+    : runtime_(std::make_unique<AmqpConsumerRuntime>(
+          config, std::move(handler), pool_size)) {}
 
 ConfiguredMessageQueueConsumer::~ConfiguredMessageQueueConsumer() = default;
 

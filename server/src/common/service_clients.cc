@@ -161,6 +161,31 @@ ServiceClients::GetFile(const std::string &file_id) {
     return Result<std::optional<FileRecord>>::Ok(std::move(record));
 }
 
+Result<zchat::GetMultiFileRsp>
+ServiceClients::GetMultiFile(const std::vector<std::string> &file_ids) {
+    auto endpoint = discovery_.Endpoint("file_service");
+    if (!endpoint.ok()) {
+        return Result<zchat::GetMultiFileRsp>::Fail(endpoint.error());
+    }
+    auto stub =
+        zchat::FileService::NewStub(GetOrCreateChannel(endpoint.value()));
+    zchat::GetMultiFileReq request;
+    for (const auto &file_id : file_ids) {
+        request.add_file_id_list(file_id);
+    }
+    zchat::GetMultiFileRsp response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + kFileGrpcDeadline);
+    const grpc::Status status = stub->GetMultiFile(&context, request, &response);
+    if (!status.ok()) {
+        return Result<zchat::GetMultiFileRsp>::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "file service grpc call failed")
+                .WithDetail(status.error_message()));
+    }
+    return Result<zchat::GetMultiFileRsp>::Ok(std::move(response));
+}
+
 Result<std::string> ServiceClients::PutFile(const std::string &file_name,
                                             const std::string &file_content) {
     auto endpoint = discovery_.Endpoint("file_service");

@@ -9,7 +9,7 @@
     "user": "{{MYSQL_USER}}",
     "password": "{{secret_file:MYSQL_PASSWORD_FILE}}",
     "charset": "utf8mb4",
-    "connections": 4
+    "connections": 16
   },
   "etcd": {
     "endpoints": "http://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
@@ -19,5 +19,13 @@
     "password": "{{secret_file:ZCHAT_ETCD_PASSWORD_FILE}}",
     "lease_ttl_seconds": 3,
     "auth_token_ttl_seconds": 300
+  },
+  "grpc": {
+    "num_cqs": 1,
+    "min_pollers": 2,
+    "max_pollers": 16,
+    "cq_timeout_msec": 10000,
+    "max_send_message_size": 67108864,
+    "max_receive_message_size": 67108864
   }
 }

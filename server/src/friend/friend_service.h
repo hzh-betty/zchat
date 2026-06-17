@@ -47,6 +47,8 @@ class FriendApplicationService : public NonCopyable {
                          const std::string &current_user_id);
     void NotifyUser(const std::string &user_id,
                     const zchat::NotifyMessage &msg);
+    void NotifyUsers(const std::vector<std::string> &user_ids,
+                     const zchat::NotifyMessage &msg);
 
     FriendRepository &friends_;
     ServiceClients &clients_;

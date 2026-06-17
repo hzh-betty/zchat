@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <drogon/orm/DbClient.h>
 
@@ -24,6 +25,8 @@ class FileRepository : public NonCopyable {
     virtual VoidResult PutFile(const FileRecord &file) = 0;
     virtual Result<std::optional<FileRecord>>
     GetFile(const std::string &file_id) = 0;
+    virtual Result<std::vector<FileRecord>>
+    FindFilesByIds(const std::vector<std::string> &file_ids) = 0;
 };
 
 class OrmFileRepository final : public FileRepository,
@@ -36,6 +39,8 @@ class OrmFileRepository final : public FileRepository,
     VoidResult PutFile(const FileRecord &file) override;
     Result<std::optional<FileRecord>>
     GetFile(const std::string &file_id) override;
+    Result<std::vector<FileRecord>>
+    FindFilesByIds(const std::vector<std::string> &file_ids) override;
 };
 
 } // namespace zchat

@@ -15,5 +15,13 @@
     "app_id": "{{ZCHAT_SPEECH_APP_ID}}",
     "api_key": "{{secret_file:ZCHAT_SPEECH_API_KEY_FILE}}",
     "secret_key": "{{secret_file:ZCHAT_SPEECH_SECRET_KEY_FILE}}"
+  },
+  "grpc": {
+    "num_cqs": 1,
+    "min_pollers": 2,
+    "max_pollers": 8,
+    "cq_timeout_msec": 10000,
+    "max_send_message_size": 4194304,
+    "max_receive_message_size": 4194304
   }
 }

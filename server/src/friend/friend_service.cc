@@ -298,22 +298,17 @@ zchat::ChatSessionCreateRsp FriendApplicationService::CreateChatSession(
         return ErrorResponse<zchat::ChatSessionCreateRsp>(request.request_id(),
                                                           ins.error());
     }
-    for (const auto &member : members) {
-        auto inserted_member =
-            friends_.InsertChatSessionMember(session_id, member);
-        if (!inserted_member.ok()) {
-            return ErrorResponse<zchat::ChatSessionCreateRsp>(
-                request.request_id(), inserted_member.error());
-        }
+    auto ins_member = friends_.InsertChatSessionMembers(session_id, members);
+    if (!ins_member.ok()) {
+        return ErrorResponse<zchat::ChatSessionCreateRsp>(
+            request.request_id(), ins_member.error());
     }
     ChatSessionRecord session{session_id, name, ChatSessionType::kGroup};
     zchat::ChatSessionInfo info = BuildChatSessionInfo(session, user_id);
     zchat::NotifyMessage notify;
     notify.set_notify_type(zchat::CHAT_SESSION_CREATE_NOTIFY);
     *notify.mutable_new_chat_session_info()->mutable_chat_session_info() = info;
-    for (const auto &member : members) {
-        NotifyUser(member, notify);
-    }
+    NotifyUsers(members, notify);
 
     zchat::ChatSessionCreateRsp response;
     MarkOk(request.request_id(), &response);
@@ -478,6 +473,22 @@ void FriendApplicationService::NotifyUser(const std::string &user_id,
     std::string payload;
     msg.SerializeToString(&payload);
     notifier_.Publish(user_id, payload);
+}
+
+void FriendApplicationService::NotifyUsers(
+    const std::vector<std::string> &user_ids,
+    const zchat::NotifyMessage &msg) {
+    std::string payload;
+    msg.SerializeToString(&payload);
+    auto outcome = notifier_.PublishBatch(user_ids, payload);
+    if (outcome.ok()) {
+        for (const auto &failed_id : outcome.value().failed) {
+            ZCHAT_LOG_WARN("NotifyUsers publish failed user={}", failed_id);
+        }
+    } else {
+        ZCHAT_LOG_WARN("NotifyUsers publish batch failed error={} total={}",
+                       outcome.error().message, user_ids.size());
+    }
 }
 
 } // namespace zchat

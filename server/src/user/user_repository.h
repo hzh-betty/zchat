@@ -30,9 +30,6 @@ class UserRepository : public NonCopyable {
     FindUserByPhone(const std::string &phone) = 0;
     virtual Result<std::vector<UserRecord>>
     FindUsersByIds(const std::vector<std::string> &user_ids) = 0;
-    virtual Result<std::vector<UserRecord>>
-    SearchUsers(const std::string &keyword,
-                const std::string &exclude_user) = 0;
     virtual VoidResult InsertUser(const UserRecord &user) = 0;
     virtual VoidResult UpdateUserNickname(const std::string &user_id,
                                           const std::string &nickname) = 0;
@@ -60,9 +57,6 @@ class OrmUserRepository final : public UserRepository,
     FindUserByPhone(const std::string &phone) override;
     Result<std::vector<UserRecord>>
     FindUsersByIds(const std::vector<std::string> &user_ids) override;
-    Result<std::vector<UserRecord>>
-    SearchUsers(const std::string &keyword,
-                const std::string &exclude_user) override;
     VoidResult InsertUser(const UserRecord &user) override;
     VoidResult UpdateUserNickname(const std::string &user_id,
                                   const std::string &nickname) override;

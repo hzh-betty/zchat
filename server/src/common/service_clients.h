@@ -44,6 +44,9 @@ class ServiceClients : public NonCopyable {
 
     Result<std::optional<FileRecord>> GetFile(const std::string &file_id);
 
+    Result<zchat::GetMultiFileRsp>
+    GetMultiFile(const std::vector<std::string> &file_ids);
+
     Result<std::string> PutFile(const std::string &file_name,
                                 const std::string &file_content);
 

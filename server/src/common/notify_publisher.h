@@ -4,12 +4,18 @@
 #include "common/noncopyable.h"
 
 #include <string>
+#include <vector>
 
 #include <drogon/nosql/RedisClient.h>
 
 #include "common/result.h"
 
 namespace zchat {
+
+struct PublishOutcome {
+    std::vector<std::string> succeeded;
+    std::vector<std::string> failed;
+};
 
 class NotifyPublisher : public NonCopyable {
   public:
@@ -18,6 +24,10 @@ class NotifyPublisher : public NonCopyable {
     ~NotifyPublisher() = default;
 
     VoidResult Publish(const std::string &user_id, const std::string &payload);
+
+    Result<PublishOutcome>
+    PublishBatch(const std::vector<std::string> &user_ids,
+                 const std::string &payload);
 
   private:
     drogon::nosql::RedisClientPtr redis_;

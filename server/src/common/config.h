@@ -74,6 +74,15 @@ struct RabbitmqConfig {
     std::string routing_key = "msg_queue";
 };
 
+struct GrpcServerConfig {
+    int num_cqs = 2;
+    int min_pollers = 8;
+    int max_pollers = 64;
+    int cq_timeout_msec = 10000;
+    int max_send_message_size = 4 * 1024 * 1024;
+    int max_receive_message_size = 4 * 1024 * 1024;
+};
+
 struct SmsConfig {
     std::string access_key_id;
     std::string access_key_secret;
@@ -91,6 +100,7 @@ struct AppConfig {
     SpeechConfig speech;
     ElasticsearchConfig elasticsearch;
     RabbitmqConfig rabbitmq;
+    GrpcServerConfig grpc;
     SmsConfig sms;
 };
 

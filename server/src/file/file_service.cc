@@ -53,18 +53,18 @@ FileApplicationService::GetMultiFile(const zchat::GetMultiFileReq &request) {
     response.set_request_id(request.request_id());
     response.set_success(true);
     response.set_errmsg("");
-    for (const auto &file_id : request.file_id_list()) {
-        auto file = repository_.GetFile(file_id);
-        if (!file.ok()) {
-            response.set_success(false);
-            response.set_errmsg(FormatErrorForClient(file.error()));
-            return response;
-        }
-        if (file.value().has_value()) {
-            auto *data = response.add_file_data();
-            data->set_file_id(file.value()->file_id);
-            data->set_file_content(file.value()->file_content);
-        }
+    std::vector<std::string> file_ids(request.file_id_list().begin(),
+                                      request.file_id_list().end());
+    auto files = repository_.FindFilesByIds(file_ids);
+    if (!files.ok()) {
+        response.set_success(false);
+        response.set_errmsg(FormatErrorForClient(files.error()));
+        return response;
+    }
+    for (const auto &file : files.value()) {
+        auto *data = response.add_file_data();
+        data->set_file_id(file.file_id);
+        data->set_file_content(file.file_content);
     }
     ZCHAT_LOG_INFO("FileService::GetMultiFile success: request_id={}",
                    request.request_id());

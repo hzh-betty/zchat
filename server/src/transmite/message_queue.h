@@ -41,7 +41,8 @@ class ConfiguredMessageQueueConsumer final : public NonCopyable {
     using MessageHandler = std::function<VoidResult(const std::string &)>;
 
     ConfiguredMessageQueueConsumer(const RabbitmqConfig &config,
-                                   MessageHandler handler);
+                                   MessageHandler handler,
+                                   std::size_t pool_size = 4);
     ~ConfiguredMessageQueueConsumer();
 
   private:

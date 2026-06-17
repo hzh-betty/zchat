@@ -1,6 +1,7 @@
 #include "message/message_service.h"
 
 #include <algorithm>
+#include <unordered_map>
 #include <vector>
 
 #include "common/common_errors.h"
@@ -164,6 +165,16 @@ Response MessageService::BuildMessageListResponse(const std::string &request_id,
     }
     auto user_rsp = clients_.GetMultiUserInfo(user_req);
 
+    std::unordered_map<std::string, std::string> file_contents;
+    if (!file_ids.empty()) {
+        auto file_rsp = clients_.GetMultiFile(file_ids);
+        if (file_rsp.ok() && file_rsp.value().success()) {
+            for (const auto &fd : file_rsp.value().file_data()) {
+                file_contents[fd.file_id()] = fd.file_content();
+            }
+        }
+    }
+
     for (const auto &message : messages) {
         zchat::UserInfo sender;
         if (user_rsp.ok() && user_rsp.value().success()) {
@@ -180,9 +191,9 @@ Response MessageService::BuildMessageListResponse(const std::string &request_id,
         }
         std::string file_content;
         if (!message.file_id.empty()) {
-            auto file = clients_.GetFile(message.file_id);
-            if (file.ok() && file.value().has_value()) {
-                file_content = file.value()->file_content;
+            auto it = file_contents.find(message.file_id);
+            if (it != file_contents.end()) {
+                file_content = it->second;
             }
         }
         *response.add_msg_list() =

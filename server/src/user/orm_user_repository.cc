@@ -2,6 +2,9 @@
 
 #include <utility>
 
+#include <drogon/orm/DbClient.h>
+#include <drogon/orm/SqlBinder.h>
+
 namespace zchat {
 
 OrmUserRepository::OrmUserRepository(std::shared_ptr<drogon::orm::DbClient> db)
@@ -51,29 +54,28 @@ OrmUserRepository::FindUserByPhone(const std::string &phone) {
 
 Result<std::vector<UserRecord>>
 OrmUserRepository::FindUsersByIds(const std::vector<std::string> &user_ids) {
-    std::vector<UserRecord> users;
-    for (const auto &user_id : user_ids) {
-        auto user = FindUserById(user_id);
-        if (!user.ok()) {
-            return Result<std::vector<UserRecord>>::Fail(user.error().message);
-        }
-        if (user.value().has_value()) {
-            users.push_back(user.value().value());
-        }
+    if (user_ids.empty()) {
+        return Result<std::vector<UserRecord>>::Ok({});
     }
-    return Result<std::vector<UserRecord>>::Ok(std::move(users));
-}
-
-Result<std::vector<UserRecord>>
-OrmUserRepository::SearchUsers(const std::string &keyword,
-                               const std::string &exclude_user) {
-    return RunDb([&]() {
-        const std::string like = "%" + keyword + "%";
-        const auto result = db_->execSqlSync(
-            "SELECT user_id,nickname,description,password,phone,avatar_id "
-            "FROM `user` WHERE user_id<>? AND "
-            "(user_id LIKE ? OR nickname LIKE ? OR phone LIKE ?) LIMIT 50",
-            exclude_user, like, like, like);
+    return RunDb([&]() -> Result<std::vector<UserRecord>> {
+        std::string placeholders;
+        for (std::size_t i = 0; i < user_ids.size(); ++i) {
+            if (i > 0) {
+                placeholders += ",";
+            }
+            placeholders += "?";
+        }
+        auto binder = (*db_ << ("SELECT user_id,nickname,description,password,"
+                                "phone,avatar_id FROM `user` "
+                                "WHERE user_id IN (" +
+                                placeholders + ")"));
+        for (const auto &id : user_ids) {
+            binder << id;
+        }
+        binder << drogon::orm::Mode::Blocking;
+        drogon::orm::Result result(nullptr);
+        binder >> [&result](const drogon::orm::Result &r) { result = r; };
+        binder.exec();
         std::vector<UserRecord> users;
         for (const auto &row : result) {
             users.push_back(ToUserRecord(row));

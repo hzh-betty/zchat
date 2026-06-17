@@ -206,6 +206,19 @@ AppConfig LoadConfig(const std::string &path) {
     config.rabbitmq.routing_key =
         GetString(rabbitmq, "routing_key", config.rabbitmq.routing_key);
 
+    const Json::Value grpc = root["grpc"];
+    config.grpc.num_cqs = GetInt(grpc, "num_cqs", config.grpc.num_cqs);
+    config.grpc.min_pollers =
+        GetInt(grpc, "min_pollers", config.grpc.min_pollers);
+    config.grpc.max_pollers =
+        GetInt(grpc, "max_pollers", config.grpc.max_pollers);
+    config.grpc.cq_timeout_msec =
+        GetInt(grpc, "cq_timeout_msec", config.grpc.cq_timeout_msec);
+    config.grpc.max_send_message_size =
+        GetInt(grpc, "max_send_message_size", config.grpc.max_send_message_size);
+    config.grpc.max_receive_message_size = GetInt(
+        grpc, "max_receive_message_size", config.grpc.max_receive_message_size);
+
     const Json::Value sms = root["sms"];
     config.sms.access_key_id =
         GetString(sms, "access_key_id", config.sms.access_key_id);
