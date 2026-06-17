@@ -30,7 +30,8 @@ int RunGrpcServer(const std::string &service_name, int port,
                   const std::string &logical_service_name = "") {
     InitLogger(service_name);
     try {
-        const std::string address = "0.0.0.0:" + std::to_string(port);
+        const std::string address =
+            grpc_config.bind_address + ":" + std::to_string(port);
         grpc::ServerBuilder builder;
         builder.AddListeningPort(address, grpc::InsecureServerCredentials());
         builder.RegisterService(service);

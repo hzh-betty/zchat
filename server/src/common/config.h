@@ -75,6 +75,7 @@ struct RabbitmqConfig {
 };
 
 struct GrpcServerConfig {
+    std::string bind_address = "127.0.0.1";
     int num_cqs = 2;
     int min_pollers = 8;
     int max_pollers = 64;
