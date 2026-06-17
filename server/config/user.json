@@ -39,6 +39,7 @@
     "template_code": "{{ZCHAT_SMS_TEMPLATE_CODE}}"
   },
   "grpc": {
+    "bind_address": "0.0.0.0",
     "num_cqs": 2,
     "min_pollers": 4,
     "max_pollers": 32,

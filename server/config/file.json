@@ -21,6 +21,7 @@
     "auth_token_ttl_seconds": 300
   },
   "grpc": {
+    "bind_address": "0.0.0.0",
     "num_cqs": 1,
     "min_pollers": 2,
     "max_pollers": 16,

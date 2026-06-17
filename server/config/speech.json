@@ -17,6 +17,7 @@
     "secret_key": "{{secret_file:ZCHAT_SPEECH_SECRET_KEY_FILE}}"
   },
   "grpc": {
+    "bind_address": "0.0.0.0",
     "num_cqs": 1,
     "min_pollers": 2,
     "max_pollers": 8,

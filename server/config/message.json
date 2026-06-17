@@ -35,6 +35,7 @@
     "routing_key": "msg_queue"
   },
   "grpc": {
+    "bind_address": "0.0.0.0",
     "num_cqs": 2,
     "min_pollers": 8,
     "max_pollers": 64,

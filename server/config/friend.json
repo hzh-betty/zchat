@@ -33,6 +33,7 @@
     "password": "{{secret_file:ZCHAT_ELASTICSEARCH_PASSWORD_FILE}}"
   },
   "grpc": {
+    "bind_address": "0.0.0.0",
     "num_cqs": 2,
     "min_pollers": 4,
     "max_pollers": 32,
