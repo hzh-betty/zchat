@@ -33,6 +33,7 @@ class UserApplicationService : public NonCopyable {
     zchat::GetUserInfoRsp GetUserInfo(const zchat::GetUserInfoReq &request);
     zchat::GetMultiUserInfoRsp
     GetMultiUserInfo(const zchat::GetMultiUserInfoReq &request);
+    zchat::SearchUsersRsp SearchUsers(const zchat::SearchUsersReq &request);
     zchat::SetUserAvatarRsp SetAvatar(const zchat::SetUserAvatarReq &request);
     zchat::SetUserNicknameRsp
     SetNickname(const zchat::SetUserNicknameReq &request);

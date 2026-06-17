@@ -42,6 +42,9 @@ class UserGrpcService final : public zchat::UserService::Service,
     GetMultiUserInfo(grpc::ServerContext *context,
                      const zchat::GetMultiUserInfoReq *request,
                      zchat::GetMultiUserInfoRsp *response) override;
+    grpc::Status SearchUsers(grpc::ServerContext *context,
+                             const zchat::SearchUsersReq *request,
+                             zchat::SearchUsersRsp *response) override;
     grpc::Status SetUserAvatar(grpc::ServerContext *context,
                                const zchat::SetUserAvatarReq *request,
                                zchat::SetUserAvatarRsp *response) override;

@@ -33,6 +33,9 @@ class ServiceClients : public NonCopyable {
     Result<zchat::GetMultiUserInfoRsp>
     GetMultiUserInfo(const zchat::GetMultiUserInfoReq &request);
 
+    Result<zchat::SearchUsersRsp>
+    SearchUsers(const zchat::SearchUsersReq &request);
+
     Result<zchat::GetChatSessionMemberIdsRsp>
     GetChatSessionMemberIds(const zchat::GetChatSessionMemberIdsReq &request);
 

@@ -28,11 +28,12 @@ void MarkOk(const std::string &request_id, Response *response) {
 
 } // namespace
 
-FriendApplicationService::FriendApplicationService(
-    FriendRepository &friends, ServiceClients &clients, SessionStore &sessions,
-    NotifyPublisher &notifier, UserSearchIndex &search_index)
+FriendApplicationService::FriendApplicationService(FriendRepository &friends,
+                                                   ServiceClients &clients,
+                                                   SessionStore &sessions,
+                                                   NotifyPublisher &notifier)
     : friends_(friends), clients_(clients), sessions_(sessions),
-      notifier_(notifier), search_index_(search_index) {}
+      notifier_(notifier) {}
 
 zchat::GetFriendListRsp FriendApplicationService::GetFriendList(
     const zchat::GetFriendListReq &request) {
@@ -384,27 +385,23 @@ FriendApplicationService::SearchFriend(const zchat::FriendSearchReq &request) {
         return ErrorResponse<zchat::FriendSearchRsp>(
             request.request_id(), common_errors::SessionExpired());
     }
-    auto excluded = friends_.ListFriendIds(user_id);
-    if (!excluded.ok()) {
+    zchat::SearchUsersReq search_request;
+    search_request.set_request_id(request.request_id());
+    search_request.set_search_key(request.search_key());
+    search_request.set_exclude_user_id(user_id);
+    auto search_response = clients_.SearchUsers(search_request);
+    if (!search_response.ok()) {
         return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
-                                                     excluded.error());
-    }
-    excluded.value().push_back(user_id);
-    auto users =
-        search_index_.SearchUsers(request.search_key(), excluded.value());
-    if (!users.ok()) {
-        return ErrorResponse<zchat::FriendSearchRsp>(request.request_id(),
-                                                     users.error());
+                                                     search_response.error());
     }
     zchat::FriendSearchRsp response;
     MarkOk(request.request_id(), &response);
-    for (const auto &user : users.value()) {
-        auto relation = friends_.RelationExists(user_id, user.user_id);
+    for (const auto &user_info : search_response.value().user_info()) {
+        auto relation = friends_.RelationExists(user_id, user_info.user_id());
         if (relation.ok() && relation.value()) {
             continue;
         }
-        *response.add_user_info() =
-            ToProtoUser(user, AvatarForUserId(user.avatar_id));
+        *response.add_user_info() = user_info;
     }
     ZCHAT_LOG_INFO("FriendService::SearchFriend success: request_id={}",
                    request.request_id());

@@ -92,6 +92,17 @@ UserGrpcService::GetMultiUserInfo(grpc::ServerContext *,
     return grpc::Status::OK;
 }
 
+grpc::Status UserGrpcService::SearchUsers(grpc::ServerContext *,
+                                          const zchat::SearchUsersReq *request,
+                                          zchat::SearchUsersRsp *response) {
+    ZCHAT_LOG_INFO("UserService::SearchUsers request_id={}",
+                   request->request_id());
+    *response = service_->SearchUsers(*request);
+    LogBoundaryResponseError("UserService", "SearchUsers",
+                             request->request_id(), *response);
+    return grpc::Status::OK;
+}
+
 grpc::Status
 UserGrpcService::SetUserAvatar(grpc::ServerContext *,
                                const zchat::SetUserAvatarReq *request,

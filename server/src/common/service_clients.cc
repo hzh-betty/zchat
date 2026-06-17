@@ -62,6 +62,27 @@ ServiceClients::GetMultiUserInfo(const zchat::GetMultiUserInfoReq &request) {
     return Result<zchat::GetMultiUserInfoRsp>::Ok(std::move(response));
 }
 
+Result<zchat::SearchUsersRsp>
+ServiceClients::SearchUsers(const zchat::SearchUsersReq &request) {
+    auto endpoint = discovery_.Endpoint("user_service");
+    if (!endpoint.ok()) {
+        return Result<zchat::SearchUsersRsp>::Fail(endpoint.error());
+    }
+    auto stub =
+        zchat::UserService::NewStub(GetOrCreateChannel(endpoint.value()));
+    zchat::SearchUsersRsp response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + kGrpcDeadline);
+    const grpc::Status status = stub->SearchUsers(&context, request, &response);
+    if (!status.ok()) {
+        return Result<zchat::SearchUsersRsp>::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "user service grpc call failed")
+                .WithDetail(status.error_message()));
+    }
+    return Result<zchat::SearchUsersRsp>::Ok(std::move(response));
+}
+
 Result<zchat::GetChatSessionMemberIdsRsp>
 ServiceClients::GetChatSessionMemberIds(
     const zchat::GetChatSessionMemberIdsReq &request) {

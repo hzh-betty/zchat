@@ -3,8 +3,7 @@ add_library(zchat_friend_module STATIC
   orm_friend_repository.cc)
 target_link_libraries(zchat_friend_module
   PUBLIC
-    zchat_common
-    zchat_search_module)
+    zchat_common)
 
 add_executable(zchat_friend_service
   friend_builder.cc

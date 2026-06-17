@@ -4,7 +4,6 @@
 #include "common/noncopyable.h"
 
 #include "common/notify_publisher.h"
-#include "common/search/user_search_index.h"
 #include "common/service_clients.h"
 #include "common/session_store.h"
 #include "friend.pb.h"
@@ -16,8 +15,7 @@ namespace zchat {
 class FriendApplicationService : public NonCopyable {
   public:
     FriendApplicationService(FriendRepository &friends, ServiceClients &clients,
-                             SessionStore &sessions, NotifyPublisher &notifier,
-                             UserSearchIndex &search_index);
+                             SessionStore &sessions, NotifyPublisher &notifier);
 
     ~FriendApplicationService() = default;
 
@@ -54,7 +52,6 @@ class FriendApplicationService : public NonCopyable {
     ServiceClients &clients_;
     SessionStore &sessions_;
     NotifyPublisher &notifier_;
-    UserSearchIndex &search_index_;
 };
 
 } // namespace zchat

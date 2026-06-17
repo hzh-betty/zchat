@@ -150,6 +150,19 @@ message SetUserPhoneNumberRsp {
     bool success = 2;
     string errmsg = 3; 
 }
+//----------------------------
+//用户搜索（内部接口，供 friend 服务调用）
+message SearchUsersReq {
+    string request_id = 1;
+    string search_key = 2;
+    string exclude_user_id = 3;
+}
+message SearchUsersRsp {
+    string request_id = 1;
+    bool success = 2;
+    string errmsg = 3;
+    repeated UserInfo user_info = 4;
+}
 
 service UserService {
     rpc UserRegister(UserRegisterReq) returns (UserRegisterRsp);
@@ -163,4 +176,5 @@ service UserService {
     rpc SetUserNickname(SetUserNicknameReq) returns (SetUserNicknameRsp);
     rpc SetUserDescription(SetUserDescriptionReq) returns (SetUserDescriptionRsp);
     rpc SetUserPhoneNumber(SetUserPhoneNumberReq) returns (SetUserPhoneNumberRsp);
+    rpc SearchUsers(SearchUsersReq) returns (SearchUsersRsp);
 }

@@ -277,6 +277,28 @@ zchat::GetMultiUserInfoRsp UserApplicationService::GetMultiUserInfo(
     return response;
 }
 
+zchat::SearchUsersRsp
+UserApplicationService::SearchUsers(const zchat::SearchUsersReq &request) {
+    ZCHAT_LOG_INFO("SearchUsers request_id={}", request.request_id());
+    auto users =
+        users_.SearchUsers(request.search_key(), request.exclude_user_id());
+    if (!users.ok()) {
+        return ErrorResponse<zchat::SearchUsersRsp>(request.request_id(),
+                                                    users.error());
+    }
+    zchat::SearchUsersRsp response;
+    response.set_request_id(request.request_id());
+    response.set_success(true);
+    response.set_errmsg("");
+    for (const auto &user : users.value()) {
+        std::string avatar = GetAvatarContent(user.avatar_id);
+        *response.add_user_info() = ToProtoUser(user, avatar);
+    }
+    ZCHAT_LOG_INFO("SearchUsers success: request_id={} count={}",
+                   request.request_id(), users.value().size());
+    return response;
+}
+
 zchat::SetUserAvatarRsp
 UserApplicationService::SetAvatar(const zchat::SetUserAvatarReq &request) {
     ZCHAT_LOG_INFO("SetAvatar request_id={}", request.request_id());

@@ -10,7 +10,6 @@
 
 #include "common/config.h"
 #include "common/notify_publisher.h"
-#include "common/search/user_search_index.h"
 #include "common/service_clients.h"
 #include "common/session_store.h"
 #include "friend/friend_grpc_service.h"
@@ -32,7 +31,6 @@ class FriendContext : public NonCopyable {
     std::shared_ptr<drogon::orm::DbClient> db_;
     drogon::nosql::RedisClientPtr redis_;
     OrmFriendRepository friend_repository_;
-    ConfiguredUserSearchIndex search_index_;
     SessionStore sessions_;
     NotifyPublisher notifier_;
     ServiceClients clients_;
