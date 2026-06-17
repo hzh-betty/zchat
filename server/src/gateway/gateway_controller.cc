@@ -1,6 +1,7 @@
 #include "gateway/gateway_controller.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -27,34 +28,38 @@ drogon::HttpResponsePtr GatewayErrorResponse(const AppError &error) {
 }
 
 template <typename Request, typename Response>
-bool AuthenticateAndInjectUser(
-    SessionStore &sessions, const std::string &body, std::string *forward_body,
-    std::function<void(const drogon::HttpResponsePtr &)> &callback) {
-    Request request;
-    if (!request.ParseFromString(body)) {
+void AuthenticateAndInjectUserAsync(
+    SessionStore &sessions, const std::string &body,
+    GrpcServiceClients &grpc_clients, const std::string &path,
+    std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
+    auto request = std::make_shared<Request>();
+    if (!request->ParseFromString(body)) {
         ZCHAT_LOG_WARN("gateway auth protobuf parse failed, body size={}B",
                        body.size());
         callback(GatewayErrorResponse<Response>(
             common_errors::RequestBodyParseFailed()));
-        return false;
+        return;
     }
-    auto user_id = sessions.GetUserId(request.session_id());
-    if (!user_id.ok()) {
-        ZCHAT_LOG_WARN("gateway auth redis failed: {}",
-                       user_id.error().message);
-        callback(GatewayErrorResponse<Response>(user_id.error()));
-        return false;
-    }
-    if (!user_id.value().has_value()) {
-        ZCHAT_LOG_WARN("gateway auth rejected: invalid session={}",
-                       request.session_id());
-        callback(
-            GatewayErrorResponse<Response>(common_errors::SessionExpired()));
-        return false;
-    }
-    request.set_user_id(user_id.value().value());
-    *forward_body = request.SerializeAsString();
-    return true;
+    sessions.GetUserIdAsync(
+        request->session_id(),
+        [request, &grpc_clients, path, callback = std::move(callback)](
+            Result<std::optional<std::string>> user_id) mutable {
+            if (!user_id.ok()) {
+                ZCHAT_LOG_WARN("gateway auth redis failed: {}",
+                               user_id.error().message);
+                callback(GatewayErrorResponse<Response>(user_id.error()));
+                return;
+            }
+            if (!user_id.value().has_value()) {
+                ZCHAT_LOG_WARN("gateway auth rejected: invalid session");
+                callback(GatewayErrorResponse<Response>(
+                    common_errors::SessionExpired()));
+                return;
+            }
+            request->set_user_id(user_id.value().value());
+            grpc_clients.Forward(path, request->SerializeAsString(),
+                                 std::move(callback));
+        });
 }
 
 bool IsPublicPath(const std::string &path) {
@@ -65,130 +70,131 @@ bool IsPublicPath(const std::string &path) {
            path == "/service/user/phone_login";
 }
 
-bool PrepareForwardBody(
+void PrepareForwardBodyAsync(
     SessionStore &sessions, const std::string &path, const std::string &body,
-    std::string *forward_body,
-    std::function<void(const drogon::HttpResponsePtr &)> &callback) {
-    *forward_body = body;
+    GrpcServiceClients &grpc_clients,
+    std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
     if (IsPublicPath(path)) {
-        return true;
+        grpc_clients.Forward(path, body, std::move(callback));
+        return;
     }
     if (path == "/service/user/get_user_info") {
-        return AuthenticateAndInjectUser<zchat::GetUserInfoReq,
-                                         zchat::GetUserInfoRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::GetUserInfoReq,
+                                              zchat::GetUserInfoRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/user/set_avatar") {
-        return AuthenticateAndInjectUser<zchat::SetUserAvatarReq,
-                                         zchat::SetUserAvatarRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::SetUserAvatarReq,
+                                              zchat::SetUserAvatarRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/user/set_nickname") {
-        return AuthenticateAndInjectUser<zchat::SetUserNicknameReq,
-                                         zchat::SetUserNicknameRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::SetUserNicknameReq,
+                                              zchat::SetUserNicknameRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/user/set_description") {
-        return AuthenticateAndInjectUser<zchat::SetUserDescriptionReq,
-                                         zchat::SetUserDescriptionRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::SetUserDescriptionReq,
+                                              zchat::SetUserDescriptionRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/user/set_phone") {
-        return AuthenticateAndInjectUser<zchat::SetUserPhoneNumberReq,
-                                         zchat::SetUserPhoneNumberRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::SetUserPhoneNumberReq,
+                                              zchat::SetUserPhoneNumberRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/friend/get_friend_list") {
-        return AuthenticateAndInjectUser<zchat::GetFriendListReq,
-                                         zchat::GetFriendListRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::GetFriendListReq,
+                                              zchat::GetFriendListRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/friend/get_chat_session_list") {
-        return AuthenticateAndInjectUser<zchat::GetChatSessionListReq,
-                                         zchat::GetChatSessionListRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::GetChatSessionListReq,
+                                              zchat::GetChatSessionListRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/friend/get_pending_friend_events") {
-        return AuthenticateAndInjectUser<zchat::GetPendingFriendEventListReq,
-                                         zchat::GetPendingFriendEventListRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<
+            zchat::GetPendingFriendEventListReq,
+            zchat::GetPendingFriendEventListRsp>(sessions, body, grpc_clients,
+                                                 path, std::move(callback));
     }
     if (path == "/service/friend/remove_friend") {
-        return AuthenticateAndInjectUser<zchat::FriendRemoveReq,
-                                         zchat::FriendRemoveRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::FriendRemoveReq,
+                                              zchat::FriendRemoveRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/friend/add_friend_apply") {
-        return AuthenticateAndInjectUser<zchat::FriendAddReq,
-                                         zchat::FriendAddRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::FriendAddReq,
+                                              zchat::FriendAddRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/friend/add_friend_process") {
-        return AuthenticateAndInjectUser<zchat::FriendAddProcessReq,
-                                         zchat::FriendAddProcessRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::FriendAddProcessReq,
+                                              zchat::FriendAddProcessRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/friend/create_chat_session") {
-        return AuthenticateAndInjectUser<zchat::ChatSessionCreateReq,
-                                         zchat::ChatSessionCreateRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::ChatSessionCreateReq,
+                                              zchat::ChatSessionCreateRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/friend/get_chat_session_member") {
-        return AuthenticateAndInjectUser<zchat::GetChatSessionMemberReq,
-                                         zchat::GetChatSessionMemberRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::GetChatSessionMemberReq,
+                                              zchat::GetChatSessionMemberRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/friend/search_friend") {
-        return AuthenticateAndInjectUser<zchat::FriendSearchReq,
-                                         zchat::FriendSearchRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::FriendSearchReq,
+                                              zchat::FriendSearchRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/message_storage/get_recent") {
-        return AuthenticateAndInjectUser<zchat::GetRecentMsgReq,
-                                         zchat::GetRecentMsgRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::GetRecentMsgReq,
+                                              zchat::GetRecentMsgRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/message_storage/get_history") {
-        return AuthenticateAndInjectUser<zchat::GetHistoryMsgReq,
-                                         zchat::GetHistoryMsgRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::GetHistoryMsgReq,
+                                              zchat::GetHistoryMsgRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/message_storage/search_history") {
-        return AuthenticateAndInjectUser<zchat::MsgSearchReq,
-                                         zchat::MsgSearchRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::MsgSearchReq,
+                                              zchat::MsgSearchRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/message_transmit/new_message") {
-        return AuthenticateAndInjectUser<zchat::NewMessageReq,
-                                         zchat::NewMessageRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::NewMessageReq,
+                                              zchat::NewMessageRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/file/get_single_file") {
-        return AuthenticateAndInjectUser<zchat::GetSingleFileReq,
-                                         zchat::GetSingleFileRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::GetSingleFileReq,
+                                              zchat::GetSingleFileRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/file/get_multi_file") {
-        return AuthenticateAndInjectUser<zchat::GetMultiFileReq,
-                                         zchat::GetMultiFileRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::GetMultiFileReq,
+                                              zchat::GetMultiFileRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/file/put_single_file") {
-        return AuthenticateAndInjectUser<zchat::PutSingleFileReq,
-                                         zchat::PutSingleFileRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::PutSingleFileReq,
+                                              zchat::PutSingleFileRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/file/put_multi_file") {
-        return AuthenticateAndInjectUser<zchat::PutMultiFileReq,
-                                         zchat::PutMultiFileRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::PutMultiFileReq,
+                                              zchat::PutMultiFileRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
     if (path == "/service/speech/recognition") {
-        return AuthenticateAndInjectUser<zchat::SpeechRecognitionReq,
-                                         zchat::SpeechRecognitionRsp>(
-            sessions, body, forward_body, callback);
+        return AuthenticateAndInjectUserAsync<zchat::SpeechRecognitionReq,
+                                              zchat::SpeechRecognitionRsp>(
+            sessions, body, grpc_clients, path, std::move(callback));
     }
-    return true;
+    grpc_clients.Forward(path, body, std::move(callback));
 }
 
 } // namespace
@@ -244,16 +250,11 @@ void GatewayController::RegisterForwardPost(const std::string &path,
         [this, path, service_name](
             const drogon::HttpRequestPtr &request,
             std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
-            std::string forward_body;
-            if (!PrepareForwardBody(context_->sessions(), path,
-                                    std::string(request->body()), &forward_body,
-                                    callback)) {
-                return;
-            }
             ZCHAT_LOG_DEBUG("forward http path={} service={} body={}B", path,
-                            service_name, forward_body.size());
-            context_->grpc_clients().Forward(path, forward_body,
-                                             std::move(callback));
+                            service_name, request->body().size());
+            PrepareForwardBodyAsync(
+                context_->sessions(), path, std::string(request->body()),
+                context_->grpc_clients(), std::move(callback));
         },
         {drogon::Post});
 }

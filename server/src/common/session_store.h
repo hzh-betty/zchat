@@ -3,6 +3,7 @@
 
 #include "common/noncopyable.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -22,6 +23,9 @@ class SessionStore : public NonCopyable {
     VoidResult SaveSession(const std::string &session_id,
                            const std::string &user_id);
     Result<std::optional<std::string>> GetUserId(const std::string &session_id);
+    void GetUserIdAsync(
+        const std::string &session_id,
+        std::function<void(Result<std::optional<std::string>>)> &&callback);
     VoidResult RemoveSession(const std::string &session_id);
 
     VoidResult SetOnline(const std::string &user_id);

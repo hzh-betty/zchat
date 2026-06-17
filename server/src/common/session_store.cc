@@ -63,6 +63,20 @@ SessionStore::GetUserId(const std::string &session_id) {
     });
 }
 
+void SessionStore::GetUserIdAsync(
+    const std::string &session_id,
+    std::function<void(Result<std::optional<std::string>>)> &&callback) {
+    redis_->execCommandAsync(
+        [cb = std::move(callback)](const drogon::nosql::RedisResult &result) {
+            cb(Result<std::optional<std::string>>::Ok(OptionalString(result)));
+        },
+        [cb = std::move(callback)](const drogon::nosql::RedisException &err) {
+            cb(Result<std::optional<std::string>>::Fail(
+                common_errors::RedisOperationFailed().WithDetail(err.what())));
+        },
+        "get zchat:session:%s", session_id.c_str());
+}
+
 VoidResult SessionStore::RemoveSession(const std::string &session_id) {
     return RunRedis([&]() {
         redis_->execCommandSync<long long>(
