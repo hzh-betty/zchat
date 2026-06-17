@@ -26,6 +26,8 @@ class MessageRepository : public NonCopyable {
     virtual VoidResult InsertMessage(const MessageRecord &message) = 0;
     virtual Result<std::vector<MessageRecord>>
     ListRecentMessages(const std::string &session_id, int count) = 0;
+    virtual Result<std::vector<MessageRecord>> ListLastMessagesForSessions(
+        const std::vector<std::string> &session_ids) = 0;
     virtual Result<std::vector<MessageRecord>>
     ListMessagesByTime(const std::string &session_id, std::int64_t start_time,
                        std::int64_t end_time, int max_count,
@@ -44,6 +46,8 @@ class OrmMessageRepository final : public MessageRepository,
     VoidResult InsertMessage(const MessageRecord &message) override;
     Result<std::vector<MessageRecord>>
     ListRecentMessages(const std::string &session_id, int count) override;
+    Result<std::vector<MessageRecord>> ListLastMessagesForSessions(
+        const std::vector<std::string> &session_ids) override;
     Result<std::vector<MessageRecord>>
     ListMessagesByTime(const std::string &session_id, std::int64_t start_time,
                        std::int64_t end_time, int max_count,

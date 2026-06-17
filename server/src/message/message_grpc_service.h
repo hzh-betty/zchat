@@ -25,6 +25,10 @@ class MessageGrpcService final : public zchat::MsgStorageService::Service,
     grpc::Status GetRecentMsg(grpc::ServerContext *context,
                               const zchat::GetRecentMsgReq *request,
                               zchat::GetRecentMsgRsp *response) override;
+    grpc::Status
+    GetMultiRecentMsg(grpc::ServerContext *context,
+                      const zchat::GetMultiRecentMsgReq *request,
+                      zchat::GetMultiRecentMsgRsp *response) override;
     grpc::Status MsgSearch(grpc::ServerContext *context,
                            const zchat::MsgSearchReq *request,
                            zchat::MsgSearchRsp *response) override;

@@ -42,6 +42,13 @@ ServiceClients::GetRecentMsg(const zchat::GetRecentMsgReq &request) {
         &zchat::MsgStorageService::Stub::GetRecentMsg, request);
 }
 
+Result<zchat::GetMultiRecentMsgRsp>
+ServiceClients::GetMultiRecentMsg(const zchat::GetMultiRecentMsgReq &request) {
+    return CallUnary<zchat::MsgStorageService>(
+        "message_service", kGrpcDeadline,
+        &zchat::MsgStorageService::Stub::GetMultiRecentMsg, request);
+}
+
 Result<std::optional<FileRecord>>
 ServiceClients::GetFile(const std::string &file_id) {
     zchat::GetSingleFileReq request;

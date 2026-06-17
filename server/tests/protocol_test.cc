@@ -40,6 +40,10 @@ class FakeMessageRepository final : public zchat::MessageRepository {
         return zchat::Result<std::vector<zchat::MessageRecord>>::Ok({message});
     }
     zchat::Result<std::vector<zchat::MessageRecord>>
+    ListLastMessagesForSessions(const std::vector<std::string> &) override {
+        return zchat::Result<std::vector<zchat::MessageRecord>>::Ok({});
+    }
+    zchat::Result<std::vector<zchat::MessageRecord>>
     ListMessagesByTime(const std::string &session_id, std::int64_t,
                        std::int64_t, int, std::optional<std::string>) override {
         return ListRecentMessages(session_id, 1);

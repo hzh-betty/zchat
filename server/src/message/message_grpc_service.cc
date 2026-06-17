@@ -34,6 +34,17 @@ MessageGrpcService::GetRecentMsg(grpc::ServerContext *,
     return grpc::Status::OK;
 }
 
+grpc::Status MessageGrpcService::GetMultiRecentMsg(
+    grpc::ServerContext *, const zchat::GetMultiRecentMsgReq *request,
+    zchat::GetMultiRecentMsgRsp *response) {
+    ZCHAT_LOG_INFO("MsgStorageService::GetMultiRecentMsg request_id={}",
+                   request->request_id());
+    *response = service_->GetMultiRecent(*request);
+    LogBoundaryResponseError("MsgStorageService", "GetMultiRecentMsg",
+                             request->request_id(), *response);
+    return grpc::Status::OK;
+}
+
 grpc::Status MessageGrpcService::MsgSearch(grpc::ServerContext *,
                                            const zchat::MsgSearchReq *request,
                                            zchat::MsgSearchRsp *response) {

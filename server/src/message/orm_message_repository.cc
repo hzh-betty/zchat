@@ -45,6 +45,43 @@ OrmMessageRepository::ListRecentMessages(const std::string &session_id,
     });
 }
 
+Result<std::vector<MessageRecord>>
+OrmMessageRepository::ListLastMessagesForSessions(
+    const std::vector<std::string> &session_ids) {
+    if (session_ids.empty()) {
+        return Result<std::vector<MessageRecord>>::Ok({});
+    }
+    return RunDb([&]() -> Result<std::vector<MessageRecord>> {
+        std::string placeholders;
+        for (std::size_t i = 0; i < session_ids.size(); ++i) {
+            if (i > 0) {
+                placeholders += ",";
+            }
+            placeholders += "?";
+        }
+        const std::string sql =
+            "SELECT m.message_id,m.session_id,m.user_id,m.message_type,"
+            "UNIX_TIMESTAMP(m.create_time) AS create_time,m.content,"
+            "m.file_id,m.file_name,m.file_size FROM `message` m "
+            "INNER JOIN (SELECT session_id,MAX(id) AS max_id FROM `message` "
+            "WHERE session_id IN (" +
+            placeholders + ") GROUP BY session_id) t ON m.id=t.max_id";
+        auto binder = (*db_ << sql);
+        for (const auto &sid : session_ids) {
+            binder << sid;
+        }
+        binder << drogon::orm::Mode::Blocking;
+        drogon::orm::Result result(nullptr);
+        binder >> [&result](const drogon::orm::Result &r) { result = r; };
+        binder.exec();
+        std::vector<MessageRecord> messages;
+        for (const auto &row : result) {
+            messages.push_back(ToMessageRecord(row));
+        }
+        return Result<std::vector<MessageRecord>>::Ok(std::move(messages));
+    });
+}
+
 Result<std::vector<MessageRecord>> OrmMessageRepository::ListMessagesByTime(
     const std::string &session_id, std::int64_t start_time,
     std::int64_t end_time, int max_count,

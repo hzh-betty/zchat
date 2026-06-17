@@ -38,6 +38,9 @@ class ServiceClients : public NonCopyable {
     Result<zchat::GetRecentMsgRsp>
     GetRecentMsg(const zchat::GetRecentMsgReq &request);
 
+    Result<zchat::GetMultiRecentMsgRsp>
+    GetMultiRecentMsg(const zchat::GetMultiRecentMsgReq &request);
+
     Result<std::optional<FileRecord>> GetFile(const std::string &file_id);
 
     Result<zchat::GetMultiFileRsp>

@@ -42,6 +42,72 @@ MessageService::GetRecent(const zchat::GetRecentMsgReq &request) {
     return response;
 }
 
+zchat::GetMultiRecentMsgRsp
+MessageService::GetMultiRecent(const zchat::GetMultiRecentMsgReq &request) {
+    ZCHAT_LOG_INFO("MessageService::GetMultiRecent request_id={} sessions={}",
+                   request.request_id(), request.chat_session_id_size());
+    std::vector<std::string> session_ids(request.chat_session_id().begin(),
+                                         request.chat_session_id().end());
+    auto messages = messages_.ListLastMessagesForSessions(session_ids);
+    if (!messages.ok()) {
+        return MakeErrorResponse<zchat::GetMultiRecentMsgRsp>(
+            request.request_id(), messages.error());
+    }
+
+    std::vector<std::string> user_ids;
+    std::vector<std::string> file_ids;
+    for (const auto &message : messages.value()) {
+        user_ids.push_back(message.user_id);
+        if (!message.file_id.empty()) {
+            file_ids.push_back(message.file_id);
+        }
+    }
+    zchat::GetMultiUserInfoReq user_req;
+    user_req.set_request_id(request.request_id());
+    for (const auto &id : user_ids) {
+        user_req.add_users_id(id);
+    }
+    auto user_rsp = clients_.GetMultiUserInfo(user_req);
+    std::unordered_map<std::string, std::string> file_contents;
+    if (!file_ids.empty()) {
+        auto file_rsp = clients_.GetMultiFile(file_ids);
+        if (file_rsp.ok() && file_rsp.value().success()) {
+            for (const auto &fd : file_rsp.value().file_data()) {
+                file_contents[fd.file_id()] = fd.file_content();
+            }
+        }
+    }
+
+    zchat::GetMultiRecentMsgRsp response;
+    response.set_request_id(request.request_id());
+    response.set_success(true);
+    response.set_errmsg("");
+    for (const auto &message : messages.value()) {
+        zchat::UserInfo sender;
+        if (user_rsp.ok() && user_rsp.value().success()) {
+            auto it = user_rsp.value().users_info().find(message.user_id);
+            if (it != user_rsp.value().users_info().end()) {
+                sender = it->second;
+            }
+        }
+        if (sender.user_id().empty()) {
+            continue;
+        }
+        std::string file_content;
+        if (!message.file_id.empty()) {
+            auto it = file_contents.find(message.file_id);
+            if (it != file_contents.end()) {
+                file_content = it->second;
+            }
+        }
+        (*response.mutable_recent_messages())[message.session_id] =
+            ToProtoMessage(message, FromProtoUser(sender), file_content);
+    }
+    ZCHAT_LOG_INFO("MessageService::GetMultiRecent success: request_id={}",
+                   request.request_id());
+    return response;
+}
+
 zchat::GetHistoryMsgRsp
 MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
     ZCHAT_LOG_INFO("MessageService::GetHistory request_id={}",

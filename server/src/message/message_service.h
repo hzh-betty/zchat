@@ -17,6 +17,8 @@ class MessageService : public NonCopyable {
     ~MessageService() = default;
 
     zchat::GetRecentMsgRsp GetRecent(const zchat::GetRecentMsgReq &request);
+    zchat::GetMultiRecentMsgRsp
+    GetMultiRecent(const zchat::GetMultiRecentMsgReq &request);
     zchat::GetHistoryMsgRsp GetHistory(const zchat::GetHistoryMsgReq &request);
     zchat::MsgSearchRsp Search(const zchat::MsgSearchReq &request);
     VoidResult StoreQueuedMessage(const zchat::MessageInfo &message);
