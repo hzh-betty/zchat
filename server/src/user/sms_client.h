@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include <drogon/utils/coroutine.h>
+
 #include "common/result.h"
 
 namespace zchat {
@@ -15,10 +17,12 @@ class SmsClient : public NonCopyable {
 
     virtual ~SmsClient() = default;
 
-    virtual VoidResult SendVerificationCode(const std::string &phone) = 0;
+    virtual drogon::Task<VoidResult>
+    SendVerificationCode(const std::string &phone) = 0;
 
-    virtual VoidResult CheckVerificationCode(const std::string &phone,
-                                             const std::string &code) = 0;
+    virtual drogon::Task<VoidResult>
+    CheckVerificationCode(const std::string &phone,
+                          const std::string &code) = 0;
 };
 
 class ConfiguredSmsClient final : public SmsClient {
@@ -27,10 +31,12 @@ class ConfiguredSmsClient final : public SmsClient {
 
     ~ConfiguredSmsClient() override = default;
 
-    VoidResult SendVerificationCode(const std::string &phone) override;
+    drogon::Task<VoidResult>
+    SendVerificationCode(const std::string &phone) override;
 
-    VoidResult CheckVerificationCode(const std::string &phone,
-                                     const std::string &code) override;
+    drogon::Task<VoidResult>
+    CheckVerificationCode(const std::string &phone,
+                          const std::string &code) override;
 };
 
 } // namespace zchat

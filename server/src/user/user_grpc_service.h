@@ -12,51 +12,58 @@
 
 namespace zchat {
 
-class UserGrpcService final : public zchat::UserService::Service,
+class UserGrpcService final : public zchat::UserService::CallbackService,
                               public NonCopyable {
   public:
     explicit UserGrpcService(std::shared_ptr<UserApplicationService> service);
 
     ~UserGrpcService() override = default;
 
-    grpc::Status UserRegister(grpc::ServerContext *context,
-                              const zchat::UserRegisterReq *request,
-                              zchat::UserRegisterRsp *response) override;
-    grpc::Status UserLogin(grpc::ServerContext *context,
-                           const zchat::UserLoginReq *request,
-                           zchat::UserLoginRsp *response) override;
-    grpc::Status
-    GetPhoneVerifyCode(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    UserRegister(grpc::CallbackServerContext *context,
+                 const zchat::UserRegisterReq *request,
+                 zchat::UserRegisterRsp *response) override;
+    grpc::ServerUnaryReactor *UserLogin(grpc::CallbackServerContext *context,
+                                        const zchat::UserLoginReq *request,
+                                        zchat::UserLoginRsp *response) override;
+    grpc::ServerUnaryReactor *
+    GetPhoneVerifyCode(grpc::CallbackServerContext *context,
                        const zchat::PhoneVerifyCodeReq *request,
                        zchat::PhoneVerifyCodeRsp *response) override;
-    grpc::Status PhoneRegister(grpc::ServerContext *context,
-                               const zchat::PhoneRegisterReq *request,
-                               zchat::PhoneRegisterRsp *response) override;
-    grpc::Status PhoneLogin(grpc::ServerContext *context,
-                            const zchat::PhoneLoginReq *request,
-                            zchat::PhoneLoginRsp *response) override;
-    grpc::Status GetUserInfo(grpc::ServerContext *context,
-                             const zchat::GetUserInfoReq *request,
-                             zchat::GetUserInfoRsp *response) override;
-    grpc::Status
-    GetMultiUserInfo(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    PhoneRegister(grpc::CallbackServerContext *context,
+                  const zchat::PhoneRegisterReq *request,
+                  zchat::PhoneRegisterRsp *response) override;
+    grpc::ServerUnaryReactor *
+    PhoneLogin(grpc::CallbackServerContext *context,
+               const zchat::PhoneLoginReq *request,
+               zchat::PhoneLoginRsp *response) override;
+    grpc::ServerUnaryReactor *
+    GetUserInfo(grpc::CallbackServerContext *context,
+                const zchat::GetUserInfoReq *request,
+                zchat::GetUserInfoRsp *response) override;
+    grpc::ServerUnaryReactor *
+    GetMultiUserInfo(grpc::CallbackServerContext *context,
                      const zchat::GetMultiUserInfoReq *request,
                      zchat::GetMultiUserInfoRsp *response) override;
-    grpc::Status SearchUsers(grpc::ServerContext *context,
-                             const zchat::SearchUsersReq *request,
-                             zchat::SearchUsersRsp *response) override;
-    grpc::Status SetUserAvatar(grpc::ServerContext *context,
-                               const zchat::SetUserAvatarReq *request,
-                               zchat::SetUserAvatarRsp *response) override;
-    grpc::Status SetUserNickname(grpc::ServerContext *context,
-                                 const zchat::SetUserNicknameReq *request,
-                                 zchat::SetUserNicknameRsp *response) override;
-    grpc::Status
-    SetUserDescription(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    SearchUsers(grpc::CallbackServerContext *context,
+                const zchat::SearchUsersReq *request,
+                zchat::SearchUsersRsp *response) override;
+    grpc::ServerUnaryReactor *
+    SetUserAvatar(grpc::CallbackServerContext *context,
+                  const zchat::SetUserAvatarReq *request,
+                  zchat::SetUserAvatarRsp *response) override;
+    grpc::ServerUnaryReactor *
+    SetUserNickname(grpc::CallbackServerContext *context,
+                    const zchat::SetUserNicknameReq *request,
+                    zchat::SetUserNicknameRsp *response) override;
+    grpc::ServerUnaryReactor *
+    SetUserDescription(grpc::CallbackServerContext *context,
                        const zchat::SetUserDescriptionReq *request,
                        zchat::SetUserDescriptionRsp *response) override;
-    grpc::Status
-    SetUserPhoneNumber(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    SetUserPhoneNumber(grpc::CallbackServerContext *context,
                        const zchat::SetUserPhoneNumberReq *request,
                        zchat::SetUserPhoneNumberRsp *response) override;
 

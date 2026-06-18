@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "common/common_errors.h"
+#include "common/crypto.h"
 #include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
@@ -36,417 +37,448 @@ UserApplicationService::UserApplicationService(UserRepository &users,
     : users_(users), clients_(clients), sms_(sms), sessions_(sessions),
       search_index_(search_index) {}
 
-zchat::UserRegisterRsp UserApplicationService::RegisterByNickname(
+drogon::Task<zchat::UserRegisterRsp>
+UserApplicationService::RegisterByNicknameCoro(
     const zchat::UserRegisterReq &request) {
     ZCHAT_LOG_INFO("RegisterByNickname request_id={}", request.request_id());
     if (request.nickname().empty()) {
-        return ErrorResponse<zchat::UserRegisterRsp>(
+        co_return ErrorResponse<zchat::UserRegisterRsp>(
             request.request_id(), user_errors::NicknameRequired());
     }
     if (!IsValidPassword(request.password())) {
-        return ErrorResponse<zchat::UserRegisterRsp>(
+        co_return ErrorResponse<zchat::UserRegisterRsp>(
             request.request_id(), user_errors::InvalidPassword());
     }
-    auto existing = users_.FindUserByNickname(request.nickname());
+    auto existing = co_await users_.FindUserByNicknameCoro(request.nickname());
     if (!existing.ok()) {
-        return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
-                                                     existing.error());
+        co_return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
+                                                        existing.error());
     }
     if (existing.value().has_value()) {
-        return ErrorResponse<zchat::UserRegisterRsp>(
+        co_return ErrorResponse<zchat::UserRegisterRsp>(
             request.request_id(), user_errors::NicknameAlreadyExists());
     }
 
     UserRecord user;
     user.user_id = NewId();
     user.nickname = request.nickname();
-    user.password = request.password();
-    const auto inserted = users_.InsertUser(user);
+    user.password = Argon2idHash(request.password());
+    user.password_hash_algo = "argon2id";
+    const auto inserted = co_await users_.InsertUserCoro(user);
     if (!inserted.ok()) {
-        return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
-                                                     inserted.error());
+        co_return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
+                                                        inserted.error());
     }
-    const auto indexed = IndexUser(user);
+    const auto indexed = co_await IndexUserCoro(user);
     if (!indexed.ok()) {
-        return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
-                                                     indexed.error());
+        co_return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
+                                                        indexed.error());
     }
 
     zchat::UserRegisterRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("RegisterByNickname success: request_id={}",
-                   request.request_id());
-    return response;
+    co_return response;
 }
 
-zchat::UserLoginRsp
-UserApplicationService::LoginByNickname(const zchat::UserLoginReq &request) {
+drogon::Task<zchat::UserLoginRsp> UserApplicationService::LoginByNicknameCoro(
+    const zchat::UserLoginReq &request) {
     ZCHAT_LOG_INFO("LoginByNickname request_id={}", request.request_id());
-    auto user = users_.FindUserByNickname(request.nickname());
+    auto user = co_await users_.FindUserByNicknameCoro(request.nickname());
     if (!user.ok()) {
-        return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
-                                                  user.error());
+        co_return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
+                                                     user.error());
     }
-    if (!user.value().has_value() ||
-        user.value()->password != request.password()) {
-        return ErrorResponse<zchat::UserLoginRsp>(
+    if (!user.value().has_value()) {
+        co_return ErrorResponse<zchat::UserLoginRsp>(
             request.request_id(), user_errors::InvalidCredentials());
     }
 
-    auto session_id = LoginUser(user.value()->user_id);
+    const std::string &uid = user.value()->user_id;
+
+    auto locked = co_await sessions_.IsAccountLockedCoro(uid);
+    if (locked.ok() && locked.value()) {
+        co_return ErrorResponse<zchat::UserLoginRsp>(
+            request.request_id(), user_errors::AccountLocked());
+    }
+
+    const auto &stored = user.value()->password;
+    const auto &algo = user.value()->password_hash_algo;
+    bool password_ok = false;
+    if (algo == "argon2id") {
+        password_ok = Argon2idVerify(stored, request.password());
+    } else {
+        password_ok =
+            !stored.empty() && ConstantTimeCompare(stored, request.password());
+    }
+
+    if (!password_ok) {
+        auto fail = co_await sessions_.RecordLoginFailCoro(uid);
+        if (fail.ok() && fail.value() >= 5) {
+            co_return ErrorResponse<zchat::UserLoginRsp>(
+                request.request_id(), user_errors::AccountLocked());
+        }
+        co_return ErrorResponse<zchat::UserLoginRsp>(
+            request.request_id(), user_errors::InvalidCredentials());
+    }
+
+    if (algo != "argon2id") {
+        std::string new_hash = Argon2idHash(request.password());
+        if (!new_hash.empty()) {
+            auto migrated = co_await users_.UpdateUserPasswordCoro(
+                uid, new_hash, "argon2id");
+            if (!migrated.ok()) {
+                ZCHAT_LOG_WARN("LoginByNickname lazy migration failed user={}",
+                               uid);
+            }
+        }
+    }
+
+    co_await sessions_.ClearLoginFailCoro(uid);
+    auto session_id = co_await LoginUserCoro(uid);
     if (!session_id.ok()) {
-        return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
-                                                  session_id.error());
+        co_return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
+                                                     session_id.error());
     }
     zchat::UserLoginRsp response;
     MarkOk(request.request_id(), &response);
     response.set_login_session_id(session_id.value());
-    ZCHAT_LOG_INFO("LoginByNickname success: request_id={} user_id={}",
-                   request.request_id(), user.value()->user_id);
-    return response;
+    co_return response;
 }
 
-zchat::PhoneVerifyCodeRsp UserApplicationService::GetPhoneVerifyCode(
+drogon::Task<zchat::PhoneVerifyCodeRsp>
+UserApplicationService::GetPhoneVerifyCodeCoro(
     const zchat::PhoneVerifyCodeReq &request) {
     ZCHAT_LOG_INFO("GetPhoneVerifyCode request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
-        return ErrorResponse<zchat::PhoneVerifyCodeRsp>(
+        co_return ErrorResponse<zchat::PhoneVerifyCodeRsp>(
             request.request_id(), user_errors::InvalidPhone());
     }
     const std::string verify_code_id = NewId();
-    const auto saved =
-        sessions_.SaveVerifyCode(verify_code_id, request.phone_number());
+    const auto saved = co_await sessions_.SaveVerifyCodeCoro(
+        verify_code_id, request.phone_number());
     if (!saved.ok()) {
-        return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
-                                                        saved.error());
+        co_return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
+                                                           saved.error());
     }
-    const auto sent = sms_.SendVerificationCode(request.phone_number());
+    const auto sent =
+        co_await sms_.SendVerificationCode(request.phone_number());
     if (!sent.ok()) {
-        sessions_.RemoveVerifyCode(verify_code_id);
-        return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
-                                                        sent.error());
+        co_await sessions_.RemoveVerifyCodeCoro(verify_code_id);
+        co_return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
+                                                           sent.error());
     }
     zchat::PhoneVerifyCodeRsp response;
     MarkOk(request.request_id(), &response);
     response.set_verify_code_id(verify_code_id);
-    ZCHAT_LOG_INFO("GetPhoneVerifyCode success: request_id={} phone={}",
-                   request.request_id(), request.phone_number());
-    return response;
+    co_return response;
 }
 
-zchat::PhoneRegisterRsp UserApplicationService::RegisterByPhone(
+drogon::Task<zchat::PhoneRegisterRsp>
+UserApplicationService::RegisterByPhoneCoro(
     const zchat::PhoneRegisterReq &request) {
     ZCHAT_LOG_INFO("RegisterByPhone request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(
+        co_return ErrorResponse<zchat::PhoneRegisterRsp>(
             request.request_id(), user_errors::InvalidPhone());
     }
-    auto existing_user = users_.FindUserByPhone(request.phone_number());
+    auto existing_user =
+        co_await users_.FindUserByPhoneCoro(request.phone_number());
     if (!existing_user.ok()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
-                                                      existing_user.error());
+        co_return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
+                                                         existing_user.error());
     }
     if (existing_user.value().has_value()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(
+        co_return ErrorResponse<zchat::PhoneRegisterRsp>(
             request.request_id(), user_errors::PhoneAlreadyRegistered());
     }
-    const auto code =
-        ValidateVerifyCode(request.verify_code_id(), request.verify_code());
+    const auto code = co_await ValidateVerifyCodeCoro(request.verify_code_id(),
+                                                      request.verify_code());
     if (!code.ok()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
-                                                      code.error());
+        co_return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
+                                                         code.error());
     }
     if (code.value() != request.phone_number()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(
+        co_return ErrorResponse<zchat::PhoneRegisterRsp>(
             request.request_id(), user_errors::VerifyCodePhoneMismatch());
     }
     UserRecord user;
     user.user_id = NewId();
     user.nickname = user.user_id;
     user.phone = request.phone_number();
-    const auto inserted = users_.InsertUser(user);
+    const auto inserted = co_await users_.InsertUserCoro(user);
     if (!inserted.ok()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
-                                                      inserted.error());
+        co_return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
+                                                         inserted.error());
     }
-    const auto indexed = IndexUser(user);
+    const auto indexed = co_await IndexUserCoro(user);
     if (!indexed.ok()) {
-        return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
-                                                      indexed.error());
+        co_return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
+                                                         indexed.error());
     }
-    sessions_.RemoveVerifyCode(request.verify_code_id());
+    co_await sessions_.RemoveVerifyCodeCoro(request.verify_code_id());
     zchat::PhoneRegisterRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("RegisterByPhone success: request_id={}",
-                   request.request_id());
-    return response;
+    co_return response;
 }
 
-zchat::PhoneLoginRsp
-UserApplicationService::LoginByPhone(const zchat::PhoneLoginReq &request) {
+drogon::Task<zchat::PhoneLoginRsp>
+UserApplicationService::LoginByPhoneCoro(const zchat::PhoneLoginReq &request) {
     ZCHAT_LOG_INFO("LoginByPhone request_id={}", request.request_id());
     if (!IsValidPhone(request.phone_number())) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
-                                                   user_errors::InvalidPhone());
+        co_return ErrorResponse<zchat::PhoneLoginRsp>(
+            request.request_id(), user_errors::InvalidPhone());
     }
-    auto existing_user = users_.FindUserByPhone(request.phone_number());
+    auto existing_user =
+        co_await users_.FindUserByPhoneCoro(request.phone_number());
     if (!existing_user.ok()) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
-                                                   existing_user.error());
+        co_return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                      existing_user.error());
     }
     if (!existing_user.value().has_value()) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(
+        co_return ErrorResponse<zchat::PhoneLoginRsp>(
             request.request_id(), user_errors::PhoneNotRegistered());
     }
-    const auto code =
-        ValidateVerifyCode(request.verify_code_id(), request.verify_code());
+    const auto code = co_await ValidateVerifyCodeCoro(request.verify_code_id(),
+                                                      request.verify_code());
     if (!code.ok()) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
-                                                   code.error());
+        co_return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                      code.error());
     }
     if (code.value() != request.phone_number()) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(
+        co_return ErrorResponse<zchat::PhoneLoginRsp>(
             request.request_id(), user_errors::VerifyCodePhoneMismatch());
     }
-    auto user = users_.FindUserByPhone(request.phone_number());
+    auto user = co_await users_.FindUserByPhoneCoro(request.phone_number());
     if (!user.ok()) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
-                                                   user.error());
+        co_return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                      user.error());
     }
     if (!user.value().has_value()) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(
+        co_return ErrorResponse<zchat::PhoneLoginRsp>(
             request.request_id(), user_errors::PhoneNotRegistered());
     }
-    auto session_id = LoginUser(user.value()->user_id);
+    auto session_id = co_await LoginUserCoro(user.value()->user_id);
     if (!session_id.ok()) {
-        return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
-                                                   session_id.error());
+        co_return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
+                                                      session_id.error());
     }
     zchat::PhoneLoginRsp response;
     MarkOk(request.request_id(), &response);
     response.set_login_session_id(session_id.value());
-    sessions_.RemoveVerifyCode(request.verify_code_id());
-    ZCHAT_LOG_INFO("LoginByPhone success: request_id={}", request.request_id());
-    return response;
+    co_await sessions_.RemoveVerifyCodeCoro(request.verify_code_id());
+    co_return response;
 }
 
-zchat::GetUserInfoRsp
-UserApplicationService::GetUserInfo(const zchat::GetUserInfoReq &request) {
+drogon::Task<zchat::GetUserInfoRsp>
+UserApplicationService::GetUserInfoCoro(const zchat::GetUserInfoReq &request) {
     ZCHAT_LOG_INFO("GetUserInfo request_id={}", request.request_id());
-    const auto user_id = UserIdFromSession(request.session_id());
+    const auto user_id = co_await UserIdFromSessionCoro(request.session_id());
     if (!user_id.ok()) {
-        return ErrorResponse<zchat::GetUserInfoRsp>(request.request_id(),
-                                                    user_id.error());
+        co_return ErrorResponse<zchat::GetUserInfoRsp>(request.request_id(),
+                                                       user_id.error());
     }
-    auto user = users_.FindUserById(user_id.value());
+    auto user = co_await users_.FindUserByIdCoro(user_id.value());
     if (!user.ok()) {
-        return ErrorResponse<zchat::GetUserInfoRsp>(request.request_id(),
-                                                    user.error());
+        co_return ErrorResponse<zchat::GetUserInfoRsp>(request.request_id(),
+                                                       user.error());
     }
     if (!user.value().has_value()) {
-        return ErrorResponse<zchat::GetUserInfoRsp>(
+        co_return ErrorResponse<zchat::GetUserInfoRsp>(
             request.request_id(), user_errors::UserNotFound());
     }
-    std::string avatar = GetAvatarContent(user.value()->avatar_id);
+    std::string avatar = co_await GetAvatarContentCoro(user.value()->avatar_id);
     zchat::GetUserInfoRsp response;
     MarkOk(request.request_id(), &response);
     *response.mutable_user_info() = ToProtoUser(user.value().value(), avatar);
-    ZCHAT_LOG_INFO("GetUserInfo success: request_id={} user_id={}",
-                   request.request_id(), user_id.value());
-    return response;
+    co_return response;
 }
 
-zchat::GetMultiUserInfoRsp UserApplicationService::GetMultiUserInfo(
+drogon::Task<zchat::GetMultiUserInfoRsp>
+UserApplicationService::GetMultiUserInfoCoro(
     const zchat::GetMultiUserInfoReq &request) {
     zchat::GetMultiUserInfoRsp response;
     response.set_request_id(request.request_id());
-    auto users = users_.FindUsersByIds(std::vector<std::string>(
+    auto users = co_await users_.FindUsersByIdsCoro(std::vector<std::string>(
         request.users_id().begin(), request.users_id().end()));
     if (!users.ok()) {
         response.set_success(false);
         response.set_errmsg(FormatErrorForClient(users.error()));
-        return response;
+        co_return response;
     }
     response.set_success(true);
     response.set_errmsg("");
     for (const auto &user : users.value()) {
-        std::string avatar = GetAvatarContent(user.avatar_id);
+        std::string avatar = co_await GetAvatarContentCoro(user.avatar_id);
         (*response.mutable_users_info())[user.user_id] =
             ToProtoUser(user, avatar);
     }
-    return response;
+    co_return response;
 }
 
-zchat::SearchUsersRsp
-UserApplicationService::SearchUsers(const zchat::SearchUsersReq &request) {
+drogon::Task<zchat::SearchUsersRsp>
+UserApplicationService::SearchUsersCoro(const zchat::SearchUsersReq &request) {
     ZCHAT_LOG_INFO("SearchUsers request_id={}", request.request_id());
-    auto users = search_index_.SearchUsers(request.search_key(),
-                                           {request.exclude_user_id()});
+    auto users = co_await search_index_.SearchUsersCoro(
+        request.search_key(), {request.exclude_user_id()});
     if (!users.ok()) {
-        return ErrorResponse<zchat::SearchUsersRsp>(request.request_id(),
-                                                    users.error());
+        co_return ErrorResponse<zchat::SearchUsersRsp>(request.request_id(),
+                                                       users.error());
     }
     zchat::SearchUsersRsp response;
     response.set_request_id(request.request_id());
     response.set_success(true);
     response.set_errmsg("");
     for (const auto &user : users.value()) {
-        std::string avatar = GetAvatarContent(user.avatar_id);
+        std::string avatar = co_await GetAvatarContentCoro(user.avatar_id);
         *response.add_user_info() = ToProtoUser(user, avatar);
     }
-    ZCHAT_LOG_INFO("SearchUsers success: request_id={} count={}",
-                   request.request_id(), users.value().size());
-    return response;
+    co_return response;
 }
 
-zchat::SetUserAvatarRsp
-UserApplicationService::SetAvatar(const zchat::SetUserAvatarReq &request) {
+drogon::Task<zchat::SetUserAvatarRsp>
+UserApplicationService::SetAvatarCoro(const zchat::SetUserAvatarReq &request) {
     ZCHAT_LOG_INFO("SetAvatar request_id={}", request.request_id());
-    const auto user_id = UserIdFromSession(request.session_id());
+    const auto user_id = co_await UserIdFromSessionCoro(request.session_id());
     if (!user_id.ok()) {
-        return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
-                                                      user_id.error());
+        co_return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
+                                                         user_id.error());
     }
-    const auto file_id = PutAvatarContent(request.avatar());
+    const auto file_id = co_await PutAvatarContentCoro(request.avatar());
     if (!file_id.ok()) {
-        return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
-                                                      file_id.error());
+        co_return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
+                                                         file_id.error());
     }
     const auto updated =
-        users_.UpdateUserAvatar(user_id.value(), file_id.value());
+        co_await users_.UpdateUserAvatarCoro(user_id.value(), file_id.value());
     if (!updated.ok()) {
-        return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
-                                                      updated.error());
+        co_return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
+                                                         updated.error());
     }
-    const auto indexed = IndexUserById(user_id.value());
+    const auto indexed = co_await IndexUserByIdCoro(user_id.value());
     if (!indexed.ok()) {
-        return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
-                                                      indexed.error());
+        co_return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
+                                                         indexed.error());
     }
     zchat::SetUserAvatarRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("SetAvatar success: request_id={}", request.request_id());
-    return response;
+    co_return response;
 }
 
-zchat::SetUserNicknameRsp
-UserApplicationService::SetNickname(const zchat::SetUserNicknameReq &request) {
+drogon::Task<zchat::SetUserNicknameRsp> UserApplicationService::SetNicknameCoro(
+    const zchat::SetUserNicknameReq &request) {
     ZCHAT_LOG_INFO("SetNickname request_id={}", request.request_id());
-    const auto user_id = UserIdFromSession(request.session_id());
+    const auto user_id = co_await UserIdFromSessionCoro(request.session_id());
     if (!user_id.ok()) {
-        return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
-                                                        user_id.error());
+        co_return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
+                                                           user_id.error());
     }
-    const auto updated =
-        users_.UpdateUserNickname(user_id.value(), request.nickname());
+    const auto updated = co_await users_.UpdateUserNicknameCoro(
+        user_id.value(), request.nickname());
     if (!updated.ok()) {
-        return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
-                                                        updated.error());
+        co_return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
+                                                           updated.error());
     }
-    const auto indexed = IndexUserById(user_id.value());
+    const auto indexed = co_await IndexUserByIdCoro(user_id.value());
     if (!indexed.ok()) {
-        return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
-                                                        indexed.error());
+        co_return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
+                                                           indexed.error());
     }
     zchat::SetUserNicknameRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("SetNickname success: request_id={}", request.request_id());
-    return response;
+    co_return response;
 }
 
-zchat::SetUserDescriptionRsp UserApplicationService::SetDescription(
+drogon::Task<zchat::SetUserDescriptionRsp>
+UserApplicationService::SetDescriptionCoro(
     const zchat::SetUserDescriptionReq &request) {
     ZCHAT_LOG_INFO("SetDescription request_id={}", request.request_id());
-    const auto user_id = UserIdFromSession(request.session_id());
+    const auto user_id = co_await UserIdFromSessionCoro(request.session_id());
     if (!user_id.ok()) {
-        return ErrorResponse<zchat::SetUserDescriptionRsp>(request.request_id(),
-                                                           user_id.error());
+        co_return ErrorResponse<zchat::SetUserDescriptionRsp>(
+            request.request_id(), user_id.error());
     }
-    const auto updated =
-        users_.UpdateUserDescription(user_id.value(), request.description());
+    const auto updated = co_await users_.UpdateUserDescriptionCoro(
+        user_id.value(), request.description());
     if (!updated.ok()) {
-        return ErrorResponse<zchat::SetUserDescriptionRsp>(request.request_id(),
-                                                           updated.error());
+        co_return ErrorResponse<zchat::SetUserDescriptionRsp>(
+            request.request_id(), updated.error());
     }
-    const auto indexed = IndexUserById(user_id.value());
+    const auto indexed = co_await IndexUserByIdCoro(user_id.value());
     if (!indexed.ok()) {
-        return ErrorResponse<zchat::SetUserDescriptionRsp>(request.request_id(),
-                                                           indexed.error());
+        co_return ErrorResponse<zchat::SetUserDescriptionRsp>(
+            request.request_id(), indexed.error());
     }
     zchat::SetUserDescriptionRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("SetDescription success: request_id={}",
-                   request.request_id());
-    return response;
+    co_return response;
 }
 
-zchat::SetUserPhoneNumberRsp
-UserApplicationService::SetPhone(const zchat::SetUserPhoneNumberReq &request) {
+drogon::Task<zchat::SetUserPhoneNumberRsp> UserApplicationService::SetPhoneCoro(
+    const zchat::SetUserPhoneNumberReq &request) {
     ZCHAT_LOG_INFO("SetPhone request_id={}", request.request_id());
-    const auto user_id = UserIdFromSession(request.session_id());
+    const auto user_id = co_await UserIdFromSessionCoro(request.session_id());
     if (!user_id.ok()) {
-        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(request.request_id(),
-                                                           user_id.error());
+        co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
+            request.request_id(), user_id.error());
     }
-    const auto code = ValidateVerifyCode(request.phone_verify_code_id(),
-                                         request.phone_verify_code());
+    const auto code = co_await ValidateVerifyCodeCoro(
+        request.phone_verify_code_id(), request.phone_verify_code());
     if (!code.ok()) {
-        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(request.request_id(),
-                                                           code.error());
+        co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
+            request.request_id(), code.error());
     }
     if (code.value() != request.phone_number()) {
-        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
+        co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
             request.request_id(), user_errors::VerifyCodePhoneMismatch());
     }
-    const auto updated =
-        users_.UpdateUserPhone(user_id.value(), request.phone_number());
+    const auto updated = co_await users_.UpdateUserPhoneCoro(
+        user_id.value(), request.phone_number());
     if (!updated.ok()) {
-        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(request.request_id(),
-                                                           updated.error());
+        co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
+            request.request_id(), updated.error());
     }
-    const auto indexed = IndexUserById(user_id.value());
+    const auto indexed = co_await IndexUserByIdCoro(user_id.value());
     if (!indexed.ok()) {
-        return ErrorResponse<zchat::SetUserPhoneNumberRsp>(request.request_id(),
-                                                           indexed.error());
+        co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
+            request.request_id(), indexed.error());
     }
-    sessions_.RemoveVerifyCode(request.phone_verify_code_id());
+    co_await sessions_.RemoveVerifyCodeCoro(request.phone_verify_code_id());
     zchat::SetUserPhoneNumberRsp response;
     MarkOk(request.request_id(), &response);
-    ZCHAT_LOG_INFO("SetPhone success: request_id={}", request.request_id());
-    return response;
+    co_return response;
 }
 
-Result<std::string>
-UserApplicationService::UserIdFromSession(const std::string &session_id) {
+drogon::Task<Result<std::string>>
+UserApplicationService::UserIdFromSessionCoro(const std::string &session_id) {
     if (session_id.empty()) {
-        return Result<std::string>::Fail(common_errors::SessionIdRequired());
+        co_return Result<std::string>::Fail(common_errors::SessionIdRequired());
     }
-    auto user_id = sessions_.GetUserId(session_id);
+    auto user_id = co_await sessions_.GetUserIdCoro(session_id);
     if (!user_id.ok()) {
-        return Result<std::string>::Fail(user_id.error());
+        co_return Result<std::string>::Fail(user_id.error());
     }
     if (!user_id.value().has_value()) {
-        return Result<std::string>::Fail(common_errors::SessionExpired());
+        co_return Result<std::string>::Fail(common_errors::SessionExpired());
     }
-    return Result<std::string>::Ok(user_id.value().value());
+    co_return Result<std::string>::Ok(user_id.value().value());
 }
 
-Result<std::string>
-UserApplicationService::ValidateVerifyCode(const std::string &verify_code_id,
-                                           const std::string &verify_code) {
-    auto saved = sessions_.GetVerifyCode(verify_code_id);
+drogon::Task<Result<std::string>>
+UserApplicationService::ValidateVerifyCodeCoro(
+    const std::string &verify_code_id, const std::string &verify_code) {
+    auto saved = co_await sessions_.GetVerifyCodeCoro(verify_code_id);
     if (!saved.ok()) {
-        return Result<std::string>::Fail(saved.error());
+        co_return Result<std::string>::Fail(saved.error());
     }
     if (!saved.value().has_value()) {
-        return Result<std::string>::Fail(user_errors::VerifyCodeExpired());
+        co_return Result<std::string>::Fail(user_errors::VerifyCodeExpired());
     }
     const std::string &phone = saved.value().value();
-    auto checked = sms_.CheckVerificationCode(phone, verify_code);
+    auto checked = co_await sms_.CheckVerificationCode(phone, verify_code);
     if (!checked.ok()) {
-        return Result<std::string>::Fail(checked.error());
+        co_return Result<std::string>::Fail(checked.error());
     }
-    return Result<std::string>::Ok(phone);
+    co_return Result<std::string>::Ok(phone);
 }
 
 bool UserApplicationService::IsValidPhone(const std::string &phone) const {
@@ -457,63 +489,77 @@ bool UserApplicationService::IsValidPhone(const std::string &phone) const {
 
 bool UserApplicationService::IsValidPassword(
     const std::string &password) const {
-    if (password.size() < 6 || password.size() > 32) {
+    if (password.size() < 8 || password.size() > 32) {
         return false;
     }
-    return std::all_of(password.begin(), password.end(), [](unsigned char c) {
-        return std::isalnum(c) != 0 || c == '_' || c == '-';
-    });
+    bool has_upper = false;
+    bool has_lower = false;
+    bool has_digit = false;
+    for (unsigned char c : password) {
+        if (!std::isalnum(c) && c != '_' && c != '-') {
+            return false;
+        }
+        if (std::isupper(c))
+            has_upper = true;
+        if (std::islower(c))
+            has_lower = true;
+        if (std::isdigit(c))
+            has_digit = true;
+    }
+    return has_upper && has_lower && has_digit;
 }
 
-VoidResult UserApplicationService::IndexUser(const UserRecord &user) {
-    return search_index_.IndexUser(user);
+drogon::Task<VoidResult>
+UserApplicationService::IndexUserCoro(const UserRecord &user) {
+    co_return co_await search_index_.IndexUserCoro(user);
 }
 
-VoidResult UserApplicationService::IndexUserById(const std::string &user_id) {
-    auto user = users_.FindUserById(user_id);
+drogon::Task<VoidResult>
+UserApplicationService::IndexUserByIdCoro(const std::string &user_id) {
+    auto user = co_await users_.FindUserByIdCoro(user_id);
     if (!user.ok()) {
-        return VoidResult::Fail(user.error());
+        co_return VoidResult::Fail(user.error());
     }
     if (!user.value().has_value()) {
-        return VoidResult::Fail(user_errors::UserNotFound());
+        co_return VoidResult::Fail(user_errors::UserNotFound());
     }
-    return IndexUser(user.value().value());
+    co_return co_await IndexUserCoro(user.value().value());
 }
 
-Result<std::string>
-UserApplicationService::LoginUser(const std::string &user_id) {
+drogon::Task<Result<std::string>>
+UserApplicationService::LoginUserCoro(const std::string &user_id) {
     const std::string session_id = NewId();
-    auto saved = sessions_.SaveSession(session_id, user_id);
+    auto saved = co_await sessions_.SaveSessionCoro(session_id, user_id);
     if (!saved.ok()) {
-        return Result<std::string>::Fail(saved.error());
+        co_return Result<std::string>::Fail(saved.error());
     }
-    auto online_set = sessions_.SetOnlineIfAbsent(user_id);
+    auto online_set = co_await sessions_.SetOnlineIfAbsentCoro(user_id);
     if (!online_set.ok()) {
-        sessions_.RemoveSession(session_id);
-        return Result<std::string>::Fail(online_set.error());
+        co_await sessions_.RemoveSessionCoro(session_id);
+        co_return Result<std::string>::Fail(online_set.error());
     }
     if (!online_set.value()) {
-        sessions_.RemoveSession(session_id);
-        return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
+        co_await sessions_.RemoveSessionCoro(session_id);
+        co_return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
     }
-    return Result<std::string>::Ok(session_id);
+    co_return Result<std::string>::Ok(session_id);
 }
 
-std::string
-UserApplicationService::GetAvatarContent(const std::string &avatar_id) {
+drogon::Task<std::string>
+UserApplicationService::GetAvatarContentCoro(const std::string &avatar_id) {
     if (avatar_id.empty()) {
-        return std::string();
+        co_return std::string();
     }
-    auto file = clients_.GetFile(avatar_id);
+    auto file = co_await clients_.GetFileCoro(avatar_id);
     if (!file.ok() || !file.value().has_value()) {
-        return std::string();
+        co_return std::string();
     }
-    return file.value()->file_content;
+    co_return file.value()->file_content;
 }
 
-Result<std::string>
-UserApplicationService::PutAvatarContent(const std::string &avatar_content) {
-    return clients_.PutFile("avatar", avatar_content);
+drogon::Task<Result<std::string>> UserApplicationService::PutAvatarContentCoro(
+    const std::string &avatar_content) {
+    co_return co_await clients_.PutFileCoro("avatar", avatar_content);
 }
 
 } // namespace zchat

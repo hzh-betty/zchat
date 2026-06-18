@@ -7,6 +7,7 @@
 #include <string>
 
 #include <drogon/HttpClient.h>
+#include <drogon/utils/coroutine.h>
 #include <trantor/net/EventLoopThread.h>
 
 #include "common/config.h"
@@ -21,10 +22,12 @@ class AlibabaSmsClient final : public SmsClient {
 
     ~AlibabaSmsClient() override = default;
 
-    VoidResult SendVerificationCode(const std::string &phone) override;
+    drogon::Task<VoidResult>
+    SendVerificationCode(const std::string &phone) override;
 
-    VoidResult CheckVerificationCode(const std::string &phone,
-                                     const std::string &code) override;
+    drogon::Task<VoidResult>
+    CheckVerificationCode(const std::string &phone,
+                          const std::string &code) override;
 
   private:
     std::string FormatUtcTimestamp() const;
@@ -34,8 +37,9 @@ class AlibabaSmsClient final : public SmsClient {
                      const std::string &secret) const;
     std::string
     BuildQueryString(const std::map<std::string, std::string> &params) const;
-    VoidResult SendRequest(const std::map<std::string, std::string> &params,
-                           bool check_verify_result = false);
+    drogon::Task<VoidResult>
+    SendRequestCoro(const std::map<std::string, std::string> &params,
+                    bool check_verify_result = false);
 
     std::string access_key_id_;
     std::string access_key_secret_;

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <drogon/orm/DbClient.h>
+#include <drogon/utils/coroutine.h>
 
 #include "common/domain_records.h"
 #include "common/orm_helpers.h"
@@ -22,24 +23,31 @@ class UserRepository : public NonCopyable {
 
     virtual ~UserRepository() = default;
 
-    virtual Result<std::optional<UserRecord>>
-    FindUserById(const std::string &user_id) = 0;
-    virtual Result<std::optional<UserRecord>>
-    FindUserByNickname(const std::string &nickname) = 0;
-    virtual Result<std::optional<UserRecord>>
-    FindUserByPhone(const std::string &phone) = 0;
-    virtual Result<std::vector<UserRecord>>
-    FindUsersByIds(const std::vector<std::string> &user_ids) = 0;
-    virtual VoidResult InsertUser(const UserRecord &user) = 0;
-    virtual VoidResult UpdateUserNickname(const std::string &user_id,
-                                          const std::string &nickname) = 0;
-    virtual VoidResult
-    UpdateUserDescription(const std::string &user_id,
-                          const std::string &description) = 0;
-    virtual VoidResult UpdateUserPhone(const std::string &user_id,
-                                       const std::string &phone) = 0;
-    virtual VoidResult UpdateUserAvatar(const std::string &user_id,
-                                        const std::string &avatar_id) = 0;
+    virtual drogon::Task<Result<std::optional<UserRecord>>>
+    FindUserByIdCoro(const std::string &user_id) = 0;
+    virtual drogon::Task<Result<std::optional<UserRecord>>>
+    FindUserByNicknameCoro(const std::string &nickname) = 0;
+    virtual drogon::Task<Result<std::optional<UserRecord>>>
+    FindUserByPhoneCoro(const std::string &phone) = 0;
+    virtual drogon::Task<Result<std::vector<UserRecord>>>
+    FindUsersByIdsCoro(const std::vector<std::string> &user_ids) = 0;
+    virtual drogon::Task<VoidResult> InsertUserCoro(const UserRecord &user) = 0;
+    virtual drogon::Task<VoidResult>
+    UpdateUserNicknameCoro(const std::string &user_id,
+                           const std::string &nickname) = 0;
+    virtual drogon::Task<VoidResult>
+    UpdateUserDescriptionCoro(const std::string &user_id,
+                              const std::string &description) = 0;
+    virtual drogon::Task<VoidResult>
+    UpdateUserPhoneCoro(const std::string &user_id,
+                        const std::string &phone) = 0;
+    virtual drogon::Task<VoidResult>
+    UpdateUserAvatarCoro(const std::string &user_id,
+                         const std::string &avatar_id) = 0;
+    virtual drogon::Task<VoidResult>
+    UpdateUserPasswordCoro(const std::string &user_id,
+                           const std::string &password_hash,
+                           const std::string &algo) = 0;
 };
 
 class OrmUserRepository final : public UserRepository,
@@ -49,23 +57,31 @@ class OrmUserRepository final : public UserRepository,
 
     ~OrmUserRepository() override = default;
 
-    Result<std::optional<UserRecord>>
-    FindUserById(const std::string &user_id) override;
-    Result<std::optional<UserRecord>>
-    FindUserByNickname(const std::string &nickname) override;
-    Result<std::optional<UserRecord>>
-    FindUserByPhone(const std::string &phone) override;
-    Result<std::vector<UserRecord>>
-    FindUsersByIds(const std::vector<std::string> &user_ids) override;
-    VoidResult InsertUser(const UserRecord &user) override;
-    VoidResult UpdateUserNickname(const std::string &user_id,
-                                  const std::string &nickname) override;
-    VoidResult UpdateUserDescription(const std::string &user_id,
-                                     const std::string &description) override;
-    VoidResult UpdateUserPhone(const std::string &user_id,
-                               const std::string &phone) override;
-    VoidResult UpdateUserAvatar(const std::string &user_id,
-                                const std::string &avatar_id) override;
+    drogon::Task<Result<std::optional<UserRecord>>>
+    FindUserByIdCoro(const std::string &user_id) override;
+    drogon::Task<Result<std::optional<UserRecord>>>
+    FindUserByNicknameCoro(const std::string &nickname) override;
+    drogon::Task<Result<std::optional<UserRecord>>>
+    FindUserByPhoneCoro(const std::string &phone) override;
+    drogon::Task<Result<std::vector<UserRecord>>>
+    FindUsersByIdsCoro(const std::vector<std::string> &user_ids) override;
+    drogon::Task<VoidResult> InsertUserCoro(const UserRecord &user) override;
+    drogon::Task<VoidResult>
+    UpdateUserNicknameCoro(const std::string &user_id,
+                           const std::string &nickname) override;
+    drogon::Task<VoidResult>
+    UpdateUserDescriptionCoro(const std::string &user_id,
+                              const std::string &description) override;
+    drogon::Task<VoidResult>
+    UpdateUserPhoneCoro(const std::string &user_id,
+                        const std::string &phone) override;
+    drogon::Task<VoidResult>
+    UpdateUserAvatarCoro(const std::string &user_id,
+                         const std::string &avatar_id) override;
+    drogon::Task<VoidResult>
+    UpdateUserPasswordCoro(const std::string &user_id,
+                           const std::string &password_hash,
+                           const std::string &algo) override;
 };
 
 } // namespace zchat

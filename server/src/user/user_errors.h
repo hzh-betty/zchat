@@ -69,6 +69,12 @@ inline AppError AlreadyLoggedIn() {
                               "user already logged in");
 }
 
+inline AppError AccountLocked() {
+    return AppError::WithCode(ErrorCode::kUserAccountLocked,
+                              "account is temporarily locked due to repeated "
+                              "login failures");
+}
+
 inline AppError SmsClientNotConfigured() {
     return AppError::WithCode(ErrorCode::kExternalServiceError,
                               "sms client is not configured");

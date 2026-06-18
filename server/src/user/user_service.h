@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include <drogon/utils/coroutine.h>
+
 #include "common/search/user_search_index.h"
 #include "common/service_clients.h"
 #include "common/session_store.h"
@@ -22,39 +24,48 @@ class UserApplicationService : public NonCopyable {
 
     ~UserApplicationService() = default;
 
-    zchat::UserRegisterRsp
-    RegisterByNickname(const zchat::UserRegisterReq &request);
-    zchat::UserLoginRsp LoginByNickname(const zchat::UserLoginReq &request);
-    zchat::PhoneVerifyCodeRsp
-    GetPhoneVerifyCode(const zchat::PhoneVerifyCodeReq &request);
-    zchat::PhoneRegisterRsp
-    RegisterByPhone(const zchat::PhoneRegisterReq &request);
-    zchat::PhoneLoginRsp LoginByPhone(const zchat::PhoneLoginReq &request);
-    zchat::GetUserInfoRsp GetUserInfo(const zchat::GetUserInfoReq &request);
-    zchat::GetMultiUserInfoRsp
-    GetMultiUserInfo(const zchat::GetMultiUserInfoReq &request);
-    zchat::SearchUsersRsp SearchUsers(const zchat::SearchUsersReq &request);
-    zchat::SetUserAvatarRsp SetAvatar(const zchat::SetUserAvatarReq &request);
-    zchat::SetUserNicknameRsp
-    SetNickname(const zchat::SetUserNicknameReq &request);
-    zchat::SetUserDescriptionRsp
-    SetDescription(const zchat::SetUserDescriptionReq &request);
-    zchat::SetUserPhoneNumberRsp
-    SetPhone(const zchat::SetUserPhoneNumberReq &request);
+    drogon::Task<zchat::UserRegisterRsp>
+    RegisterByNicknameCoro(const zchat::UserRegisterReq &request);
+    drogon::Task<zchat::UserLoginRsp>
+    LoginByNicknameCoro(const zchat::UserLoginReq &request);
+    drogon::Task<zchat::PhoneVerifyCodeRsp>
+    GetPhoneVerifyCodeCoro(const zchat::PhoneVerifyCodeReq &request);
+    drogon::Task<zchat::PhoneRegisterRsp>
+    RegisterByPhoneCoro(const zchat::PhoneRegisterReq &request);
+    drogon::Task<zchat::PhoneLoginRsp>
+    LoginByPhoneCoro(const zchat::PhoneLoginReq &request);
+    drogon::Task<zchat::GetUserInfoRsp>
+    GetUserInfoCoro(const zchat::GetUserInfoReq &request);
+    drogon::Task<zchat::GetMultiUserInfoRsp>
+    GetMultiUserInfoCoro(const zchat::GetMultiUserInfoReq &request);
+    drogon::Task<zchat::SearchUsersRsp>
+    SearchUsersCoro(const zchat::SearchUsersReq &request);
+    drogon::Task<zchat::SetUserAvatarRsp>
+    SetAvatarCoro(const zchat::SetUserAvatarReq &request);
+    drogon::Task<zchat::SetUserNicknameRsp>
+    SetNicknameCoro(const zchat::SetUserNicknameReq &request);
+    drogon::Task<zchat::SetUserDescriptionRsp>
+    SetDescriptionCoro(const zchat::SetUserDescriptionReq &request);
+    drogon::Task<zchat::SetUserPhoneNumberRsp>
+    SetPhoneCoro(const zchat::SetUserPhoneNumberReq &request);
 
-    Result<std::string> UserIdFromSession(const std::string &session_id);
+    drogon::Task<Result<std::string>>
+    UserIdFromSessionCoro(const std::string &session_id);
 
   private:
-    Result<std::string> ValidateVerifyCode(const std::string &verify_code_id,
-                                           const std::string &verify_code);
+    drogon::Task<Result<std::string>>
+    ValidateVerifyCodeCoro(const std::string &verify_code_id,
+                           const std::string &verify_code);
     bool IsValidPhone(const std::string &phone) const;
     bool IsValidPassword(const std::string &password) const;
-    VoidResult IndexUser(const UserRecord &user);
-    VoidResult IndexUserById(const std::string &user_id);
-    Result<std::string> LoginUser(const std::string &user_id);
+    drogon::Task<VoidResult> IndexUserCoro(const UserRecord &user);
+    drogon::Task<VoidResult> IndexUserByIdCoro(const std::string &user_id);
+    drogon::Task<Result<std::string>> LoginUserCoro(const std::string &user_id);
 
-    std::string GetAvatarContent(const std::string &avatar_id);
-    Result<std::string> PutAvatarContent(const std::string &avatar_content);
+    drogon::Task<std::string>
+    GetAvatarContentCoro(const std::string &avatar_id);
+    drogon::Task<Result<std::string>>
+    PutAvatarContentCoro(const std::string &avatar_content);
 
     UserRepository &users_;
     ServiceClients &clients_;
