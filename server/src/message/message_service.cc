@@ -12,45 +12,43 @@
 #include "message/message_errors.h"
 
 namespace zchat {
-namespace {} // namespace
 
 MessageService::MessageService(MessageRepository &messages,
                                ServiceClients &clients,
                                MessageSearchIndex &search_index)
     : messages_(messages), clients_(clients), search_index_(search_index) {}
 
-zchat::GetRecentMsgRsp
-MessageService::GetRecent(const zchat::GetRecentMsgReq &request) {
+drogon::Task<zchat::GetRecentMsgRsp>
+MessageService::GetRecentCoro(const zchat::GetRecentMsgReq &request) {
     ZCHAT_LOG_INFO("MessageService::GetRecent request_id={}",
                    request.request_id());
-    const auto auth = EnsureCanReadSession(
-        request.request_id(), request.user_id(), request.chat_session_id());
+    const auto auth = co_await EnsureCanReadSessionCoro(
+        request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
-        return MakeErrorResponse<zchat::GetRecentMsgRsp>(request.request_id(),
-                                                         auth.error());
+        co_return MakeErrorResponse<zchat::GetRecentMsgRsp>(
+            request.request_id(), auth.error());
     }
-    auto messages = messages_.ListRecentMessages(
+    auto messages = co_await messages_.ListRecentMessagesCoro(
         request.chat_session_id(), static_cast<int>(request.msg_count()));
     if (!messages.ok()) {
-        return MakeErrorResponse<zchat::GetRecentMsgRsp>(request.request_id(),
-                                                         messages.error());
+        co_return MakeErrorResponse<zchat::GetRecentMsgRsp>(
+            request.request_id(), messages.error());
     }
-    auto response = BuildMessageListResponse<zchat::GetRecentMsgRsp>(
+    co_return co_await BuildMessageListResponseCoro<zchat::GetRecentMsgRsp>(
         request.request_id(), messages.value());
-    ZCHAT_LOG_INFO("MessageService::GetRecent success: request_id={}",
-                   request.request_id());
-    return response;
 }
 
-zchat::GetMultiRecentMsgRsp
-MessageService::GetMultiRecent(const zchat::GetMultiRecentMsgReq &request) {
+drogon::Task<zchat::GetMultiRecentMsgRsp>
+MessageService::GetMultiRecentCoro(const zchat::GetMultiRecentMsgReq &request) {
     ZCHAT_LOG_INFO("MessageService::GetMultiRecent request_id={} sessions={}",
                    request.request_id(), request.chat_session_id_size());
+    // GetMultiRecent 是内部调用（friend 服务），不做调用方校验
     std::vector<std::string> session_ids(request.chat_session_id().begin(),
                                          request.chat_session_id().end());
-    auto messages = messages_.ListLastMessagesForSessions(session_ids);
+    auto messages =
+        co_await messages_.ListLastMessagesForSessionsCoro(session_ids);
     if (!messages.ok()) {
-        return MakeErrorResponse<zchat::GetMultiRecentMsgRsp>(
+        co_return MakeErrorResponse<zchat::GetMultiRecentMsgRsp>(
             request.request_id(), messages.error());
     }
 
@@ -67,10 +65,10 @@ MessageService::GetMultiRecent(const zchat::GetMultiRecentMsgReq &request) {
     for (const auto &id : user_ids) {
         user_req.add_users_id(id);
     }
-    auto user_rsp = clients_.GetMultiUserInfo(user_req);
+    auto user_rsp = co_await clients_.GetMultiUserInfoCoro(user_req);
     std::unordered_map<std::string, std::string> file_contents;
     if (!file_ids.empty()) {
-        auto file_rsp = clients_.GetMultiFile(file_ids);
+        auto file_rsp = co_await clients_.GetMultiFileCoro(file_ids);
         if (file_rsp.ok() && file_rsp.value().success()) {
             for (const auto &fd : file_rsp.value().file_data()) {
                 file_contents[fd.file_id()] = fd.file_content();
@@ -103,20 +101,18 @@ MessageService::GetMultiRecent(const zchat::GetMultiRecentMsgReq &request) {
         (*response.mutable_recent_messages())[message.session_id] =
             ToProtoMessage(message, FromProtoUser(sender), file_content);
     }
-    ZCHAT_LOG_INFO("MessageService::GetMultiRecent success: request_id={}",
-                   request.request_id());
-    return response;
+    co_return response;
 }
 
-zchat::GetHistoryMsgRsp
-MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
+drogon::Task<zchat::GetHistoryMsgRsp>
+MessageService::GetHistoryCoro(const zchat::GetHistoryMsgReq &request) {
     ZCHAT_LOG_INFO("MessageService::GetHistory request_id={}",
                    request.request_id());
-    const auto auth = EnsureCanReadSession(
-        request.request_id(), request.user_id(), request.chat_session_id());
+    const auto auth = co_await EnsureCanReadSessionCoro(
+        request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
-        return MakeErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
-                                                          auth.error());
+        co_return MakeErrorResponse<zchat::GetHistoryMsgRsp>(
+            request.request_id(), auth.error());
     }
     int max_count =
         request.has_max_count() ? static_cast<int>(request.max_count()) : 50;
@@ -130,28 +126,26 @@ MessageService::GetHistory(const zchat::GetHistoryMsgReq &request) {
     if (request.has_before_msg_id() && !request.before_msg_id().empty()) {
         before_msg_id = request.before_msg_id();
     }
-    auto messages = messages_.ListMessagesByTime(
+    auto messages = co_await messages_.ListMessagesByTimeCoro(
         request.chat_session_id(), request.start_time(), request.over_time(),
         max_count, before_msg_id);
     if (!messages.ok()) {
-        return MakeErrorResponse<zchat::GetHistoryMsgRsp>(request.request_id(),
-                                                          messages.error());
+        co_return MakeErrorResponse<zchat::GetHistoryMsgRsp>(
+            request.request_id(), messages.error());
     }
-    auto response = BuildMessageListResponse<zchat::GetHistoryMsgRsp>(
+    co_return co_await BuildMessageListResponseCoro<zchat::GetHistoryMsgRsp>(
         request.request_id(), messages.value());
-    ZCHAT_LOG_INFO("MessageService::GetHistory success: request_id={}",
-                   request.request_id());
-    return response;
 }
 
-zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
+drogon::Task<zchat::MsgSearchRsp>
+MessageService::SearchCoro(const zchat::MsgSearchReq &request) {
     ZCHAT_LOG_INFO("MessageService::Search request_id={}",
                    request.request_id());
-    const auto auth = EnsureCanReadSession(
-        request.request_id(), request.user_id(), request.chat_session_id());
+    const auto auth = co_await EnsureCanReadSessionCoro(
+        request.user_id(), request.chat_session_id());
     if (!auth.ok()) {
-        return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
-                                                      auth.error());
+        co_return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
+                                                         auth.error());
     }
     int offset = request.has_offset() ? request.offset() : 0;
     if (offset < 0) {
@@ -164,58 +158,56 @@ zchat::MsgSearchRsp MessageService::Search(const zchat::MsgSearchReq &request) {
     if (limit > 100) {
         limit = 100;
     }
-    auto messages = search_index_.SearchMessages(
+    auto messages = co_await search_index_.SearchMessagesCoro(
         request.chat_session_id(), request.search_key(), offset, limit);
     if (!messages.ok()) {
-        return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
-                                                      messages.error());
+        co_return MakeErrorResponse<zchat::MsgSearchRsp>(request.request_id(),
+                                                         messages.error());
     }
-    auto response = BuildMessageListResponse<zchat::MsgSearchRsp>(
+    co_return co_await BuildMessageListResponseCoro<zchat::MsgSearchRsp>(
         request.request_id(), messages.value());
-    ZCHAT_LOG_INFO("MessageService::Search success: request_id={}",
-                   request.request_id());
-    return response;
 }
 
-VoidResult
-MessageService::StoreQueuedMessage(const zchat::MessageInfo &message) {
+drogon::Task<VoidResult>
+MessageService::StoreQueuedMessageCoro(const zchat::MessageInfo &message) {
     std::string file_content;
     MessageRecord record = FromProtoMessage(message, &file_content);
     if (!file_content.empty()) {
-        const auto file_id = clients_.PutFile(record.file_name, file_content);
+        const auto file_id =
+            co_await clients_.PutFileCoro(record.file_name, file_content);
         if (!file_id.ok()) {
-            return VoidResult::Fail(file_id.error());
+            co_return VoidResult::Fail(file_id.error());
         }
         record.file_id = file_id.value();
     }
-    const auto inserted = messages_.InsertMessage(record);
+    const auto inserted = co_await messages_.InsertMessageCoro(record);
     if (!inserted.ok()) {
-        return inserted;
+        co_return inserted;
     }
-    const auto indexed = search_index_.IndexMessage(record);
+    const auto indexed = co_await search_index_.IndexMessageCoro(record);
     if (!indexed.ok()) {
-        return indexed;
+        co_return indexed;
     }
-    ZCHAT_LOG_INFO("MessageService::StoreQueuedMessage success: message_id={}",
+    ZCHAT_LOG_INFO("StoreQueuedMessage success: message_id={}",
                    record.message_id);
-    return VoidResult::Ok();
+    co_return VoidResult::Ok();
 }
 
-VoidResult MessageService::EnsureCanReadSession(const std::string &,
-                                                const std::string &user_id,
-                                                const std::string &session_id) {
+drogon::Task<VoidResult>
+MessageService::EnsureCanReadSessionCoro(const std::string &user_id,
+                                         const std::string &session_id) {
     if (user_id.empty()) {
-        return VoidResult::Fail(common_errors::SessionExpired());
+        co_return VoidResult::Fail(common_errors::SessionExpired());
     }
     zchat::GetChatSessionMemberIdsReq req;
     req.set_request_id("internal");
     req.set_chat_session_id(session_id);
-    auto rsp = clients_.GetChatSessionMemberIds(req);
+    auto rsp = co_await clients_.GetChatSessionMemberIdsCoro(req);
     if (!rsp.ok()) {
-        return VoidResult::Fail(rsp.error());
+        co_return VoidResult::Fail(rsp.error());
     }
     if (!rsp.value().success()) {
-        return VoidResult::Fail(AppError::WithCode(
+        co_return VoidResult::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
             "friend service GetChatSessionMemberIds failed"));
     }
@@ -227,14 +219,15 @@ VoidResult MessageService::EnsureCanReadSession(const std::string &,
         }
     }
     if (!is_member) {
-        return VoidResult::Fail(message_errors::SessionAccessDenied());
+        co_return VoidResult::Fail(message_errors::SessionAccessDenied());
     }
-    return VoidResult::Ok();
+    co_return VoidResult::Ok();
 }
 
 template <typename Response, typename Messages>
-Response MessageService::BuildMessageListResponse(const std::string &request_id,
-                                                  const Messages &messages) {
+drogon::Task<Response>
+MessageService::BuildMessageListResponseCoro(const std::string &request_id,
+                                             const Messages &messages) {
     Response response;
     response.set_request_id(request_id);
     response.set_success(true);
@@ -254,11 +247,11 @@ Response MessageService::BuildMessageListResponse(const std::string &request_id,
     for (const auto &id : user_ids) {
         user_req.add_users_id(id);
     }
-    auto user_rsp = clients_.GetMultiUserInfo(user_req);
+    auto user_rsp = co_await clients_.GetMultiUserInfoCoro(user_req);
 
     std::unordered_map<std::string, std::string> file_contents;
     if (!file_ids.empty()) {
-        auto file_rsp = clients_.GetMultiFile(file_ids);
+        auto file_rsp = co_await clients_.GetMultiFileCoro(file_ids);
         if (file_rsp.ok() && file_rsp.value().success()) {
             for (const auto &fd : file_rsp.value().file_data()) {
                 file_contents[fd.file_id()] = fd.file_content();
@@ -275,9 +268,6 @@ Response MessageService::BuildMessageListResponse(const std::string &request_id,
             }
         }
         if (sender.user_id().empty()) {
-            ZCHAT_LOG_WARN("MessageService::BuildMessageListResponse "
-                           "user not found: user_id={}",
-                           message.user_id);
             continue;
         }
         std::string file_content;
@@ -290,20 +280,22 @@ Response MessageService::BuildMessageListResponse(const std::string &request_id,
         *response.add_msg_list() =
             ToProtoMessage(message, FromProtoUser(sender), file_content);
     }
-    return response;
+    co_return response;
 }
 
-template zchat::GetRecentMsgRsp
-MessageService::BuildMessageListResponse<zchat::GetRecentMsgRsp,
-                                         std::vector<MessageRecord>>(
+template drogon::Task<zchat::GetRecentMsgRsp>
+MessageService::BuildMessageListResponseCoro<zchat::GetRecentMsgRsp,
+                                             std::vector<MessageRecord>>(
     const std::string &request_id, const std::vector<MessageRecord> &messages);
-template zchat::GetHistoryMsgRsp
-MessageService::BuildMessageListResponse<zchat::GetHistoryMsgRsp,
-                                         std::vector<MessageRecord>>(
+
+template drogon::Task<zchat::GetHistoryMsgRsp>
+MessageService::BuildMessageListResponseCoro<zchat::GetHistoryMsgRsp,
+                                             std::vector<MessageRecord>>(
     const std::string &request_id, const std::vector<MessageRecord> &messages);
-template zchat::MsgSearchRsp
-MessageService::BuildMessageListResponse<zchat::MsgSearchRsp,
-                                         std::vector<MessageRecord>>(
+
+template drogon::Task<zchat::MsgSearchRsp>
+MessageService::BuildMessageListResponseCoro<zchat::MsgSearchRsp,
+                                             std::vector<MessageRecord>>(
     const std::string &request_id, const std::vector<MessageRecord> &messages);
 
 } // namespace zchat

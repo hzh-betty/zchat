@@ -3,6 +3,8 @@
 
 #include "common/noncopyable.h"
 
+#include <drogon/utils/coroutine.h>
+
 #include "common/search/message_search_index.h"
 #include "common/service_clients.h"
 #include "message.pb.h"
@@ -16,20 +18,25 @@ class MessageService : public NonCopyable {
                    MessageSearchIndex &search_index);
     ~MessageService() = default;
 
-    zchat::GetRecentMsgRsp GetRecent(const zchat::GetRecentMsgReq &request);
-    zchat::GetMultiRecentMsgRsp
-    GetMultiRecent(const zchat::GetMultiRecentMsgReq &request);
-    zchat::GetHistoryMsgRsp GetHistory(const zchat::GetHistoryMsgReq &request);
-    zchat::MsgSearchRsp Search(const zchat::MsgSearchReq &request);
-    VoidResult StoreQueuedMessage(const zchat::MessageInfo &message);
+    drogon::Task<zchat::GetRecentMsgRsp>
+    GetRecentCoro(const zchat::GetRecentMsgReq &request);
+    drogon::Task<zchat::GetMultiRecentMsgRsp>
+    GetMultiRecentCoro(const zchat::GetMultiRecentMsgReq &request);
+    drogon::Task<zchat::GetHistoryMsgRsp>
+    GetHistoryCoro(const zchat::GetHistoryMsgReq &request);
+    drogon::Task<zchat::MsgSearchRsp>
+    SearchCoro(const zchat::MsgSearchReq &request);
+    drogon::Task<VoidResult>
+    StoreQueuedMessageCoro(const zchat::MessageInfo &message);
 
   private:
     template <typename Response, typename Messages>
-    Response BuildMessageListResponse(const std::string &request_id,
-                                      const Messages &messages);
-    VoidResult EnsureCanReadSession(const std::string &request_id,
-                                    const std::string &user_id,
-                                    const std::string &session_id);
+    drogon::Task<Response>
+    BuildMessageListResponseCoro(const std::string &request_id,
+                                 const Messages &messages);
+    drogon::Task<VoidResult>
+    EnsureCanReadSessionCoro(const std::string &user_id,
+                             const std::string &session_id);
 
     MessageRepository &messages_;
     ServiceClients &clients_;

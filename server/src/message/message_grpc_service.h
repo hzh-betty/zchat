@@ -12,26 +12,28 @@
 
 namespace zchat {
 
-class MessageGrpcService final : public zchat::MsgStorageService::Service,
-                                 public NonCopyable {
+class MessageGrpcService final
+    : public zchat::MsgStorageService::CallbackService,
+      public NonCopyable {
   public:
     explicit MessageGrpcService(std::shared_ptr<MessageService> service);
-
     ~MessageGrpcService() override = default;
 
-    grpc::Status GetHistoryMsg(grpc::ServerContext *context,
-                               const zchat::GetHistoryMsgReq *request,
-                               zchat::GetHistoryMsgRsp *response) override;
-    grpc::Status GetRecentMsg(grpc::ServerContext *context,
-                              const zchat::GetRecentMsgReq *request,
-                              zchat::GetRecentMsgRsp *response) override;
-    grpc::Status
-    GetMultiRecentMsg(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    GetHistoryMsg(grpc::CallbackServerContext *context,
+                  const zchat::GetHistoryMsgReq *request,
+                  zchat::GetHistoryMsgRsp *response) override;
+    grpc::ServerUnaryReactor *
+    GetRecentMsg(grpc::CallbackServerContext *context,
+                 const zchat::GetRecentMsgReq *request,
+                 zchat::GetRecentMsgRsp *response) override;
+    grpc::ServerUnaryReactor *
+    GetMultiRecentMsg(grpc::CallbackServerContext *context,
                       const zchat::GetMultiRecentMsgReq *request,
                       zchat::GetMultiRecentMsgRsp *response) override;
-    grpc::Status MsgSearch(grpc::ServerContext *context,
-                           const zchat::MsgSearchReq *request,
-                           zchat::MsgSearchRsp *response) override;
+    grpc::ServerUnaryReactor *MsgSearch(grpc::CallbackServerContext *context,
+                                        const zchat::MsgSearchReq *request,
+                                        zchat::MsgSearchRsp *response) override;
 
   private:
     std::shared_ptr<MessageService> service_;

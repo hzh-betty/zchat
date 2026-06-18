@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "common/error_response.h"
+#include "common/grpc_callback.h"
 #include "common/logger.h"
 
 namespace zchat {
@@ -10,50 +11,24 @@ namespace zchat {
 MessageGrpcService::MessageGrpcService(std::shared_ptr<MessageService> service)
     : service_(std::move(service)) {}
 
-grpc::Status
-MessageGrpcService::GetHistoryMsg(grpc::ServerContext *,
-                                  const zchat::GetHistoryMsgReq *request,
-                                  zchat::GetHistoryMsgRsp *response) {
-    ZCHAT_LOG_INFO("MsgStorageService::GetHistoryMsg request_id={}",
-                   request->request_id());
-    *response = service_->GetHistory(*request);
-    LogBoundaryResponseError("MsgStorageService", "GetHistoryMsg",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
+#define ZCHAT_MSG_RPC(method_name, req_type, rsp_type, coro_name)              \
+    grpc::ServerUnaryReactor *MessageGrpcService::method_name(                 \
+        grpc::CallbackServerContext *, const zchat::req_type *request,         \
+        zchat::rsp_type *response) {                                           \
+        ZCHAT_LOG_INFO("MsgStorageService::" #method_name " request_id={}",    \
+                       request->request_id());                                 \
+        return new CoroUnaryReactor<zchat::rsp_type>(                          \
+            [this, req = *request]() -> drogon::Task<zchat::rsp_type> {        \
+                co_return co_await service_->coro_name(req);                   \
+            },                                                                 \
+            response, "MsgStorageService", #method_name,                       \
+            request->request_id());                                            \
+    }
 
-grpc::Status
-MessageGrpcService::GetRecentMsg(grpc::ServerContext *,
-                                 const zchat::GetRecentMsgReq *request,
-                                 zchat::GetRecentMsgRsp *response) {
-    ZCHAT_LOG_INFO("MsgStorageService::GetRecentMsg request_id={}",
-                   request->request_id());
-    *response = service_->GetRecent(*request);
-    LogBoundaryResponseError("MsgStorageService", "GetRecentMsg",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status MessageGrpcService::GetMultiRecentMsg(
-    grpc::ServerContext *, const zchat::GetMultiRecentMsgReq *request,
-    zchat::GetMultiRecentMsgRsp *response) {
-    ZCHAT_LOG_INFO("MsgStorageService::GetMultiRecentMsg request_id={}",
-                   request->request_id());
-    *response = service_->GetMultiRecent(*request);
-    LogBoundaryResponseError("MsgStorageService", "GetMultiRecentMsg",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status MessageGrpcService::MsgSearch(grpc::ServerContext *,
-                                           const zchat::MsgSearchReq *request,
-                                           zchat::MsgSearchRsp *response) {
-    ZCHAT_LOG_INFO("MsgStorageService::MsgSearch request_id={}",
-                   request->request_id());
-    *response = service_->Search(*request);
-    LogBoundaryResponseError("MsgStorageService", "MsgSearch",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
+ZCHAT_MSG_RPC(GetHistoryMsg, GetHistoryMsgReq, GetHistoryMsgRsp, GetHistoryCoro)
+ZCHAT_MSG_RPC(GetRecentMsg, GetRecentMsgReq, GetRecentMsgRsp, GetRecentCoro)
+ZCHAT_MSG_RPC(GetMultiRecentMsg, GetMultiRecentMsgReq, GetMultiRecentMsgRsp,
+              GetMultiRecentCoro)
+ZCHAT_MSG_RPC(MsgSearch, MsgSearchReq, MsgSearchRsp, SearchCoro)
 
 } // namespace zchat
