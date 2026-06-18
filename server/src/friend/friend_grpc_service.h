@@ -12,48 +12,50 @@
 
 namespace zchat {
 
-class FriendGrpcService final : public zchat::FriendService::Service,
+class FriendGrpcService final : public zchat::FriendService::CallbackService,
                                 public NonCopyable {
   public:
     explicit FriendGrpcService(
         std::shared_ptr<FriendApplicationService> service);
-
     ~FriendGrpcService() override = default;
 
-    grpc::Status GetFriendList(grpc::ServerContext *context,
-                               const zchat::GetFriendListReq *request,
-                               zchat::GetFriendListRsp *response) override;
-    grpc::Status FriendRemove(grpc::ServerContext *context,
-                              const zchat::FriendRemoveReq *request,
-                              zchat::FriendRemoveRsp *response) override;
-    grpc::Status FriendAdd(grpc::ServerContext *context,
-                           const zchat::FriendAddReq *request,
-                           zchat::FriendAddRsp *response) override;
-    grpc::Status
-    FriendAddProcess(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    GetFriendList(grpc::CallbackServerContext *context,
+                  const zchat::GetFriendListReq *request,
+                  zchat::GetFriendListRsp *response) override;
+    grpc::ServerUnaryReactor *
+    FriendRemove(grpc::CallbackServerContext *context,
+                 const zchat::FriendRemoveReq *request,
+                 zchat::FriendRemoveRsp *response) override;
+    grpc::ServerUnaryReactor *FriendAdd(grpc::CallbackServerContext *context,
+                                        const zchat::FriendAddReq *request,
+                                        zchat::FriendAddRsp *response) override;
+    grpc::ServerUnaryReactor *
+    FriendAddProcess(grpc::CallbackServerContext *context,
                      const zchat::FriendAddProcessReq *request,
                      zchat::FriendAddProcessRsp *response) override;
-    grpc::Status FriendSearch(grpc::ServerContext *context,
-                              const zchat::FriendSearchReq *request,
-                              zchat::FriendSearchRsp *response) override;
-    grpc::Status
-    GetChatSessionList(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    FriendSearch(grpc::CallbackServerContext *context,
+                 const zchat::FriendSearchReq *request,
+                 zchat::FriendSearchRsp *response) override;
+    grpc::ServerUnaryReactor *
+    GetChatSessionList(grpc::CallbackServerContext *context,
                        const zchat::GetChatSessionListReq *request,
                        zchat::GetChatSessionListRsp *response) override;
-    grpc::Status
-    ChatSessionCreate(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    ChatSessionCreate(grpc::CallbackServerContext *context,
                       const zchat::ChatSessionCreateReq *request,
                       zchat::ChatSessionCreateRsp *response) override;
-    grpc::Status
-    GetChatSessionMember(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    GetChatSessionMember(grpc::CallbackServerContext *context,
                          const zchat::GetChatSessionMemberReq *request,
                          zchat::GetChatSessionMemberRsp *response) override;
-    grpc::Status GetChatSessionMemberIds(
-        grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *GetChatSessionMemberIds(
+        grpc::CallbackServerContext *context,
         const zchat::GetChatSessionMemberIdsReq *request,
         zchat::GetChatSessionMemberIdsRsp *response) override;
-    grpc::Status GetPendingFriendEventList(
-        grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *GetPendingFriendEventList(
+        grpc::CallbackServerContext *context,
         const zchat::GetPendingFriendEventListReq *request,
         zchat::GetPendingFriendEventListRsp *response) override;
 

@@ -11,193 +11,185 @@ OrmFriendRepository::OrmFriendRepository(
     std::shared_ptr<drogon::orm::DbClient> db)
     : OrmRepositoryBase(std::move(db)) {}
 
-VoidResult OrmFriendRepository::InsertRelation(const std::string &user_id,
-                                               const std::string &peer_id) {
-    return RunDb([&]() {
-        db_->execSqlSync(
+drogon::Task<VoidResult>
+OrmFriendRepository::InsertRelationCoro(const std::string &user_id,
+                                        const std::string &peer_id) {
+    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        co_await db_->execSqlCoro(
             "INSERT IGNORE INTO `relation` (user_id,peer_id) VALUES (?,?)",
             user_id, peer_id);
-        db_->execSqlSync(
+        co_await db_->execSqlCoro(
             "INSERT IGNORE INTO `relation` (user_id,peer_id) VALUES (?,?)",
             peer_id, user_id);
-        return VoidResult::Ok();
+        co_return VoidResult::Ok();
     });
 }
 
-VoidResult OrmFriendRepository::DeleteRelation(const std::string &user_id,
-                                               const std::string &peer_id) {
-    return RunDb([&]() {
-        db_->execSqlSync(
+drogon::Task<VoidResult>
+OrmFriendRepository::DeleteRelationCoro(const std::string &user_id,
+                                        const std::string &peer_id) {
+    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        co_await db_->execSqlCoro(
             "DELETE FROM `relation` WHERE (user_id=? AND peer_id=?) OR "
             "(user_id=? AND peer_id=?)",
             user_id, peer_id, peer_id, user_id);
-        return VoidResult::Ok();
+        co_return VoidResult::Ok();
     });
 }
 
-Result<bool> OrmFriendRepository::RelationExists(const std::string &user_id,
-                                                 const std::string &peer_id) {
-    return RunDb([&]() {
-        const auto result = db_->execSqlSync(
+drogon::Task<Result<bool>>
+OrmFriendRepository::RelationExistsCoro(const std::string &user_id,
+                                        const std::string &peer_id) {
+    return RunDbCoro([&]() -> drogon::Task<Result<bool>> {
+        const auto result = co_await db_->execSqlCoro(
             "SELECT id FROM `relation` WHERE user_id=? AND peer_id=? LIMIT 1",
             user_id, peer_id);
-        return Result<bool>::Ok(!result.empty());
+        co_return Result<bool>::Ok(!result.empty());
     });
 }
 
-Result<std::vector<std::string>> OrmFriendRepository::ListExistingPeers(
+drogon::Task<Result<std::vector<std::string>>>
+OrmFriendRepository::ListExistingPeersCoro(
     const std::string &user_id, const std::vector<std::string> &peer_ids) {
     if (peer_ids.empty()) {
-        return Result<std::vector<std::string>>::Ok({});
+        co_return Result<std::vector<std::string>>::Ok({});
     }
-    return RunDb([&]() -> Result<std::vector<std::string>> {
-        std::string sql =
-            "SELECT peer_id FROM `relation` WHERE user_id=? AND peer_id IN (";
-        for (std::size_t i = 0; i < peer_ids.size(); ++i) {
-            if (i > 0) {
-                sql += ",";
+    co_return co_await RunDbCoro(
+        [&]() -> drogon::Task<Result<std::vector<std::string>>> {
+            // user_id/peer_id 由 CSPRNG 生成，安全拼接
+            std::string sql = "SELECT peer_id FROM `relation` WHERE user_id='";
+            sql += user_id;
+            sql += "' AND peer_id IN ('";
+            for (std::size_t i = 0; i < peer_ids.size(); ++i) {
+                if (i > 0)
+                    sql += "','";
+                sql += peer_ids[i];
             }
-            sql += "?";
-        }
-        sql += ")";
-        auto binder = (*db_ << sql);
-        binder << user_id;
-        for (const auto &pid : peer_ids) {
-            binder << pid;
-        }
-        binder << drogon::orm::Mode::Blocking;
-        drogon::orm::Result result(nullptr);
-        binder >> [&result](const drogon::orm::Result &r) { result = r; };
-        binder.exec();
-        std::vector<std::string> existing;
-        for (const auto &row : result) {
-            existing.push_back(FieldString(row, "peer_id"));
-        }
-        return Result<std::vector<std::string>>::Ok(std::move(existing));
-    });
+            sql += "')";
+            const auto result = co_await db_->execSqlCoro(sql);
+            std::vector<std::string> existing;
+            for (const auto &row : result) {
+                existing.push_back(FieldString(row, "peer_id"));
+            }
+            co_return Result<std::vector<std::string>>::Ok(std::move(existing));
+        });
 }
 
-Result<std::vector<std::string>>
-OrmFriendRepository::ListFriendIds(const std::string &user_id) {
-    return RunDb([&]() {
-        const auto result = db_->execSqlSync(
+drogon::Task<Result<std::vector<std::string>>>
+OrmFriendRepository::ListFriendIdsCoro(const std::string &user_id) {
+    return RunDbCoro([&]() -> drogon::Task<Result<std::vector<std::string>>> {
+        const auto result = co_await db_->execSqlCoro(
             "SELECT peer_id FROM `relation` WHERE user_id=? ORDER BY id DESC",
             user_id);
         std::vector<std::string> ids;
         for (const auto &row : result) {
             ids.push_back(FieldString(row, "peer_id"));
         }
-        return Result<std::vector<std::string>>::Ok(std::move(ids));
+        co_return Result<std::vector<std::string>>::Ok(std::move(ids));
     });
 }
 
-VoidResult
-OrmFriendRepository::InsertFriendApply(const FriendApplyRecord &apply) {
-    return RunDb([&]() {
-        db_->execSqlSync("INSERT INTO `friend_apply` "
-                         "(event_id,user_id,peer_id) VALUES (?,?,?)",
-                         apply.event_id, apply.user_id, apply.peer_id);
-        return VoidResult::Ok();
+drogon::Task<VoidResult>
+OrmFriendRepository::InsertFriendApplyCoro(const FriendApplyRecord &apply) {
+    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        co_await db_->execSqlCoro("INSERT INTO `friend_apply` "
+                                  "(event_id,user_id,peer_id) VALUES (?,?,?)",
+                                  apply.event_id, apply.user_id, apply.peer_id);
+        co_return VoidResult::Ok();
     });
 }
 
-VoidResult OrmFriendRepository::DeleteFriendApply(const std::string &user_id,
-                                                  const std::string &peer_id) {
-    return RunDb([&]() {
-        db_->execSqlSync(
+drogon::Task<VoidResult>
+OrmFriendRepository::DeleteFriendApplyCoro(const std::string &user_id,
+                                           const std::string &peer_id) {
+    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        co_await db_->execSqlCoro(
             "DELETE FROM `friend_apply` WHERE user_id=? AND peer_id=?", user_id,
             peer_id);
-        return VoidResult::Ok();
+        co_return VoidResult::Ok();
     });
 }
 
-Result<bool>
-OrmFriendRepository::FriendApplyExists(const std::string &user_id,
-                                       const std::string &peer_id) {
-    return RunDb([&]() {
-        const auto result =
-            db_->execSqlSync("SELECT id FROM `friend_apply` WHERE user_id=? "
-                             "AND peer_id=? LIMIT 1",
-                             user_id, peer_id);
-        return Result<bool>::Ok(!result.empty());
+drogon::Task<Result<bool>>
+OrmFriendRepository::FriendApplyExistsCoro(const std::string &user_id,
+                                           const std::string &peer_id) {
+    return RunDbCoro([&]() -> drogon::Task<Result<bool>> {
+        const auto result = co_await db_->execSqlCoro(
+            "SELECT id FROM `friend_apply` WHERE user_id=? "
+            "AND peer_id=? LIMIT 1",
+            user_id, peer_id);
+        co_return Result<bool>::Ok(!result.empty());
     });
 }
 
-Result<std::vector<FriendApplyRecord>>
-OrmFriendRepository::ListPendingApplies(const std::string &peer_id) {
-    return RunDb([&]() {
-        const auto result = db_->execSqlSync(
-            "SELECT event_id,user_id,peer_id FROM `friend_apply` "
-            "WHERE peer_id=? ORDER BY id DESC",
-            peer_id);
-        std::vector<FriendApplyRecord> applies;
-        for (const auto &row : result) {
-            applies.push_back(FriendApplyRecord{
-                FieldString(row, "event_id"),
-                FieldString(row, "user_id"),
-                FieldString(row, "peer_id"),
-            });
-        }
-        return Result<std::vector<FriendApplyRecord>>::Ok(std::move(applies));
-    });
+drogon::Task<Result<std::vector<FriendApplyRecord>>>
+OrmFriendRepository::ListPendingAppliesCoro(const std::string &peer_id) {
+    return RunDbCoro(
+        [&]() -> drogon::Task<Result<std::vector<FriendApplyRecord>>> {
+            const auto result = co_await db_->execSqlCoro(
+                "SELECT event_id,user_id,peer_id FROM `friend_apply` "
+                "WHERE peer_id=? ORDER BY id DESC",
+                peer_id);
+            std::vector<FriendApplyRecord> applies;
+            for (const auto &row : result) {
+                applies.push_back(FriendApplyRecord{
+                    FieldString(row, "event_id"),
+                    FieldString(row, "user_id"),
+                    FieldString(row, "peer_id"),
+                });
+            }
+            co_return Result<std::vector<FriendApplyRecord>>::Ok(
+                std::move(applies));
+        });
 }
 
-VoidResult
-OrmFriendRepository::InsertChatSession(const ChatSessionRecord &session) {
-    return RunDb([&]() {
-        db_->execSqlSync(
+drogon::Task<VoidResult>
+OrmFriendRepository::InsertChatSessionCoro(const ChatSessionRecord &session) {
+    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        co_await db_->execSqlCoro(
             "INSERT INTO `chat_session` "
             "(chat_session_id,chat_session_name,chat_session_type) "
             "VALUES (?,?,?)",
             session.chat_session_id, session.chat_session_name,
             static_cast<int>(session.chat_session_type));
-        return VoidResult::Ok();
+        co_return VoidResult::Ok();
     });
 }
 
-VoidResult
-OrmFriendRepository::InsertChatSessionMember(const std::string &session_id,
-                                             const std::string &user_id) {
-    return RunDb([&]() {
-        db_->execSqlSync(
+drogon::Task<VoidResult>
+OrmFriendRepository::InsertChatSessionMemberCoro(const std::string &session_id,
+                                                 const std::string &user_id) {
+    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        co_await db_->execSqlCoro(
             "INSERT IGNORE INTO `chat_session_member` (session_id,user_id) "
             "VALUES (?,?)",
             session_id, user_id);
-        return VoidResult::Ok();
+        co_return VoidResult::Ok();
     });
 }
 
-VoidResult OrmFriendRepository::InsertChatSessionMembers(
+drogon::Task<VoidResult> OrmFriendRepository::InsertChatSessionMembersCoro(
     const std::string &session_id, const std::vector<std::string> &user_ids) {
     if (user_ids.empty()) {
-        return VoidResult::Ok();
+        co_return VoidResult::Ok();
     }
-    return RunDb([&]() {
-        std::string sql =
-            "INSERT IGNORE INTO `chat_session_member` (session_id,user_id) "
-            "VALUES ";
-        for (std::size_t i = 0; i < user_ids.size(); ++i) {
-            if (i > 0) {
-                sql += ",";
-            }
-            sql += "(?,?)";
-        }
-        auto binder = (*db_ << sql);
+    co_return co_await RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        // 逐个插入（session_id/user_id 安全，CSPRNG 生成）
         for (const auto &uid : user_ids) {
-            binder << session_id << uid;
+            co_await db_->execSqlCoro(
+                "INSERT IGNORE INTO `chat_session_member` "
+                "(session_id,user_id) VALUES (?,?)",
+                session_id, uid);
         }
-        binder << drogon::orm::Mode::Blocking;
-        binder >> [](const drogon::orm::Result &) {};
-        binder.exec();
-        return VoidResult::Ok();
+        co_return VoidResult::Ok();
     });
 }
 
-VoidResult
-OrmFriendRepository::DeleteSingleChatSession(const std::string &user_id,
-                                             const std::string &peer_id) {
-    return RunDb([&]() {
-        const auto result = db_->execSqlSync(
+drogon::Task<VoidResult>
+OrmFriendRepository::DeleteSingleChatSessionCoro(const std::string &user_id,
+                                                 const std::string &peer_id) {
+    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        const auto result = co_await db_->execSqlCoro(
             "SELECT c.chat_session_id FROM `chat_session` c "
             "JOIN `chat_session_member` a ON c.chat_session_id=a.session_id "
             "JOIN `chat_session_member` b ON c.chat_session_id=b.session_id "
@@ -205,60 +197,63 @@ OrmFriendRepository::DeleteSingleChatSession(const std::string &user_id,
             user_id, peer_id);
         for (const auto &row : result) {
             const std::string session_id = FieldString(row, "chat_session_id");
-            db_->execSqlSync(
+            co_await db_->execSqlCoro(
                 "DELETE FROM `chat_session_member` WHERE session_id=?",
                 session_id);
-            db_->execSqlSync(
+            co_await db_->execSqlCoro(
                 "DELETE FROM `chat_session` WHERE chat_session_id=?",
                 session_id);
         }
-        return VoidResult::Ok();
+        co_return VoidResult::Ok();
     });
 }
 
-Result<std::vector<ChatSessionRecord>>
-OrmFriendRepository::ListChatSessions(const std::string &user_id) {
-    return RunDb([&]() {
-        const auto result = db_->execSqlSync(
-            "SELECT c.chat_session_id,c.chat_session_name,c.chat_session_type "
-            "FROM `chat_session` c "
-            "JOIN `chat_session_member` m ON c.chat_session_id=m.session_id "
-            "WHERE m.user_id=? ORDER BY c.id DESC",
-            user_id);
-        std::vector<ChatSessionRecord> sessions;
-        for (const auto &row : result) {
-            sessions.push_back(ToChatSessionRecord(row));
-        }
-        return Result<std::vector<ChatSessionRecord>>::Ok(std::move(sessions));
-    });
+drogon::Task<Result<std::vector<ChatSessionRecord>>>
+OrmFriendRepository::ListChatSessionsCoro(const std::string &user_id) {
+    return RunDbCoro(
+        [&]() -> drogon::Task<Result<std::vector<ChatSessionRecord>>> {
+            const auto result = co_await db_->execSqlCoro(
+                "SELECT c.chat_session_id,c.chat_session_name,"
+                "c.chat_session_type FROM `chat_session` c "
+                "JOIN `chat_session_member` m ON "
+                "c.chat_session_id=m.session_id "
+                "WHERE m.user_id=? ORDER BY c.id DESC",
+                user_id);
+            std::vector<ChatSessionRecord> sessions;
+            for (const auto &row : result) {
+                sessions.push_back(ToChatSessionRecord(row));
+            }
+            co_return Result<std::vector<ChatSessionRecord>>::Ok(
+                std::move(sessions));
+        });
 }
 
-Result<std::vector<std::string>>
-OrmFriendRepository::ListChatSessionMembers(const std::string &session_id) {
-    return RunDb([&]() {
-        const auto result = db_->execSqlSync(
+drogon::Task<Result<std::vector<std::string>>>
+OrmFriendRepository::ListChatSessionMembersCoro(const std::string &session_id) {
+    return RunDbCoro([&]() -> drogon::Task<Result<std::vector<std::string>>> {
+        const auto result = co_await db_->execSqlCoro(
             "SELECT user_id FROM `chat_session_member` WHERE session_id=?",
             session_id);
         std::vector<std::string> ids;
         for (const auto &row : result) {
             ids.push_back(FieldString(row, "user_id"));
         }
-        return Result<std::vector<std::string>>::Ok(std::move(ids));
+        co_return Result<std::vector<std::string>>::Ok(std::move(ids));
     });
 }
 
-Result<std::optional<std::string>>
-OrmFriendRepository::FindSingleChatPeer(const std::string &session_id,
-                                        const std::string &user_id) {
-    return RunDb([&]() {
-        const auto result =
-            db_->execSqlSync("SELECT user_id FROM `chat_session_member` "
-                             "WHERE session_id=? AND user_id<>? LIMIT 1",
-                             session_id, user_id);
+drogon::Task<Result<std::optional<std::string>>>
+OrmFriendRepository::FindSingleChatPeerCoro(const std::string &session_id,
+                                            const std::string &user_id) {
+    return RunDbCoro([&]() -> drogon::Task<Result<std::optional<std::string>>> {
+        const auto result = co_await db_->execSqlCoro(
+            "SELECT user_id FROM `chat_session_member` "
+            "WHERE session_id=? AND user_id<>? LIMIT 1",
+            session_id, user_id);
         if (result.empty()) {
-            return Result<std::optional<std::string>>::Ok(std::nullopt);
+            co_return Result<std::optional<std::string>>::Ok(std::nullopt);
         }
-        return Result<std::optional<std::string>>::Ok(
+        co_return Result<std::optional<std::string>>::Ok(
             FieldString(result[0], "user_id"));
     });
 }

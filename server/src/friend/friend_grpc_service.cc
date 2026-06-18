@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "common/error_response.h"
+#include "common/grpc_callback.h"
 #include "common/logger.h"
 
 namespace zchat {
@@ -11,119 +12,37 @@ FriendGrpcService::FriendGrpcService(
     std::shared_ptr<FriendApplicationService> service)
     : service_(std::move(service)) {}
 
-grpc::Status
-FriendGrpcService::GetFriendList(grpc::ServerContext *,
-                                 const zchat::GetFriendListReq *request,
-                                 zchat::GetFriendListRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::GetFriendList request_id={}",
-                   request->request_id());
-    *response = service_->GetFriendList(*request);
-    LogBoundaryResponseError("FriendService", "GetFriendList",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
+#define ZCHAT_FRIEND_RPC(method_name, req_type, rsp_type, coro_name)           \
+    grpc::ServerUnaryReactor *FriendGrpcService::method_name(                  \
+        grpc::CallbackServerContext *, const zchat::req_type *request,         \
+        zchat::rsp_type *response) {                                           \
+        ZCHAT_LOG_INFO("FriendService::" #method_name " request_id={}",        \
+                       request->request_id());                                 \
+        return new CoroUnaryReactor<zchat::rsp_type>(                          \
+            [this, req = *request]() -> drogon::Task<zchat::rsp_type> {        \
+                co_return co_await service_->coro_name(req);                   \
+            },                                                                 \
+            response, "FriendService", #method_name, request->request_id());   \
+    }
 
-grpc::Status
-FriendGrpcService::FriendRemove(grpc::ServerContext *,
-                                const zchat::FriendRemoveReq *request,
-                                zchat::FriendRemoveRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::FriendRemove request_id={}",
-                   request->request_id());
-    *response = service_->RemoveFriend(*request);
-    LogBoundaryResponseError("FriendService", "FriendRemove",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status FriendGrpcService::FriendAdd(grpc::ServerContext *,
-                                          const zchat::FriendAddReq *request,
-                                          zchat::FriendAddRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::FriendAdd request_id={}",
-                   request->request_id());
-    *response = service_->AddFriend(*request);
-    LogBoundaryResponseError("FriendService", "FriendAdd",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status
-FriendGrpcService::FriendAddProcess(grpc::ServerContext *,
-                                    const zchat::FriendAddProcessReq *request,
-                                    zchat::FriendAddProcessRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::FriendAddProcess request_id={}",
-                   request->request_id());
-    *response = service_->ProcessFriendApply(*request);
-    LogBoundaryResponseError("FriendService", "FriendAddProcess",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status
-FriendGrpcService::FriendSearch(grpc::ServerContext *,
-                                const zchat::FriendSearchReq *request,
-                                zchat::FriendSearchRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::FriendSearch request_id={}",
-                   request->request_id());
-    *response = service_->SearchFriend(*request);
-    LogBoundaryResponseError("FriendService", "FriendSearch",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status FriendGrpcService::GetChatSessionList(
-    grpc::ServerContext *, const zchat::GetChatSessionListReq *request,
-    zchat::GetChatSessionListRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::GetChatSessionList request_id={}",
-                   request->request_id());
-    *response = service_->GetChatSessionList(*request);
-    LogBoundaryResponseError("FriendService", "GetChatSessionList",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status
-FriendGrpcService::ChatSessionCreate(grpc::ServerContext *,
-                                     const zchat::ChatSessionCreateReq *request,
-                                     zchat::ChatSessionCreateRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::ChatSessionCreate request_id={}",
-                   request->request_id());
-    *response = service_->CreateChatSession(*request);
-    LogBoundaryResponseError("FriendService", "ChatSessionCreate",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status FriendGrpcService::GetChatSessionMember(
-    grpc::ServerContext *, const zchat::GetChatSessionMemberReq *request,
-    zchat::GetChatSessionMemberRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::GetChatSessionMember request_id={}",
-                   request->request_id());
-    *response = service_->GetChatSessionMember(*request);
-    LogBoundaryResponseError("FriendService", "GetChatSessionMember",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status FriendGrpcService::GetChatSessionMemberIds(
-    grpc::ServerContext *, const zchat::GetChatSessionMemberIdsReq *request,
-    zchat::GetChatSessionMemberIdsRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::GetChatSessionMemberIds request_id={}",
-                   request->request_id());
-    *response = service_->GetChatSessionMemberIds(*request);
-    LogBoundaryResponseError("FriendService", "GetChatSessionMemberIds",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
-
-grpc::Status FriendGrpcService::GetPendingFriendEventList(
-    grpc::ServerContext *, const zchat::GetPendingFriendEventListReq *request,
-    zchat::GetPendingFriendEventListRsp *response) {
-    ZCHAT_LOG_INFO("FriendService::GetPendingFriendEventList request_id={}",
-                   request->request_id());
-    *response = service_->GetPendingFriendEvents(*request);
-    LogBoundaryResponseError("FriendService", "GetPendingFriendEventList",
-                             request->request_id(), *response);
-    return grpc::Status::OK;
-}
+ZCHAT_FRIEND_RPC(GetFriendList, GetFriendListReq, GetFriendListRsp,
+                 GetFriendListCoro)
+ZCHAT_FRIEND_RPC(FriendRemove, FriendRemoveReq, FriendRemoveRsp,
+                 RemoveFriendCoro)
+ZCHAT_FRIEND_RPC(FriendAdd, FriendAddReq, FriendAddRsp, AddFriendCoro)
+ZCHAT_FRIEND_RPC(FriendAddProcess, FriendAddProcessReq, FriendAddProcessRsp,
+                 ProcessFriendApplyCoro)
+ZCHAT_FRIEND_RPC(FriendSearch, FriendSearchReq, FriendSearchRsp,
+                 SearchFriendCoro)
+ZCHAT_FRIEND_RPC(GetChatSessionList, GetChatSessionListReq,
+                 GetChatSessionListRsp, GetChatSessionListCoro)
+ZCHAT_FRIEND_RPC(ChatSessionCreate, ChatSessionCreateReq, ChatSessionCreateRsp,
+                 CreateChatSessionCoro)
+ZCHAT_FRIEND_RPC(GetChatSessionMember, GetChatSessionMemberReq,
+                 GetChatSessionMemberRsp, GetChatSessionMemberCoro)
+ZCHAT_FRIEND_RPC(GetChatSessionMemberIds, GetChatSessionMemberIdsReq,
+                 GetChatSessionMemberIdsRsp, GetChatSessionMemberIdsCoro)
+ZCHAT_FRIEND_RPC(GetPendingFriendEventList, GetPendingFriendEventListReq,
+                 GetPendingFriendEventListRsp, GetPendingFriendEventsCoro)
 
 } // namespace zchat
