@@ -27,6 +27,7 @@ class GrpcServiceClients : public NonCopyable {
     }
 
     EtcdDiscovery &discovery() { return discovery_; }
+    ChannelPool &channel_pool() { return channel_pool_; }
 
   private:
     EtcdDiscovery discovery_;

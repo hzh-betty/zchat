@@ -100,6 +100,12 @@ class ConnectionRegistry : public NonCopyable {
         }
     }
 
+    bool IsBound(const drogon::WebSocketConnectionPtr &connection) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return users_by_connection_.find(ConnectionKey(connection)) !=
+               users_by_connection_.end();
+    }
+
   private:
     static std::string
     ConnectionKey(const drogon::WebSocketConnectionPtr &connection) {

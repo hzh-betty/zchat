@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <drogon/HttpResponse.h>
+#include <drogon/utils/coroutine.h>
 
 namespace zchat {
 
@@ -18,9 +19,8 @@ struct RouteEntry {
     const char *service_name;
     bool requires_auth;
     std::chrono::seconds deadline;
-    std::function<void(SessionStore *, GrpcServiceClients &,
-                       const std::string &,
-                       std::function<void(const drogon::HttpResponsePtr &)> &&)>
+    std::function<drogon::Task<drogon::HttpResponsePtr>(
+        SessionStore *, GrpcServiceClients &, const std::string &)>
         handle;
 };
 

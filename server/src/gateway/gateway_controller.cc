@@ -3,6 +3,8 @@
 #include <string>
 #include <utility>
 
+#include <drogon/utils/coroutine.h>
+
 #include "common/common_errors.h"
 #include "common/logger.h"
 #include "common/protobuf_http.h"
@@ -14,6 +16,9 @@ GatewayController::GatewayController(std::shared_ptr<GatewayContext> context)
     : context_(std::move(context)) {}
 
 void GatewayController::RegisterRoutes() {
+    // 限制请求体大小（64 MiB，覆盖文件上传场景）
+    drogon::app().setClientMaxBodySize(64 * 1024 * 1024);
+
     drogon::app().registerHandler(
         "/ping",
         [](const drogon::HttpRequestPtr &,
@@ -31,11 +36,11 @@ void GatewayController::RegisterForwardPost(const std::string &path,
                                             const std::string &service_name) {
     drogon::app().registerHandler(
         path,
-        [this, path, service_name](
+        [this, path](
             const drogon::HttpRequestPtr &request,
             std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
-            ZCHAT_LOG_DEBUG("forward http path={} service={} body={}B", path,
-                            service_name, request->body().size());
+            ZCHAT_LOG_DEBUG("forward http path={} body={}B", path,
+                            request->body().size());
             const auto *route = FindRoute(path);
             if (route == nullptr) {
                 ZCHAT_LOG_WARN("unknown service path: {}", path);
@@ -43,8 +48,27 @@ void GatewayController::RegisterForwardPost(const std::string &path,
                     FormatErrorForClient(common_errors::UnknownServicePath())));
                 return;
             }
-            route->handle(&context_->sessions(), context_->grpc_clients(),
-                          std::string(request->body()), std::move(callback));
+            auto ctx = context_;
+            auto handle = route->handle;
+            auto body = std::string(request->body());
+            [](std::shared_ptr<GatewayContext> ctx,
+               std::function<drogon::Task<drogon::HttpResponsePtr>(
+                   SessionStore *, GrpcServiceClients &, const std::string &)>
+                   handle,
+               std::string body,
+               std::function<void(const drogon::HttpResponsePtr &)> callback)
+                -> drogon::AsyncTask {
+                try {
+                    auto resp = co_await handle(&ctx->sessions(),
+                                                ctx->grpc_clients(), body);
+                    callback(resp);
+                } catch (const std::exception &e) {
+                    ZCHAT_LOG_ERROR("gateway coroutine exception: {}",
+                                    e.what());
+                    callback(TextResponse("internal error"));
+                }
+                co_return;
+            }(ctx, std::move(handle), std::move(body), std::move(callback));
         },
         {drogon::Post});
 }

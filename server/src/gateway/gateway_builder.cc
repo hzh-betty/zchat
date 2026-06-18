@@ -2,6 +2,8 @@
 
 #include <chrono>
 
+#include <drogon/utils/coroutine.h>
+
 #include "common/runtime.h"
 #include "gateway/websocket_controller.h"
 
@@ -20,7 +22,11 @@ int GatewayBuilder::Start() {
             auto &sessions = context->sessions();
             connections.ForEachBoundUser(
                 [&sessions](const std::string &user_id) {
-                    sessions.RefreshOnline(user_id);
+                    [](SessionStore &sessions,
+                       std::string uid) -> drogon::AsyncTask {
+                        co_await sessions.RefreshOnlineCoro(uid);
+                        co_return;
+                    }(sessions, user_id);
                 });
         });
     return RunDrogonGateway("zchat_gateway", config_.server.http_port,
