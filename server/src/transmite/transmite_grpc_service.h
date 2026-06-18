@@ -12,15 +12,15 @@
 
 namespace zchat {
 
-class TransmiteGrpcService final : public zchat::MsgTransmitService::Service,
-                                   public NonCopyable {
+class TransmiteGrpcService final
+    : public zchat::MsgTransmitService::CallbackService,
+      public NonCopyable {
   public:
     explicit TransmiteGrpcService(std::shared_ptr<TransmiteService> service);
-
     ~TransmiteGrpcService() override = default;
 
-    grpc::Status
-    GetTransmitTarget(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    GetTransmitTarget(grpc::CallbackServerContext *context,
                       const zchat::NewMessageReq *request,
                       zchat::GetTransmitTargetRsp *response) override;
 

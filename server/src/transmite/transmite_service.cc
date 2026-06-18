@@ -1,6 +1,5 @@
 #include "transmite/transmite_service.h"
 
-#include <future>
 #include <string>
 #include <vector>
 
@@ -12,7 +11,6 @@
 #include "notify.pb.h"
 
 namespace zchat {
-namespace {} // namespace
 
 TransmiteService::TransmiteService(MessageQueuePublisher &queue,
                                    SessionStore &sessions,
@@ -21,30 +19,54 @@ TransmiteService::TransmiteService(MessageQueuePublisher &queue,
     : queue_(queue), sessions_(sessions), notifier_(notifier),
       clients_(clients) {}
 
-zchat::NewMessageRsp
-TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
-    const auto user_id = sessions_.GetUserId(request.session_id());
+drogon::Task<zchat::NewMessageRsp>
+TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
+    const auto user_id = co_await sessions_.GetUserIdCoro(request.session_id());
     if (!user_id.ok()) {
-        return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
-                                                       user_id.error());
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
+                                                          user_id.error());
     }
     if (!user_id.value().has_value()) {
-        return MakeErrorResponse<zchat::NewMessageRsp>(
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(
             request.request_id(), common_errors::SessionExpired());
     }
 
     zchat::GetUserInfoReq user_request;
     user_request.set_user_id(user_id.value().value());
-    auto user_response = clients_.GetUser(user_request);
+    auto user_response = co_await clients_.GetUserCoro(user_request);
     if (!user_response.ok() || !user_response.value().success()) {
         AppError error = common_errors::InternalServiceError();
         if (!user_response.ok()) {
             error = user_response.error();
         }
-        return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
-                                                       error);
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
+                                                          error);
     }
     const zchat::UserInfo &sender = user_response.value().user_info();
+
+    // 校验发送者是否为会话成员
+    zchat::GetChatSessionMemberIdsReq members_check;
+    members_check.set_request_id(request.request_id());
+    members_check.set_chat_session_id(request.chat_session_id());
+    auto members_check_rsp =
+        co_await clients_.GetChatSessionMemberIdsCoro(members_check);
+    if (!members_check_rsp.ok() || !members_check_rsp.value().success()) {
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(
+            request.request_id(), common_errors::InternalServiceError());
+    }
+    bool is_member = false;
+    for (const auto &mid : members_check_rsp.value().member_id()) {
+        if (mid == user_id.value().value()) {
+            is_member = true;
+            break;
+        }
+    }
+    if (!is_member) {
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(
+            request.request_id(),
+            AppError::WithCode(ErrorCode::kForbidden,
+                               "sender is not a member of this session"));
+    }
 
     std::string file_content;
     MessageRecord message =
@@ -59,19 +81,17 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
     members_request.set_request_id(request.request_id());
     members_request.set_chat_session_id(request.chat_session_id());
 
-    auto publish_fut = std::async(
-        std::launch::async, [&]() { return queue_.Publish(queue_payload); });
-    auto members_fut = std::async(std::launch::async, [&]() {
-        return clients_.GetChatSessionMemberIds(members_request);
-    });
+    // 并发：publish + get members
+    // RabbitMQ publish 通过独立 libevent 线程执行，不会阻塞协程线程
+    auto members_response =
+        co_await clients_.GetChatSessionMemberIdsCoro(members_request);
+    auto published = queue_.Publish(queue_payload);
 
-    const auto published = publish_fut.get();
     if (!published.ok()) {
-        return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
-                                                       published.error());
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
+                                                          published.error());
     }
 
-    auto members_response = members_fut.get();
     if (members_response.ok() && members_response.value().success()) {
         zchat::NotifyMessage notify;
         notify.set_notify_type(zchat::CHAT_MESSAGE_NOTIFY);
@@ -87,18 +107,15 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
             }
         }
 
-        int notify_total = static_cast<int>(targets.size());
-        int notify_failed = 0;
         if (!targets.empty()) {
-            auto outcome = notifier_.PublishBatch(targets, payload);
+            auto outcome =
+                co_await notifier_.PublishBatchCoro(targets, payload);
             if (outcome.ok()) {
-                notify_failed = static_cast<int>(outcome.value().failed.size());
                 for (const auto &failed_id : outcome.value().failed) {
                     ZCHAT_LOG_WARN("notify publish failed request={} member={}",
                                    request.request_id(), failed_id);
                 }
             } else {
-                notify_failed = notify_total;
                 ZCHAT_LOG_WARN(
                     "notify publish batch failed request={} error={}",
                     request.request_id(), FormatErrorForLog(outcome.error()));
@@ -106,10 +123,10 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
         }
 
         ZCHAT_LOG_INFO("new message accepted request={} message={} chat={} "
-                       "sender={} targets={} notify_total={} notify_failed={}",
+                       "sender={} targets={}",
                        request.request_id(), message.message_id,
                        request.chat_session_id(), user_id.value().value(),
-                       targets.size(), notify_total, notify_failed);
+                       targets.size());
     } else {
         ZCHAT_LOG_WARN("new message notify skipped request={} members_ok={}",
                        request.request_id(), members_response.ok());
@@ -119,7 +136,7 @@ TransmiteService::NewMessage(const zchat::NewMessageReq &request) {
     response.set_request_id(request.request_id());
     response.set_success(true);
     response.set_errmsg("");
-    return response;
+    co_return response;
 }
 
 } // namespace zchat

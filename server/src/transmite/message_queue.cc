@@ -17,6 +17,7 @@
 #include <amqpcpp/libevent.h>
 #include <event2/event.h>
 #include <event2/thread.h>
+#include <openssl/ssl.h>
 
 #include "common/logger.h"
 
@@ -41,7 +42,9 @@ event_base *CreateEventBase() {
 
 class RuntimeHandler final : public AMQP::LibEventHandler {
   public:
-    explicit RuntimeHandler(event_base *base) : AMQP::LibEventHandler(base) {}
+    explicit RuntimeHandler(event_base *base,
+                            const RabbitmqConfig *config = nullptr)
+        : AMQP::LibEventHandler(base), tls_config_(config) {}
 
     void onReady(AMQP::TcpConnection *) override {
         ready_.store(true);
@@ -57,6 +60,27 @@ class RuntimeHandler final : public AMQP::LibEventHandler {
 
     void onClosed(AMQP::TcpConnection *) override { ready_.store(false); }
 
+    bool onSecuring(AMQP::TcpConnection *, SSL *ssl) override {
+        if (tls_config_ != nullptr && tls_config_->tls.enable &&
+            !tls_config_->tls.ca_path.empty()) {
+            SSL_CTX *ctx = SSL_get_SSL_CTX(ssl);
+            if (ctx != nullptr) {
+                SSL_CTX_load_verify_locations(
+                    ctx, tls_config_->tls.ca_path.c_str(), nullptr);
+                if (!tls_config_->tls.cert_path.empty() &&
+                    !tls_config_->tls.key_path.empty()) {
+                    SSL_CTX_use_certificate_file(
+                        ctx, tls_config_->tls.cert_path.c_str(),
+                        SSL_FILETYPE_PEM);
+                    SSL_CTX_use_PrivateKey_file(
+                        ctx, tls_config_->tls.key_path.c_str(),
+                        SSL_FILETYPE_PEM);
+                }
+            }
+        }
+        return true;
+    }
+
     bool ready() const { return ready_.load(); }
     std::string error() const {
         std::lock_guard<std::mutex> lock(error_mutex_);
@@ -64,6 +88,7 @@ class RuntimeHandler final : public AMQP::LibEventHandler {
     }
 
   private:
+    const RabbitmqConfig *tls_config_;
     std::atomic_bool ready_{false};
     mutable std::mutex error_mutex_;
     std::string error_;
@@ -74,7 +99,7 @@ class RuntimeHandler final : public AMQP::LibEventHandler {
 class AmqpPublisherRuntime {
   public:
     explicit AmqpPublisherRuntime(const RabbitmqConfig &config)
-        : base_(CreateEventBase()), handler_(base_.get()),
+        : base_(CreateEventBase()), handler_(base_.get(), &config),
           address_(BuildRabbitmqAddress(config)),
           connection_(&handler_, address_), channel_(&connection_),
           exchange_(config.exchange), queue_(config.queue),
@@ -203,7 +228,7 @@ class AmqpConsumerRuntime {
 
     AmqpConsumerRuntime(const RabbitmqConfig &config, MessageHandler handler,
                         std::size_t pool_size)
-        : base_(CreateEventBase()), handler_(base_.get()),
+        : base_(CreateEventBase()), handler_(base_.get(), &config),
           address_(BuildRabbitmqAddress(config)),
           connection_(&handler_, address_), channel_(&connection_),
           exchange_(config.exchange), queue_(config.queue),
@@ -381,7 +406,8 @@ ConfiguredMessageQueueConsumer::ConfiguredMessageQueueConsumer(
 ConfiguredMessageQueueConsumer::~ConfiguredMessageQueueConsumer() = default;
 
 std::string BuildRabbitmqAddress(const RabbitmqConfig &config) {
-    return "amqp://" + config.user + ":" + config.password + "@" + config.host +
+    const std::string scheme = config.tls.enable ? "amqps://" : "amqp://";
+    return scheme + config.user + ":" + config.password + "@" + config.host +
            ":" + std::to_string(config.port) + "/";
 }
 

@@ -3,6 +3,8 @@
 
 #include "common/noncopyable.h"
 
+#include <drogon/utils/coroutine.h>
+
 #include "common/notify_publisher.h"
 #include "common/service_clients.h"
 #include "common/session_store.h"
@@ -17,7 +19,8 @@ class TransmiteService : public NonCopyable {
                      NotifyPublisher &notifier, ServiceClients &clients);
     ~TransmiteService() = default;
 
-    zchat::NewMessageRsp NewMessage(const zchat::NewMessageReq &request);
+    drogon::Task<zchat::NewMessageRsp>
+    NewMessageCoro(const zchat::NewMessageReq &request);
 
   private:
     MessageQueuePublisher &queue_;
