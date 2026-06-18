@@ -1,5 +1,6 @@
 from conan import ConanFile
-from conan.tools.cmake import CMakeDeps, CMakeToolchain
+from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain
+import os
 
 DEPENDENCY_VERSIONS = {
     "amqp-cpp": "4.3.27",
@@ -8,7 +9,9 @@ DEPENDENCY_VERSIONS = {
     "etcd-cpp-apiv3": "0.15.4",
     "grpc": "1.78.1",
     "libevent": "2.1.12",
+    "libsodium": "1.0.22",
     "ninja": "1.13.2",
+    "nlohmann_json": "3.12.0",
     "protobuf": "6.33.5",
     "spdlog": "1.17.0",
 }
@@ -73,7 +76,9 @@ class ZChatRecipe(ConanFile):
         "libcurl/*:with_websockets": False,
         
         
-        "libevent/*:with_openssl": False,
+        "libevent/*:with_openssl": True,
+
+        "nlohmann_json/*:header_only": False,
     }
 
     def requirements(self):
@@ -85,6 +90,8 @@ class ZChatRecipe(ConanFile):
         self.requires(f"protobuf/{DEPENDENCY_VERSIONS['protobuf']}")
         self.requires(f"spdlog/{DEPENDENCY_VERSIONS['spdlog']}")
         self.requires(f"libevent/{DEPENDENCY_VERSIONS['libevent']}")
+        self.requires(f"libsodium/{DEPENDENCY_VERSIONS['libsodium']}")
+        self.requires(f"nlohmann_json/{DEPENDENCY_VERSIONS['nlohmann_json']}")
 
     def build_requirements(self):
         self.tool_requires(f"cmake/{DEPENDENCY_VERSIONS['cmake']}")
@@ -101,7 +108,17 @@ class ZChatRecipe(ConanFile):
 
         tc = CMakeToolchain(self)
 
-        # 禁止生成用户预设文件，避免与项目的 CMakePresets.json 冲突
+        # 禁止生成用户预设文件，保持项目根目录整洁
         tc.user_presets_path = False
 
         tc.generate()
+
+    def build(self):
+        cmake = CMake(self)
+        cmake.configure()
+        env_targets = os.environ.get("ZCHAT_BUILD_TARGETS", "")
+        if env_targets:
+            for target in env_targets.split():
+                cmake.build(target=target)
+        else:
+            cmake.build()

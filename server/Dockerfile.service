@@ -37,31 +37,19 @@ FROM conan-deps AS builder
 
 ARG BUILD_PRESET=conan2-release
 
-COPY CMakeLists.txt CMakePresets.json ./
+COPY CMakeLists.txt ./
 COPY server ./server
 
-RUN . /app/build/${BUILD_PRESET}/generators/conanbuild.sh \
-    && . /app/build/${BUILD_PRESET}/generators/conanrun.sh \
-    && cmake --preset ${BUILD_PRESET} \
-    && cmake --build --preset ${BUILD_PRESET} --target \
-        zchat_file_service \
-        zchat_speech_service \
-        zchat_transmite_service \
-        zchat_message_service \
-        zchat_friend_service \
-        zchat_user_service \
-        zchat_gateway \
-        -j4 \
-    && mkdir -p /app/lib \
-    && find /app/build/${BUILD_PRESET}/bin -maxdepth 1 -type f -perm -111 \
-      -exec ldd {} \; \
-      | awk '/=>/ { print $3 } /^[[:space:]]*\// { print $1 }' \
-      | sort -u \
-      | while read -r lib; do \
-          case "${lib}" in \
-            /root/.conan2/*) cp -L "${lib}" /app/lib/ ;; \
-          esac; \
-        done \
+RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
+        host_profile=profiles/linux-clang-debug ; \
+    else \
+        host_profile=profiles/linux-clang-release ; \
+    fi \
+    && conan build . \
+        --output-folder=/app/build/${BUILD_PRESET} \
+        -pr:h $host_profile \
+        -pr:b profiles/linux-clang-release \
+        -c tools.build:jobs=4 \
     && mkdir -p /app/lib/plugin \
     && find /root/.conan2 -path '*/lib/plugin/*.so' -exec cp -L {} /app/lib/plugin/ \;
 
@@ -74,6 +62,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    libstdc++6 \
     libuuid1 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -81,11 +70,10 @@ WORKDIR /app
 
 ARG BUILD_PRESET=conan2-release
 
-ENV LD_LIBRARY_PATH=/app/lib
 ENV MARIADB_PLUGIN_DIR=/app/lib/plugin
 
 COPY --from=builder /app/build/${BUILD_PRESET}/bin /app/bin
-COPY --from=builder /app/lib /app/lib
+COPY --from=builder /app/lib/plugin /app/lib/plugin
 COPY --from=builder /app/server/config /app/server/config
 
 CMD ["/bin/sh", "-c", "exec /app/bin/${SERVICE_BINARY}"]

@@ -18,7 +18,7 @@ from typing import Sequence
 
 SUPPORTED_PRESETS = ("conan2-debug", "conan2-release")
 DEFAULT_PRESET = "conan2-debug"
-DEFAULT_BUILD_JOBS = int(os.environ.get("BUILD_JOBS", "2"))
+DEFAULT_BUILD_JOBS = int(os.environ.get("BUILD_JOBS", "4"))
 DEFAULT_STARTUP_GRACE_SECONDS = float(os.environ.get("STARTUP_GRACE_SECONDS", "1"))
 
 
@@ -193,26 +193,31 @@ def conan_generators_exist(preset: str) -> bool:
 
 def build_services(preset: str, jobs: int, env: dict[str, str], services: Sequence[Service]) -> dict[str, str]:
     paths = get_paths()
-    build_env = source_env_script(paths.build_dir(preset) / "generators/conanbuild.sh", env)
-    run_env = source_env_script(paths.build_dir(preset) / "generators/conanrun.sh", build_env)
+    build_dir = paths.build_dir(preset)
+    build_env = dict(env)
+    if len(services) == len(SERVICES):
+        build_env["ZCHAT_BUILD_TARGETS"] = ""
+    else:
+        build_env["ZCHAT_BUILD_TARGETS"] = " ".join(s.binary_name for s in services)
 
-    print(f"Configuring zchat services with preset {preset}")
-    run_command(["cmake", "--preset", preset], env=run_env)
-
-    target_names = [service.binary_name for service in services]
-    print(f"Building {', '.join(target_names)} with preset {preset} ({jobs} jobs)")
+    print(f"Building via conan build with preset {preset} ({jobs} jobs)")
+    host_profile, build_profile = conan_profiles(preset)
     run_command(
         [
-            "cmake",
-            "--build",
-            "--preset",
-            preset,
-            "--target",
-            *target_names,
-            f"-j{jobs}",
+            "conan",
+            "build",
+            str(paths.root_dir),
+            f"--output-folder={build_dir}",
+            "-pr:h",
+            str(host_profile),
+            "-pr:b",
+            str(build_profile),
+            "-c",
+            f"tools.build:jobs={jobs}",
         ],
-        env=run_env,
+        env=build_env,
     )
+    run_env = source_env_script(build_dir / "generators/conanrun.sh", build_env)
     return run_env
 
 
@@ -479,6 +484,19 @@ def cmd_stop(args: argparse.Namespace) -> None:
         manager.stop(service)
 
 
+def cmd_test(args: argparse.Namespace) -> None:
+    paths = get_paths()
+    build_dir = paths.build_dir(args.preset)
+    if not (build_dir / "CTestTestfile.cmake").is_file():
+        raise SystemExit(f"No build artifacts in {build_dir}, run `develop.py build` first")
+    env = source_env_script(build_dir / "generators/conanbuild.sh", conan_home_env())
+    print(f"Running tests in {build_dir}")
+    run_command(
+        ["ctest", f"--test-dir={build_dir}", "--output-on-failure"],
+        env=env,
+    )
+
+
 def add_preset_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--preset", default=DEFAULT_PRESET, choices=SUPPORTED_PRESETS, help="CMake preset")
 
@@ -534,6 +552,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     add_preset_args(stop_parser)
     stop_parser.add_argument("service", nargs="?", default="all", help="Service name or alias, default: all")
     stop_parser.set_defaults(func=cmd_stop)
+
+    test_parser = subparsers.add_parser("test", help="Run CTest in the build folder")
+    add_preset_args(test_parser)
+    test_parser.set_defaults(func=cmd_test)
 
     return parser.parse_args(argv)
 

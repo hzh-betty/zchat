@@ -37,6 +37,22 @@ x-mysql-ca-volume: &mysql-ca-volume
   target: /etc/ssl/certs/zchat-mysql-ca.pem
   read_only: true
 
+x-grpc-certs-volume: &grpc-certs-volume
+  type: bind
+  source: ./server/certs/grpc
+  target: /etc/ssl/certs/zchat-grpc
+  read_only: true
+
+x-grpc-tls-env: &grpc-tls-env
+  ZCHAT_GRPC_CA_PATH: /etc/ssl/certs/zchat-grpc/ca.pem
+  ZCHAT_GRPC_CERT_PATH: /etc/ssl/certs/zchat-grpc/server-cert.pem
+  ZCHAT_GRPC_KEY_PATH: /etc/ssl/certs/zchat-grpc/server-key.pem
+  ZCHAT_ETCD_TLS_CA_PATH: /etc/ssl/certs/zchat-grpc/ca.pem
+  ZCHAT_ETCD_TLS_CERT_PATH: /etc/ssl/certs/zchat-grpc/server-cert.pem
+  ZCHAT_ETCD_TLS_KEY_PATH: /etc/ssl/certs/zchat-grpc/server-key.pem
+  ZCHAT_ES_TLS_CA_PATH: /etc/ssl/certs/zchat-grpc/ca.pem
+  ZCHAT_RABBITMQ_TLS_CA_PATH: /etc/ssl/certs/zchat-grpc/ca.pem
+
 x-healthcheck-defaults: &healthcheck-defaults
   interval: 10s
   timeout: 5s
@@ -62,7 +78,11 @@ services:
       - "127.0.0.1:${ZCHAT_MYSQL_PUBLISHED_PORT:-3306}:${ZCHAT_MYSQL_PORT:-3306}"
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./server/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./server/sql/00_init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+      - ./server/sql/01_user.sql:/docker-entrypoint-initdb.d/01_user.sql:ro
+      - ./server/sql/02_friend.sql:/docker-entrypoint-initdb.d/02_friend.sql:ro
+      - ./server/sql/03_message.sql:/docker-entrypoint-initdb.d/03_message.sql:ro
+      - ./server/sql/04_file.sql:/docker-entrypoint-initdb.d/04_file.sql:ro
       - ./server/certs/mysql:/etc/mysql/ssl:ro
     secrets:
       - mysql_root_password
@@ -104,13 +124,17 @@ services:
     command:
       - /usr/local/bin/etcd
       - --data-dir=/etcd-data
-      - --advertise-client-urls=http://etcd:${ZCHAT_ETCD_PORT:-2379}
-      - --listen-client-urls=http://0.0.0.0:${ZCHAT_ETCD_PORT:-2379}
+      - --advertise-client-urls=https://etcd:${ZCHAT_ETCD_PORT:-2379}
+      - --listen-client-urls=https://0.0.0.0:${ZCHAT_ETCD_PORT:-2379}
+      - --cert-file=/etc/etcd/ssl/server-cert.pem
+      - --key-file=/etc/etcd/ssl/server-key.pem
+      - --trusted-ca-file=/etc/etcd/ssl/ca.pem
+      - --client-cert-auth
     ports:
       - "127.0.0.1:${ZCHAT_ETCD_CLIENT_PUBLISHED_PORT:-2379}:${ZCHAT_ETCD_PORT:-2379}"
-      - "127.0.0.1:${ZCHAT_ETCD_PEER_PUBLISHED_PORT:-2380}:2380"
     volumes:
       - etcd-data:/etcd-data
+      - ./server/certs/etcd:/etc/etcd/ssl:ro
     networks:
       - zchat-network
     healthcheck:
@@ -121,7 +145,10 @@ services:
           "etcdctl",
           "endpoint",
           "health",
-          "--endpoints=http://127.0.0.1:${ZCHAT_ETCD_PORT:-2379}"
+          "--endpoints=https://127.0.0.1:${ZCHAT_ETCD_PORT:-2379}",
+          "--cacert=/etc/etcd/ssl/ca.pem",
+          "--cert=/etc/etcd/ssl/server-cert.pem",
+          "--key=/etc/etcd/ssl/server-key.pem"
         ]
 
   rabbitmq:
@@ -130,7 +157,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
       ZCHAT_RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
-      RABBITMQ_NODE_PORT: ${ZCHAT_RABBITMQ_PORT:-5672}
+      RABBITMQ_NODE_PORT: ${ZCHAT_RABBITMQ_PORT:-5671}
     command:
       - /bin/sh
       - -ec
@@ -139,13 +166,24 @@ services:
         {
           printf 'default_user = %s\n' "$${RABBITMQ_DEFAULT_USER}"
           printf 'default_pass = %s\n' "$${rabbitmq_password}"
+          printf 'listeners.ssl.default = 5671\n'
+          printf 'ssl_options.cacertfile = /etc/rabbitmq/ssl/ca.pem\n'
+          printf 'ssl_options.certfile = /etc/rabbitmq/ssl/server-cert.pem\n'
+          printf 'ssl_options.keyfile = /etc/rabbitmq/ssl/server-key.pem\n'
+          printf 'ssl_options.verify = verify_peer\n'
+          printf 'ssl_options.fail_if_no_peer_cert = false\n'
+          printf 'management.ssl.port = 15671\n'
+          printf 'management.ssl.cacertfile = /etc/rabbitmq/ssl/ca.pem\n'
+          printf 'management.ssl.certfile = /etc/rabbitmq/ssl/server-cert.pem\n'
+          printf 'management.ssl.keyfile = /etc/rabbitmq/ssl/server-key.pem\n'
         } > /etc/rabbitmq/conf.d/99-zchat-default-user.conf
         exec rabbitmq-server
     ports:
-      - "127.0.0.1:${ZCHAT_RABBITMQ_PUBLISHED_PORT:-5672}:${ZCHAT_RABBITMQ_PORT:-5672}"
-      - "127.0.0.1:${ZCHAT_RABBITMQ_MANAGEMENT_PUBLISHED_PORT:-15672}:15672"
+      - "127.0.0.1:${ZCHAT_RABBITMQ_PUBLISHED_PORT:-5671}:${ZCHAT_RABBITMQ_PORT:-5671}"
+      - "127.0.0.1:${ZCHAT_RABBITMQ_MANAGEMENT_PUBLISHED_PORT:-15671}:15671"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./server/certs/rabbitmq:/etc/rabbitmq/ssl:ro
     secrets:
       - rabbitmq_default_pass
     networks:
@@ -160,35 +198,49 @@ services:
     environment:
       discovery.type: single-node
       http.port: ${ZCHAT_ES_PORT:-9200}
-      xpack.security.enabled: "false"
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "true"
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/server-cert.pem
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/server-key.pem
+      xpack.security.http.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.pem
+      xpack.security.transport.ssl.enabled: "true"
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/server-cert.pem
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/server-key.pem
+      xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.pem
+      ELASTIC_PASSWORD: ${ZCHAT_ELASTICSEARCH_PASSWORD:-changeme}
       ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
       - "127.0.0.1:${ZCHAT_ES_PUBLISHED_PORT:-9200}:${ZCHAT_ES_PORT:-9200}"
     volumes:
       - es-data:/usr/share/elasticsearch/data
+      - ./server/certs/elasticsearch:/usr/share/elasticsearch/config/certs:ro
     networks:
       - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:${ZCHAT_ES_PORT:-9200}/_cluster/health >/dev/null"]
+      test: ["CMD-SHELL", "curl --cacert /usr/share/elasticsearch/config/certs/ca.pem -u elastic:${ZCHAT_ELASTICSEARCH_PASSWORD:-changeme} --fail --silent https://127.0.0.1:${ZCHAT_ES_PORT:-9200}/_cluster/health >/dev/null"]
 
   file-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
       SERVICE_BINARY: zchat_file_service
       ZCHAT_ADVERTISE_HOST: file-service
       MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
       MYSQL_USER: ${MYSQL_USER:-}
       MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
       ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
+      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
+      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
       ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
       ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
       ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
     volumes:
       - *mysql-ca-volume
+      - *grpc-certs-volume
     secrets:
       - mysql_password
+      - redis_password
       - etcd_password
     depends_on:
       mysql:
@@ -202,7 +254,7 @@ services:
   speech-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports]
+      <<: [*docker-service-hosts, *service-ports, *grpc-tls-env]
       SERVICE_BINARY: zchat_speech_service
       ZCHAT_ADVERTISE_HOST: speech-service
       ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
@@ -225,7 +277,7 @@ services:
   transmite-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
       SERVICE_BINARY: zchat_transmite_service
       ZCHAT_ADVERTISE_HOST: transmite-service
       MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
@@ -245,6 +297,7 @@ services:
       RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
     volumes:
       - *mysql-ca-volume
+      - *grpc-certs-volume
     secrets:
       - mysql_password
       - redis_password
@@ -269,7 +322,7 @@ services:
   message-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
       SERVICE_BINARY: zchat_message_service
       ZCHAT_ADVERTISE_HOST: message-service
       MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
@@ -287,6 +340,7 @@ services:
       RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
     volumes:
       - *mysql-ca-volume
+      - *grpc-certs-volume
     secrets:
       - mysql_password
       - etcd_password
@@ -308,7 +362,7 @@ services:
   friend-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
       SERVICE_BINARY: zchat_friend_service
       ZCHAT_ADVERTISE_HOST: friend-service
       MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
@@ -325,6 +379,7 @@ services:
       ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
     volumes:
       - *mysql-ca-volume
+      - *grpc-certs-volume
     secrets:
       - mysql_password
       - redis_password
@@ -346,7 +401,7 @@ services:
   user-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
       SERVICE_BINARY: zchat_user_service
       ZCHAT_ADVERTISE_HOST: user-service
       MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
@@ -367,6 +422,7 @@ services:
       ZCHAT_SMS_TEMPLATE_CODE: ${ZCHAT_SMS_TEMPLATE_CODE:-}
     volumes:
       - *mysql-ca-volume
+      - *grpc-certs-volume
     secrets:
       - mysql_password
       - redis_password
@@ -390,7 +446,7 @@ services:
   gateway:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports]
+      <<: [*docker-service-hosts, *service-ports, *grpc-tls-env]
       SERVICE_BINARY: zchat_gateway
       ZCHAT_ADVERTISE_HOST: gateway
       ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
@@ -398,6 +454,8 @@ services:
       ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
       ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
       ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
+    volumes:
+      - *grpc-certs-volume
     secrets:
       - redis_password
       - etcd_password
