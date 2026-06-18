@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <drogon/HttpClient.h>
+#include <drogon/utils/coroutine.h>
 #include <trantor/net/EventLoopThread.h>
 
 #include "common/config.h"
@@ -21,10 +22,11 @@ class MessageSearchIndex : public NonCopyable {
     MessageSearchIndex() = default;
     virtual ~MessageSearchIndex() = default;
 
-    virtual VoidResult IndexMessage(const MessageRecord &message) = 0;
-    virtual Result<std::vector<MessageRecord>>
-    SearchMessages(const std::string &session_id, const std::string &keyword,
-                   int offset, int limit) = 0;
+    virtual drogon::Task<VoidResult>
+    IndexMessageCoro(const MessageRecord &message) = 0;
+    virtual drogon::Task<Result<std::vector<MessageRecord>>>
+    SearchMessagesCoro(const std::string &session_id,
+                       const std::string &keyword, int offset, int limit) = 0;
 };
 
 class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
@@ -32,10 +34,12 @@ class ConfiguredMessageSearchIndex final : public MessageSearchIndex {
     explicit ConfiguredMessageSearchIndex(const ElasticsearchConfig &config);
     ~ConfiguredMessageSearchIndex() override = default;
 
-    VoidResult IndexMessage(const MessageRecord &message) override;
-    Result<std::vector<MessageRecord>>
-    SearchMessages(const std::string &session_id, const std::string &keyword,
-                   int offset, int limit) override;
+    drogon::Task<VoidResult>
+    IndexMessageCoro(const MessageRecord &message) override;
+    drogon::Task<Result<std::vector<MessageRecord>>>
+    SearchMessagesCoro(const std::string &session_id,
+                       const std::string &keyword, int offset,
+                       int limit) override;
 
   private:
     VoidResult EnsureIndex();

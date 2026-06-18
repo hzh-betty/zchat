@@ -75,6 +75,8 @@ int RunDrogonGateway(const std::string &service_name, int http_port,
             .addListener("0.0.0.0", http_port)
             .addListener("0.0.0.0", websocket_port)
             .setThreadNum(4)
+            .setMaxConnectionNum(10000)
+            .setMaxConnectionNumPerIP(1000)
             .run();
         ZCHAT_LOG_INFO("{} stopped", service_name);
         return EXIT_SUCCESS;

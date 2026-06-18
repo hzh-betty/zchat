@@ -7,11 +7,13 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include <drogon/orm/DbClient.h>
 #include <drogon/orm/Exception.h>
 #include <drogon/orm/Row.h>
+#include <drogon/utils/coroutine.h>
 
 #include "common/common_errors.h"
 #include "common/domain_records.h"
@@ -36,19 +38,27 @@ MessageRecord ToMessageRecord(const drogon::orm::Row &row);
 ChatSessionRecord ToChatSessionRecord(const drogon::orm::Row &row);
 FileRecord ToFileRecord(const drogon::orm::Row &row);
 
-template <typename Func> auto RunDb(Func function) -> decltype(function()) {
+// 协程化 DB 调用包装。Func 返回 drogon::Task<T>，T 通常是 Result<...>。
+// 捕获 DB 异常并转为 AppError。
+template <typename Func>
+drogon::Task<std::decay_t<decltype(std::declval<std::invoke_result_t<Func>>()
+                                       .operator co_await()
+                                       .await_resume())>>
+RunDbCoro(Func function) {
+    using ReturnType =
+        std::decay_t<decltype(std::declval<std::invoke_result_t<Func>>()
+                                  .operator co_await()
+                                  .await_resume())>;
     try {
-        return function();
+        co_return co_await function();
     } catch (const drogon::orm::DrogonDbException &error) {
-        using ReturnType = decltype(function());
         AppError app_error = common_errors::DatabaseOperationFailed();
         app_error.detail = error.base().what();
-        return ReturnType::Fail(std::move(app_error));
+        co_return ReturnType::Fail(std::move(app_error));
     } catch (const std::exception &error) {
-        using ReturnType = decltype(function());
         AppError app_error = common_errors::InternalServiceError();
         app_error.detail = error.what();
-        return ReturnType::Fail(std::move(app_error));
+        co_return ReturnType::Fail(std::move(app_error));
     }
 }
 

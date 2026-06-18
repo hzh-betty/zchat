@@ -3,8 +3,10 @@
 
 #include <cstdlib>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -33,7 +35,35 @@ int RunGrpcServer(const std::string &service_name, int port,
         const std::string address =
             grpc_config.bind_address + ":" + std::to_string(port);
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(address, grpc::InsecureServerCredentials());
+
+        // TLS/mTLS 服务端凭证
+        const char *ca = std::getenv("ZCHAT_GRPC_CA_PATH");
+        const char *cert = std::getenv("ZCHAT_GRPC_CERT_PATH");
+        const char *key = std::getenv("ZCHAT_GRPC_KEY_PATH");
+        if (ca != nullptr && cert != nullptr && key != nullptr && *ca != '\0' &&
+            *cert != '\0' && *key != '\0') {
+            std::ifstream ca_file(ca, std::ios::binary);
+            std::ifstream cert_file(cert, std::ios::binary);
+            std::ifstream key_file(key, std::ios::binary);
+            std::ostringstream ca_stream, cert_stream, key_stream;
+            ca_stream << ca_file.rdbuf();
+            cert_stream << cert_file.rdbuf();
+            key_stream << key_file.rdbuf();
+
+            grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp;
+            pkcp.private_key = key_stream.str();
+            pkcp.cert_chain = cert_stream.str();
+            grpc::SslServerCredentialsOptions ssl_opts;
+            ssl_opts.pem_root_certs = ca_stream.str();
+            ssl_opts.pem_key_cert_pairs.push_back(pkcp);
+            ssl_opts.force_client_auth = true; // mTLS
+            builder.AddListeningPort(address,
+                                     grpc::SslServerCredentials(ssl_opts));
+            ZCHAT_LOG_INFO("{} using mTLS server credentials", service_name);
+        } else {
+            builder.AddListeningPort(address,
+                                     grpc::InsecureServerCredentials());
+        }
         builder.RegisterService(service);
         builder.SetSyncServerOption(grpc::ServerBuilder::NUM_CQS,
                                     grpc_config.num_cqs);

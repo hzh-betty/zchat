@@ -18,6 +18,8 @@ target_link_libraries(zchat_common
     OpenSSL::Crypto
     gRPC::grpc++
     spdlog::spdlog
+    libsodium::libsodium
+    nlohmann_json::nlohmann_json
     zchat_proto
     etcd-cpp-apiv3::etcd-cpp-apiv3)
 target_include_directories(zchat_common

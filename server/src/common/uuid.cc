@@ -1,40 +1,22 @@
 #include "common/uuid.h"
 
 #include <chrono>
-#include <iomanip>
-#include <random>
-#include <sstream>
+#include <cstdio>
+#include <string>
+
+#include "common/crypto.h"
 
 namespace zchat {
-namespace {
 
-std::mt19937_64 &RandomEngine() {
-    static std::random_device device;
-    static std::mt19937_64 engine(device());
-    return engine;
-}
+std::string NewId() { return CsprngHex(16); }
 
-std::string RandomHex(std::size_t bytes) {
-    std::uniform_int_distribution<unsigned int> distribution(0, 255);
-    std::ostringstream stream;
-    for (std::size_t i = 0; i < bytes; ++i) {
-        stream << std::hex << std::setw(2) << std::setfill('0')
-               << distribution(RandomEngine());
-    }
-    return stream.str();
-}
-
-} // namespace
-
-std::string NewId() { return RandomHex(16); }
-
-std::string NewRequestId() { return "R" + RandomHex(6); }
+std::string NewRequestId() { return "R" + CsprngHex(6); }
 
 std::string NewVerifyCode() {
-    std::uniform_int_distribution<int> distribution(0, 999999);
-    std::ostringstream stream;
-    stream << std::setw(6) << std::setfill('0') << distribution(RandomEngine());
-    return stream.str();
+    const unsigned int code = CsprngUniform(1000000);
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "%06u", code);
+    return std::string(buf);
 }
 
 std::int64_t UnixTimeSeconds() {

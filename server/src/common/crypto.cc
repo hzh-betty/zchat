@@ -2,6 +2,7 @@
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <sodium.h>
 
 #include <algorithm>
 #include <cctype>
@@ -9,6 +10,15 @@
 #include <sstream>
 
 namespace zchat {
+namespace {
+
+// 确保 libsodium 在首次使用前完成初始化（线程安全）。
+void EnsureSodiumInit() {
+    static const int initialized = []() { return sodium_init(); }();
+    (void)initialized;
+}
+
+} // namespace
 
 std::string Base64Encode(const unsigned char *data, std::size_t length) {
     const std::size_t encoded_length = 4 * ((length + 2) / 3);
@@ -47,6 +57,53 @@ std::string UrlEncode(const std::string &value) {
         }
     }
     return escaped.str();
+}
+
+std::string Argon2idHash(const std::string &password) {
+    EnsureSodiumInit();
+    char encoded[crypto_pwhash_argon2id_STRBYTES];
+    if (crypto_pwhash_argon2id_str(
+            encoded, password.c_str(), password.size(),
+            crypto_pwhash_argon2id_OPSLIMIT_INTERACTIVE,
+            crypto_pwhash_argon2id_MEMLIMIT_INTERACTIVE) != 0) {
+        return std::string();
+    }
+    return std::string(encoded);
+}
+
+bool Argon2idVerify(const std::string &encoded, const std::string &password) {
+    EnsureSodiumInit();
+    return crypto_pwhash_argon2id_str_verify(encoded.c_str(), password.c_str(),
+                                             password.size()) == 0;
+}
+
+std::string CsprngHex(std::size_t bytes) {
+    EnsureSodiumInit();
+    std::vector<unsigned char> buf(bytes);
+    randombytes_buf(buf.data(), bytes);
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string result(bytes * 2, '\0');
+    for (std::size_t i = 0; i < bytes; ++i) {
+        result[i * 2] = kHex[buf[i] >> 4];
+        result[i * 2 + 1] = kHex[buf[i] & 0x0f];
+    }
+    return result;
+}
+
+unsigned int CsprngUniform(unsigned int upper_exclusive) {
+    EnsureSodiumInit();
+    if (upper_exclusive == 0) {
+        return 0;
+    }
+    return static_cast<unsigned int>(randombytes_uniform(upper_exclusive));
+}
+
+bool ConstantTimeCompare(std::string_view a, std::string_view b) {
+    EnsureSodiumInit();
+    if (a.size() != b.size()) {
+        return false;
+    }
+    return sodium_memcmp(a.data(), b.data(), a.size()) == 0;
 }
 
 } // namespace zchat

@@ -16,6 +16,7 @@ struct UserRecord {
     std::string nickname;
     std::string description;
     std::string password;
+    std::string password_hash_algo;
     std::string phone;
     std::string avatar_id;
 };
@@ -49,6 +50,8 @@ struct FileRecord {
     std::string file_name;
     std::uint64_t file_size = 0;
     std::string file_content;
+    std::string owner_user_id;
+    std::string chat_session_id;
 };
 
 } // namespace zchat

@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <mutex>
+#include <string>
 
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -61,5 +62,38 @@ void FlushLogger() {
     auto logger = Logger();
     logger->flush();
 }
+
+std::string RedactPhone(std::string_view phone) {
+    const auto n = phone.size();
+    if (n <= 3) {
+        return std::string(n, '*');
+    }
+    if (n < 7) {
+        return std::string(phone.substr(0, 1)) + std::string(n - 2, '*') +
+               std::string(phone.substr(n - 1));
+    }
+    return std::string(phone.substr(0, 3)) + std::string(n - 7, '*') +
+           std::string(phone.substr(n - 4));
+}
+
+std::string RedactToken(std::string_view token) {
+    const auto n = token.size();
+    if (n <= 8) {
+        return std::string(n, '*');
+    }
+    return std::string(token.substr(0, 4)) + std::string(n - 8, '*') +
+           std::string(token.substr(n - 4));
+}
+
+std::string RedactSecret(std::string_view value) {
+    const auto n = value.size();
+    if (n <= 4) {
+        return std::string(n, '*');
+    }
+    return std::string(value.substr(0, 2)) + std::string(n - 4, '*') +
+           std::string(value.substr(n - 2));
+}
+
+std::string RedactPassword() { return "***"; }
 
 } // namespace zchat

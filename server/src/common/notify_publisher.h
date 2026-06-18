@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <drogon/nosql/RedisClient.h>
+#include <drogon/utils/coroutine.h>
 
 #include "common/result.h"
 
@@ -23,11 +24,11 @@ class NotifyPublisher : public NonCopyable {
 
     ~NotifyPublisher() = default;
 
-    VoidResult Publish(const std::string &user_id, const std::string &payload);
-
-    Result<PublishOutcome>
-    PublishBatch(const std::vector<std::string> &user_ids,
-                 const std::string &payload);
+    drogon::Task<VoidResult> PublishCoro(const std::string &user_id,
+                                         const std::string &payload);
+    drogon::Task<Result<PublishOutcome>>
+    PublishBatchCoro(const std::vector<std::string> &user_ids,
+                     const std::string &payload);
 
   private:
     drogon::nosql::RedisClientPtr redis_;

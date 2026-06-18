@@ -31,6 +31,7 @@ enum class ErrorCode {
     kUserVerifyCodeExpired = 1006,
     kUserVerifyCodePhoneMismatch = 1007,
     kUserAlreadyLoggedIn = 1008,
+    kUserAccountLocked = 1009,
 
     kFriendAlreadyExists = 2001,
     kFriendApplyAlreadyExists = 2002,
@@ -80,6 +81,8 @@ inline const char *ErrorCodeName(ErrorCode code) {
         return "USER_VERIFY_CODE_PHONE_MISMATCH";
     case ErrorCode::kUserAlreadyLoggedIn:
         return "USER_ALREADY_LOGGED_IN";
+    case ErrorCode::kUserAccountLocked:
+        return "USER_ACCOUNT_LOCKED";
     case ErrorCode::kFriendAlreadyExists:
         return "FRIEND_ALREADY_EXISTS";
     case ErrorCode::kFriendApplyAlreadyExists:

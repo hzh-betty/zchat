@@ -9,174 +9,248 @@
 #include "common/common_errors.h"
 
 namespace zchat {
+
 namespace {
 
-template <typename Func> auto RunRedis(Func function) -> decltype(function()) {
-    try {
-        return function();
-    } catch (const drogon::nosql::RedisException &error) {
-        using ReturnType = decltype(function());
-        return ReturnType::Fail(
-            common_errors::RedisOperationFailed().WithDetail(error.what()));
-    } catch (const std::exception &error) {
-        using ReturnType = decltype(function());
-        return ReturnType::Fail(
-            common_errors::RedisOperationFailed().WithDetail(error.what()));
-    }
-}
-
-std::optional<std::string>
-OptionalString(const drogon::nosql::RedisResult &result) {
-    if (result.isNil()) {
-        return std::nullopt;
-    }
-    return result.asString();
-}
+constexpr int kMaxLoginFailCount = 5;
+constexpr int kLockSeconds = 900;
+constexpr int kFailWindowSeconds = 900;
 
 } // namespace
 
 SessionStore::SessionStore(drogon::nosql::RedisClientPtr redis)
     : redis_(std::move(redis)) {}
 
-VoidResult SessionStore::SaveSession(const std::string &session_id,
-                                     const std::string &user_id) {
-    return RunRedis([&]() {
-        redis_->execCommandSync<std::string>(
-            [](const drogon::nosql::RedisResult &result) {
-                return result.getStringForDisplaying();
-            },
-            "setex zchat:session:%s 604800 %s", session_id.c_str(),
-            user_id.c_str());
-        return VoidResult::Ok();
-    });
+drogon::Task<Result<std::optional<std::string>>>
+SessionStore::GetUserIdCoro(const std::string &session_id) {
+    try {
+        auto result = co_await redis_->execCommandCoro("get zchat:session:%s",
+                                                       session_id.c_str());
+        if (result.isNil()) {
+            co_return Result<std::optional<std::string>>::Ok(std::nullopt);
+        }
+        co_return Result<std::optional<std::string>>::Ok(
+            std::make_optional(result.asString()));
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return Result<std::optional<std::string>>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return Result<std::optional<std::string>>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-Result<std::optional<std::string>>
-SessionStore::GetUserId(const std::string &session_id) {
-    return RunRedis([&]() {
-        auto value = redis_->execCommandSync<std::optional<std::string>>(
-            [](const drogon::nosql::RedisResult &result) {
-                return OptionalString(result);
-            },
-            "get zchat:session:%s", session_id.c_str());
-        return Result<std::optional<std::string>>::Ok(std::move(value));
-    });
+drogon::Task<VoidResult>
+SessionStore::SaveSessionCoro(const std::string &session_id,
+                              const std::string &user_id) {
+    try {
+        co_await redis_->execCommandCoro("setex zchat:session:%s 604800 %s",
+                                         session_id.c_str(), user_id.c_str());
+        co_return VoidResult::Ok();
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-void SessionStore::GetUserIdAsync(
-    const std::string &session_id,
-    std::function<void(Result<std::optional<std::string>>)> &&callback) {
-    redis_->execCommandAsync(
-        [cb = std::move(callback)](const drogon::nosql::RedisResult &result) {
-            cb(Result<std::optional<std::string>>::Ok(OptionalString(result)));
-        },
-        [cb = std::move(callback)](const drogon::nosql::RedisException &err) {
-            cb(Result<std::optional<std::string>>::Fail(
-                common_errors::RedisOperationFailed().WithDetail(err.what())));
-        },
-        "get zchat:session:%s", session_id.c_str());
+drogon::Task<VoidResult>
+SessionStore::RemoveSessionCoro(const std::string &session_id) {
+    try {
+        co_await redis_->execCommandCoro("del zchat:session:%s",
+                                         session_id.c_str());
+        co_return VoidResult::Ok();
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-VoidResult SessionStore::RemoveSession(const std::string &session_id) {
-    return RunRedis([&]() {
-        redis_->execCommandSync<long long>(
-            [](const drogon::nosql::RedisResult &result) {
-                return result.asInteger();
-            },
-            "del zchat:session:%s", session_id.c_str());
-        return VoidResult::Ok();
-    });
+drogon::Task<VoidResult>
+SessionStore::SetOnlineCoro(const std::string &user_id) {
+    try {
+        co_await redis_->execCommandCoro("setex zchat:online:%s 300 1",
+                                         user_id.c_str());
+        co_return VoidResult::Ok();
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-VoidResult SessionStore::SetOnline(const std::string &user_id) {
-    return RunRedis([&]() {
-        redis_->execCommandSync<std::string>(
-            [](const drogon::nosql::RedisResult &result) {
-                return result.getStringForDisplaying();
-            },
-            "setex zchat:online:%s 300 1", user_id.c_str());
-        return VoidResult::Ok();
-    });
-}
-
-Result<bool> SessionStore::SetOnlineIfAbsent(const std::string &user_id) {
-    return RunRedis([&]() -> Result<bool> {
-        const std::string result = redis_->execCommandSync<std::string>(
-            [](const drogon::nosql::RedisResult &r) {
-                return r.getStringForDisplaying();
-            },
+drogon::Task<Result<bool>>
+SessionStore::SetOnlineIfAbsentCoro(const std::string &user_id) {
+    try {
+        auto result = co_await redis_->execCommandCoro(
             "set zchat:online:%s 1 NX EX 300", user_id.c_str());
-        return Result<bool>::Ok(result == "OK");
-    });
+        co_return Result<bool>::Ok(result.getStringForDisplaying() == "OK");
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return Result<bool>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return Result<bool>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-VoidResult SessionStore::RefreshOnline(const std::string &user_id) {
-    return RunRedis([&]() {
-        redis_->execCommandSync<long long>(
-            [](const drogon::nosql::RedisResult &result) {
-                return result.asInteger();
-            },
-            "expire zchat:online:%s 300", user_id.c_str());
-        return VoidResult::Ok();
-    });
+drogon::Task<VoidResult>
+SessionStore::RefreshOnlineCoro(const std::string &user_id) {
+    try {
+        co_await redis_->execCommandCoro("expire zchat:online:%s 300",
+                                         user_id.c_str());
+        co_return VoidResult::Ok();
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-VoidResult SessionStore::SetOffline(const std::string &user_id) {
-    return RunRedis([&]() {
-        redis_->execCommandSync<long long>(
-            [](const drogon::nosql::RedisResult &result) {
-                return result.asInteger();
-            },
-            "del zchat:online:%s", user_id.c_str());
-        return VoidResult::Ok();
-    });
+drogon::Task<VoidResult>
+SessionStore::SetOfflineCoro(const std::string &user_id) {
+    try {
+        co_await redis_->execCommandCoro("del zchat:online:%s",
+                                         user_id.c_str());
+        co_return VoidResult::Ok();
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-Result<bool> SessionStore::IsOnline(const std::string &user_id) {
-    return RunRedis([&]() {
-        const long long exists = redis_->execCommandSync<long long>(
-            [](const drogon::nosql::RedisResult &result) {
-                return result.asInteger();
-            },
-            "exists zchat:online:%s", user_id.c_str());
-        return Result<bool>::Ok(exists > 0);
-    });
+drogon::Task<Result<bool>>
+SessionStore::IsOnlineCoro(const std::string &user_id) {
+    try {
+        auto result = co_await redis_->execCommandCoro("exists zchat:online:%s",
+                                                       user_id.c_str());
+        co_return Result<bool>::Ok(result.asInteger() > 0);
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return Result<bool>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return Result<bool>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-VoidResult SessionStore::SaveVerifyCode(const std::string &verify_code_id,
-                                        const std::string &verify_code) {
-    return RunRedis([&]() {
-        redis_->execCommandSync<std::string>(
-            [](const drogon::nosql::RedisResult &result) {
-                return result.getStringForDisplaying();
-            },
-            "setex zchat:verify:%s 300 %s", verify_code_id.c_str(),
-            verify_code.c_str());
-        return VoidResult::Ok();
-    });
+drogon::Task<VoidResult>
+SessionStore::SaveVerifyCodeCoro(const std::string &verify_code_id,
+                                 const std::string &verify_code) {
+    try {
+        co_await redis_->execCommandCoro("setex zchat:verify:%s 300 %s",
+                                         verify_code_id.c_str(),
+                                         verify_code.c_str());
+        co_return VoidResult::Ok();
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-Result<std::optional<std::string>>
-SessionStore::GetVerifyCode(const std::string &verify_code_id) {
-    return RunRedis([&]() {
-        auto value = redis_->execCommandSync<std::optional<std::string>>(
-            [](const drogon::nosql::RedisResult &result) {
-                return OptionalString(result);
-            },
-            "get zchat:verify:%s", verify_code_id.c_str());
-        return Result<std::optional<std::string>>::Ok(std::move(value));
-    });
+drogon::Task<Result<std::optional<std::string>>>
+SessionStore::GetVerifyCodeCoro(const std::string &verify_code_id) {
+    try {
+        auto result = co_await redis_->execCommandCoro("get zchat:verify:%s",
+                                                       verify_code_id.c_str());
+        if (result.isNil()) {
+            co_return Result<std::optional<std::string>>::Ok(std::nullopt);
+        }
+        co_return Result<std::optional<std::string>>::Ok(
+            std::make_optional(result.asString()));
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return Result<std::optional<std::string>>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return Result<std::optional<std::string>>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
-VoidResult SessionStore::RemoveVerifyCode(const std::string &verify_code_id) {
-    return RunRedis([&]() {
-        redis_->execCommandSync<long long>(
-            [](const drogon::nosql::RedisResult &result) {
-                return result.asInteger();
-            },
-            "del zchat:verify:%s", verify_code_id.c_str());
-        return VoidResult::Ok();
-    });
+drogon::Task<VoidResult>
+SessionStore::RemoveVerifyCodeCoro(const std::string &verify_code_id) {
+    try {
+        co_await redis_->execCommandCoro("del zchat:verify:%s",
+                                         verify_code_id.c_str());
+        co_return VoidResult::Ok();
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
+}
+
+drogon::Task<Result<int>>
+SessionStore::RecordLoginFailCoro(const std::string &user_id) {
+    try {
+        auto count_result = co_await redis_->execCommandCoro(
+            "incr zchat:loginfail:%s", user_id.c_str());
+        long long count = count_result.asInteger();
+        if (count == 1) {
+            co_await redis_->execCommandCoro("expire zchat:loginfail:%s %d",
+                                             user_id.c_str(),
+                                             kFailWindowSeconds);
+        }
+        if (count >= kMaxLoginFailCount) {
+            co_await redis_->execCommandCoro("setex zchat:loginlock:%s %d 1",
+                                             user_id.c_str(), kLockSeconds);
+        }
+        co_return Result<int>::Ok(static_cast<int>(count));
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return Result<int>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return Result<int>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
+}
+
+drogon::Task<Result<bool>>
+SessionStore::IsAccountLockedCoro(const std::string &user_id) {
+    try {
+        auto result = co_await redis_->execCommandCoro(
+            "exists zchat:loginlock:%s", user_id.c_str());
+        co_return Result<bool>::Ok(result.asInteger() > 0);
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return Result<bool>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return Result<bool>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
+}
+
+drogon::Task<VoidResult>
+SessionStore::ClearLoginFailCoro(const std::string &user_id) {
+    try {
+        co_await redis_->execCommandCoro(
+            "del zchat:loginfail:%s zchat:loginlock:%s", user_id.c_str(),
+            user_id.c_str());
+        co_return VoidResult::Ok();
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
 }
 
 } // namespace zchat

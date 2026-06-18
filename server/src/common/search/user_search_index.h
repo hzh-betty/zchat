@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <drogon/HttpClient.h>
+#include <drogon/utils/coroutine.h>
 #include <trantor/net/EventLoopThread.h>
 
 #include "common/config.h"
@@ -21,10 +22,10 @@ class UserSearchIndex : public NonCopyable {
     UserSearchIndex() = default;
     virtual ~UserSearchIndex() = default;
 
-    virtual VoidResult IndexUser(const UserRecord &user) = 0;
-    virtual Result<std::vector<UserRecord>>
-    SearchUsers(const std::string &keyword,
-                const std::vector<std::string> &excluded_user_ids) = 0;
+    virtual drogon::Task<VoidResult> IndexUserCoro(const UserRecord &user) = 0;
+    virtual drogon::Task<Result<std::vector<UserRecord>>>
+    SearchUsersCoro(const std::string &keyword,
+                    const std::vector<std::string> &excluded_user_ids) = 0;
 };
 
 class ConfiguredUserSearchIndex final : public UserSearchIndex {
@@ -32,10 +33,10 @@ class ConfiguredUserSearchIndex final : public UserSearchIndex {
     explicit ConfiguredUserSearchIndex(const ElasticsearchConfig &config);
     ~ConfiguredUserSearchIndex() override = default;
 
-    VoidResult IndexUser(const UserRecord &user) override;
-    Result<std::vector<UserRecord>>
-    SearchUsers(const std::string &keyword,
-                const std::vector<std::string> &excluded_user_ids) override;
+    drogon::Task<VoidResult> IndexUserCoro(const UserRecord &user) override;
+    drogon::Task<Result<std::vector<UserRecord>>>
+    SearchUsersCoro(const std::string &keyword,
+                    const std::vector<std::string> &excluded_user_ids) override;
 
   private:
     VoidResult EnsureIndex();

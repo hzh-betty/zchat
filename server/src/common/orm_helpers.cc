@@ -27,6 +27,7 @@ UserRecord ToUserRecord(const drogon::orm::Row &row) {
     user.nickname = FieldString(row, "nickname");
     user.description = FieldString(row, "description");
     user.password = FieldString(row, "password");
+    user.password_hash_algo = FieldString(row, "password_hash_algo");
     user.phone = FieldString(row, "phone");
     user.avatar_id = FieldString(row, "avatar_id");
     return user;
@@ -62,6 +63,8 @@ FileRecord ToFileRecord(const drogon::orm::Row &row) {
     file.file_name = FieldString(row, "file_name");
     file.file_size = static_cast<std::uint64_t>(FieldInt64(row, "file_size"));
     file.file_content = FieldString(row, "file_content");
+    file.owner_user_id = FieldString(row, "owner_user_id");
+    file.chat_session_id = FieldString(row, "chat_session_id");
     return file;
 }
 

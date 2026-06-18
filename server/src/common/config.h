@@ -6,6 +6,14 @@
 
 namespace zchat {
 
+struct TlsConfig {
+    bool enable = false;
+    std::string ca_path;
+    std::string cert_path;
+    std::string key_path;
+    std::string target_name_override;
+};
+
 struct MysqlConfig {
     std::string host = "127.0.0.1";
     int port = 3306;
@@ -50,6 +58,7 @@ struct EtcdConfig {
     std::string password;
     int lease_ttl_seconds = 3;
     int auth_token_ttl_seconds = 300;
+    TlsConfig tls;
 };
 
 struct SpeechConfig {
@@ -62,6 +71,7 @@ struct ElasticsearchConfig {
     std::string hosts = "http://127.0.0.1:9200/";
     std::string user;
     std::string password;
+    TlsConfig tls;
 };
 
 struct RabbitmqConfig {
@@ -72,6 +82,7 @@ struct RabbitmqConfig {
     std::string exchange = "msg_exchange";
     std::string queue = "msg_queue";
     std::string routing_key = "msg_queue";
+    TlsConfig tls;
 };
 
 struct GrpcServerConfig {
@@ -82,6 +93,7 @@ struct GrpcServerConfig {
     int cq_timeout_msec = 10000;
     int max_send_message_size = 4 * 1024 * 1024;
     int max_receive_message_size = 4 * 1024 * 1024;
+    TlsConfig tls;
 };
 
 struct SmsConfig {

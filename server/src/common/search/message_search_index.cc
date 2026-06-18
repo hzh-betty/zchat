@@ -4,12 +4,13 @@
 #include <utility>
 
 #include <drogon/HttpRequest.h>
-#include <json/json.h>
+#include <nlohmann/json.hpp>
 
 #include "common/crypto.h"
 #include "common/logger.h"
 
 namespace zchat {
+using json = nlohmann::json;
 namespace {
 
 constexpr char kIndexPath[] = "/zchat_messages";
@@ -26,43 +27,41 @@ std::string FirstHost(std::string hosts) {
     return hosts;
 }
 
-std::string CompactJson(const Json::Value &value) {
-    Json::StreamWriterBuilder builder;
-    builder["indentation"] = "";
-    return Json::writeString(builder, value);
-}
+std::string CompactJson(const json &value) { return value.dump(); }
 
-MessageRecord MessageRecordFromJson(const Json::Value &source) {
+MessageRecord MessageRecordFromJson(const json &source) {
     MessageRecord message;
-    message.message_id = source["message_id"].asString();
-    message.session_id = source["session_id"].asString();
-    message.user_id = source["user_id"].asString();
-    message.message_type = source["message_type"].asInt();
-    message.create_time = source["create_time"].asInt64();
-    message.content = source["content"].asString();
-    message.file_id = source["file_id"].asString();
-    message.file_name = source["file_name"].asString();
-    message.file_size = source["file_size"].asUInt64();
+    message.message_id = source.value("message_id", std::string());
+    message.session_id = source.value("session_id", std::string());
+    message.user_id = source.value("user_id", std::string());
+    message.message_type = source.value("message_type", 0);
+    message.create_time = source.value("create_time", std::int64_t(0));
+    message.content = source.value("content", std::string());
+    message.file_id = source.value("file_id", std::string());
+    message.file_name = source.value("file_name", std::string());
+    message.file_size = source.value("file_size", std::uint64_t(0));
     return message;
 }
 
 Result<std::vector<MessageRecord>>
 ParseSearchResponse(const std::string &body) {
-    Json::CharReaderBuilder builder;
-    Json::Value root;
+    json root;
     std::string errors;
     std::istringstream input(body);
-    if (!Json::parseFromStream(builder, input, &root, &errors)) {
+    try {
+        root = json::parse(input);
+    } catch (const std::exception &e) {
         return Result<std::vector<MessageRecord>>::Fail(
             AppError::WithCode(
                 ErrorCode::kExternalServiceError,
                 "elasticsearch message search response parse failed")
-                .WithDetail(errors));
+                .WithDetail(e.what()));
     }
 
     std::vector<MessageRecord> messages;
-    const Json::Value hits = root["hits"]["hits"];
-    if (!hits.isArray()) {
+    const json hits =
+        root.value("hits", json::object()).value("hits", json::array());
+    if (!hits.is_array()) {
         return Result<std::vector<MessageRecord>>::Ok(std::move(messages));
     }
     for (const auto &hit : hits) {
@@ -129,10 +128,10 @@ VoidResult ConfiguredMessageSearchIndex::EnsureIndex() {
             .WithDetail(body));
 }
 
-VoidResult
-ConfiguredMessageSearchIndex::IndexMessage(const MessageRecord &message) {
+drogon::Task<VoidResult>
+ConfiguredMessageSearchIndex::IndexMessageCoro(const MessageRecord &message) {
     if (!client_) {
-        return VoidResult::Fail(AppError::WithCode(
+        co_return VoidResult::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
             "elasticsearch message client is not initialized"));
     }
@@ -144,29 +143,28 @@ ConfiguredMessageSearchIndex::IndexMessage(const MessageRecord &message) {
     request->setBody(BuildElasticsearchMessageDocument(message));
     AddAuthHeader(request);
 
-    const auto [result, response] =
-        client_->sendRequest(request, kRequestTimeoutSeconds);
-    if (result != drogon::ReqResult::Ok || !response) {
-        return VoidResult::Fail(
+    auto response = co_await client_->sendRequestCoro(request);
+    if (!response) {
+        co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch message index request failed")
-                .WithDetail(drogon::to_string(result)));
+                .WithDetail("request failed"));
     }
     if (!IsSuccessStatus(response->statusCode())) {
-        return VoidResult::Fail(
+        co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch message index failed")
                 .WithContext("status", std::to_string(response->statusCode())));
     }
-    return VoidResult::Ok();
+    co_return VoidResult::Ok();
 }
 
-Result<std::vector<MessageRecord>>
-ConfiguredMessageSearchIndex::SearchMessages(const std::string &session_id,
-                                             const std::string &keyword,
-                                             int offset, int limit) {
+drogon::Task<Result<std::vector<MessageRecord>>>
+ConfiguredMessageSearchIndex::SearchMessagesCoro(const std::string &session_id,
+                                                 const std::string &keyword,
+                                                 int offset, int limit) {
     if (!client_) {
-        return Result<std::vector<MessageRecord>>::Fail(AppError::WithCode(
+        co_return Result<std::vector<MessageRecord>>::Fail(AppError::WithCode(
             ErrorCode::kExternalServiceError,
             "elasticsearch message client is not initialized"));
     }
@@ -179,52 +177,51 @@ ConfiguredMessageSearchIndex::SearchMessages(const std::string &session_id,
         BuildElasticsearchSearchRequest(session_id, keyword, offset, limit));
     AddAuthHeader(request);
 
-    const auto [result, response] =
-        client_->sendRequest(request, kRequestTimeoutSeconds);
-    if (result != drogon::ReqResult::Ok || !response) {
-        return Result<std::vector<MessageRecord>>::Fail(
+    auto response = co_await client_->sendRequestCoro(request);
+    if (!response) {
+        co_return Result<std::vector<MessageRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch message search request failed")
-                .WithDetail(drogon::to_string(result)));
+                .WithDetail("request failed"));
     }
     if (!IsSuccessStatus(response->statusCode())) {
-        return Result<std::vector<MessageRecord>>::Fail(
+        co_return Result<std::vector<MessageRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch message search failed")
                 .WithContext("status", std::to_string(response->statusCode())));
     }
-    return ParseSearchResponse(std::string(response->body()));
+    co_return ParseSearchResponse(std::string(response->body()));
 }
 
 std::string BuildElasticsearchMessageDocument(const MessageRecord &message) {
-    Json::Value root(Json::objectValue);
+    json root(json::object());
     root["message_id"] = message.message_id;
     root["session_id"] = message.session_id;
     root["user_id"] = message.user_id;
     root["message_type"] = message.message_type;
-    root["create_time"] = Json::Int64(message.create_time);
+    root["create_time"] = (message.create_time);
     root["content"] = message.content;
     root["file_id"] = message.file_id;
     root["file_name"] = message.file_name;
-    root["file_size"] = Json::UInt64(message.file_size);
+    root["file_size"] = (message.file_size);
     return CompactJson(root);
 }
 
 std::string BuildElasticsearchSearchRequest(const std::string &session_id,
                                             const std::string &keyword,
                                             int offset, int limit) {
-    Json::Value root(Json::objectValue);
+    json root(json::object());
     root["from"] = offset;
     root["size"] = limit;
     root["sort"][0]["create_time"]["order"] = "asc";
 
-    Json::Value filters(Json::arrayValue);
-    Json::Value session_filter(Json::objectValue);
+    json filters(json::array());
+    json session_filter(json::object());
     session_filter["term"]["session_id.keyword"] = session_id;
-    filters.append(session_filter);
-    Json::Value type_filter(Json::objectValue);
+    filters.push_back(session_filter);
+    json type_filter(json::object());
     type_filter["term"]["message_type"] = 0;
-    filters.append(type_filter);
+    filters.push_back(type_filter);
 
     root["query"]["bool"]["filter"] = filters;
     root["query"]["bool"]["must"]["match"]["content"] = keyword;
@@ -232,8 +229,8 @@ std::string BuildElasticsearchSearchRequest(const std::string &session_id,
 }
 
 std::string BuildElasticsearchMessageIndexDefinition() {
-    Json::Value root(Json::objectValue);
-    Json::Value properties(Json::objectValue);
+    json root(json::object());
+    json properties(json::object());
     properties["message_id"]["type"] = "keyword";
     properties["session_id"]["type"] = "keyword";
     properties["user_id"]["type"] = "keyword";

@@ -1,6 +1,7 @@
 ﻿#include "common/etcd_service.h"
 
 #include <algorithm>
+#include <fstream>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -22,6 +23,33 @@ std::shared_ptr<etcd::Client> MakeEtcdClient(const EtcdConfig &config) {
     if (has_user != has_password) {
         throw std::invalid_argument(
             "etcd username and password must be configured together");
+    }
+    if (config.tls.enable && !config.tls.ca_path.empty()) {
+        std::ifstream ca_file(config.tls.ca_path, std::ios::binary);
+        std::ostringstream ca_stream;
+        ca_stream << ca_file.rdbuf();
+        std::string cert;
+        std::string key;
+        if (!config.tls.cert_path.empty()) {
+            std::ifstream f(config.tls.cert_path, std::ios::binary);
+            std::ostringstream s;
+            s << f.rdbuf();
+            cert = s.str();
+        }
+        if (!config.tls.key_path.empty()) {
+            std::ifstream f(config.tls.key_path, std::ios::binary);
+            std::ostringstream s;
+            s << f.rdbuf();
+            key = s.str();
+        }
+        if (has_user) {
+            return std::shared_ptr<etcd::Client>(etcd::Client::WithSSL(
+                config.endpoints, ca_stream.str(), cert, key,
+                config.tls.target_name_override, "round_robin"));
+        }
+        return std::shared_ptr<etcd::Client>(etcd::Client::WithSSL(
+            config.endpoints, ca_stream.str(), cert, key,
+            config.tls.target_name_override, "round_robin"));
     }
     if (has_user) {
         return std::make_shared<etcd::Client>(config.endpoints, config.username,

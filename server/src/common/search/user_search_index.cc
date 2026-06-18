@@ -4,12 +4,13 @@
 #include <utility>
 
 #include <drogon/HttpRequest.h>
-#include <json/json.h>
+#include <nlohmann/json.hpp>
 
 #include "common/crypto.h"
 #include "common/logger.h"
 
 namespace zchat {
+using json = nlohmann::json;
 namespace {
 
 constexpr char kIndexPath[] = "/zchat_users";
@@ -26,41 +27,39 @@ std::string FirstHost(std::string hosts) {
     return hosts;
 }
 
-std::string CompactJson(const Json::Value &value) {
-    Json::StreamWriterBuilder builder;
-    builder["indentation"] = "";
-    return Json::writeString(builder, value);
-}
+std::string CompactJson(const json &value) { return value.dump(); }
 
 bool IsSuccessStatus(drogon::HttpStatusCode status) {
     return status >= drogon::k200OK && status < drogon::k300MultipleChoices;
 }
 
-UserRecord UserRecordFromJson(const Json::Value &source) {
+UserRecord UserRecordFromJson(const json &source) {
     UserRecord user;
-    user.user_id = source["user_id"].asString();
-    user.nickname = source["nickname"].asString();
-    user.description = source["description"].asString();
-    user.phone = source["phone"].asString();
-    user.avatar_id = source["avatar_id"].asString();
+    user.user_id = source.value("user_id", std::string());
+    user.nickname = source.value("nickname", std::string());
+    user.description = source.value("description", std::string());
+    user.phone = source.value("phone", std::string());
+    user.avatar_id = source.value("avatar_id", std::string());
     return user;
 }
 
 Result<std::vector<UserRecord>> ParseSearchResponse(const std::string &body) {
-    Json::CharReaderBuilder builder;
-    Json::Value root;
+    json root;
     std::string errors;
     std::istringstream input(body);
-    if (!Json::parseFromStream(builder, input, &root, &errors)) {
+    try {
+        root = json::parse(input);
+    } catch (const std::exception &e) {
         return Result<std::vector<UserRecord>>::Fail(
             AppError::WithCode(
                 ErrorCode::kExternalServiceError,
                 "elasticsearch user search response parse failed")
-                .WithDetail(errors));
+                .WithDetail(e.what()));
     }
     std::vector<UserRecord> users;
-    const Json::Value hits = root["hits"]["hits"];
-    if (!hits.isArray()) {
+    const json hits =
+        root.value("hits", json::object()).value("hits", json::array());
+    if (!hits.is_array()) {
         return Result<std::vector<UserRecord>>::Ok(std::move(users));
     }
     for (const auto &hit : hits) {
@@ -101,12 +100,12 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
 
     const auto [result, response] =
         client_->sendRequest(request, kRequestTimeoutSeconds);
-    if (result != drogon::ReqResult::Ok || !response) {
+    if (!response) {
         return VoidResult::Fail(
             AppError::WithCode(
                 ErrorCode::kExternalServiceError,
                 "elasticsearch user index creation request failed")
-                .WithDetail(drogon::to_string(result)));
+                .WithDetail("request failed"));
     }
     if (IsSuccessStatus(response->statusCode())) {
         return VoidResult::Ok();
@@ -123,9 +122,10 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
             .WithDetail(body));
 }
 
-VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
+drogon::Task<VoidResult>
+ConfiguredUserSearchIndex::IndexUserCoro(const UserRecord &user) {
     if (!client_) {
-        return VoidResult::Fail(
+        co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch user client is not initialized"));
     }
@@ -136,28 +136,28 @@ VoidResult ConfiguredUserSearchIndex::IndexUser(const UserRecord &user) {
     request->setBody(BuildElasticsearchUserDocument(user));
     AddAuthHeader(request);
 
-    const auto [result, response] =
-        client_->sendRequest(request, kRequestTimeoutSeconds);
-    if (result != drogon::ReqResult::Ok || !response) {
-        return VoidResult::Fail(
+    auto response = co_await client_->sendRequestCoro(request);
+    if (!response) {
+        co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch user index request failed")
-                .WithDetail(drogon::to_string(result)));
+                .WithDetail("request failed"));
     }
     if (!IsSuccessStatus(response->statusCode())) {
-        return VoidResult::Fail(
+        co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch user index failed")
                 .WithContext("status", std::to_string(response->statusCode())));
     }
-    return VoidResult::Ok();
+    co_return VoidResult::Ok();
 }
 
-Result<std::vector<UserRecord>> ConfiguredUserSearchIndex::SearchUsers(
+drogon::Task<Result<std::vector<UserRecord>>>
+ConfiguredUserSearchIndex::SearchUsersCoro(
     const std::string &keyword,
     const std::vector<std::string> &excluded_user_ids) {
     if (!client_) {
-        return Result<std::vector<UserRecord>>::Fail(
+        co_return Result<std::vector<UserRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch user client is not initialized"));
     }
@@ -169,25 +169,24 @@ Result<std::vector<UserRecord>> ConfiguredUserSearchIndex::SearchUsers(
         BuildElasticsearchUserSearchRequest(keyword, excluded_user_ids));
     AddAuthHeader(request);
 
-    const auto [result, response] =
-        client_->sendRequest(request, kRequestTimeoutSeconds);
-    if (result != drogon::ReqResult::Ok || !response) {
-        return Result<std::vector<UserRecord>>::Fail(
+    auto response = co_await client_->sendRequestCoro(request);
+    if (!response) {
+        co_return Result<std::vector<UserRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch user search request failed")
-                .WithDetail(drogon::to_string(result)));
+                .WithDetail("request failed"));
     }
     if (!IsSuccessStatus(response->statusCode())) {
-        return Result<std::vector<UserRecord>>::Fail(
+        co_return Result<std::vector<UserRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "elasticsearch user search failed")
                 .WithContext("status", std::to_string(response->statusCode())));
     }
-    return ParseSearchResponse(std::string(response->body()));
+    co_return ParseSearchResponse(std::string(response->body()));
 }
 
 std::string BuildElasticsearchUserDocument(const UserRecord &user) {
-    Json::Value root(Json::objectValue);
+    json root(json::object());
     root["user_id"] = user.user_id;
     root["nickname"] = user.nickname;
     root["description"] = user.description;
@@ -199,7 +198,7 @@ std::string BuildElasticsearchUserDocument(const UserRecord &user) {
 std::string BuildElasticsearchUserSearchRequest(
     const std::string &keyword,
     const std::vector<std::string> &excluded_user_ids) {
-    Json::Value root(Json::objectValue);
+    json root(json::object());
     root["size"] = 50;
     root["query"]["bool"]["should"][0]["term"]["user_id.keyword"] = keyword;
     root["query"]["bool"]["should"][1]["term"]["phone.keyword"] = keyword;
@@ -208,15 +207,15 @@ std::string BuildElasticsearchUserSearchRequest(
     if (!excluded_user_ids.empty()) {
         for (const auto &id : excluded_user_ids) {
             root["query"]["bool"]["must_not"][0]["terms"]["user_id.keyword"]
-                .append(id);
+                .push_back(id);
         }
     }
     return CompactJson(root);
 }
 
 std::string BuildElasticsearchUserIndexDefinition() {
-    Json::Value root(Json::objectValue);
-    Json::Value properties(Json::objectValue);
+    json root(json::object());
+    json properties(json::object());
     properties["user_id"]["type"] = "keyword";
     properties["nickname"]["type"] = "text";
     properties["description"]["type"] = "text";

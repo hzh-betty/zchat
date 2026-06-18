@@ -3,12 +3,12 @@
 
 #include "common/noncopyable.h"
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include <drogon/nosql/RedisClient.h>
+#include <drogon/utils/coroutine.h>
 
 #include "common/result.h"
 
@@ -20,25 +20,27 @@ class SessionStore : public NonCopyable {
 
     ~SessionStore() = default;
 
-    VoidResult SaveSession(const std::string &session_id,
-                           const std::string &user_id);
-    Result<std::optional<std::string>> GetUserId(const std::string &session_id);
-    void GetUserIdAsync(
-        const std::string &session_id,
-        std::function<void(Result<std::optional<std::string>>)> &&callback);
-    VoidResult RemoveSession(const std::string &session_id);
-
-    VoidResult SetOnline(const std::string &user_id);
-    VoidResult RefreshOnline(const std::string &user_id);
-    VoidResult SetOffline(const std::string &user_id);
-    Result<bool> IsOnline(const std::string &user_id);
-    Result<bool> SetOnlineIfAbsent(const std::string &user_id);
-
-    VoidResult SaveVerifyCode(const std::string &verify_code_id,
-                              const std::string &verify_code);
-    Result<std::optional<std::string>>
-    GetVerifyCode(const std::string &verify_code_id);
-    VoidResult RemoveVerifyCode(const std::string &verify_code_id);
+    drogon::Task<Result<std::optional<std::string>>>
+    GetUserIdCoro(const std::string &session_id);
+    drogon::Task<VoidResult> SaveSessionCoro(const std::string &session_id,
+                                             const std::string &user_id);
+    drogon::Task<VoidResult> RemoveSessionCoro(const std::string &session_id);
+    drogon::Task<VoidResult> SetOnlineCoro(const std::string &user_id);
+    drogon::Task<Result<bool>>
+    SetOnlineIfAbsentCoro(const std::string &user_id);
+    drogon::Task<VoidResult> RefreshOnlineCoro(const std::string &user_id);
+    drogon::Task<VoidResult> SetOfflineCoro(const std::string &user_id);
+    drogon::Task<Result<bool>> IsOnlineCoro(const std::string &user_id);
+    drogon::Task<VoidResult>
+    SaveVerifyCodeCoro(const std::string &verify_code_id,
+                       const std::string &verify_code);
+    drogon::Task<Result<std::optional<std::string>>>
+    GetVerifyCodeCoro(const std::string &verify_code_id);
+    drogon::Task<VoidResult>
+    RemoveVerifyCodeCoro(const std::string &verify_code_id);
+    drogon::Task<Result<int>> RecordLoginFailCoro(const std::string &user_id);
+    drogon::Task<Result<bool>> IsAccountLockedCoro(const std::string &user_id);
+    drogon::Task<VoidResult> ClearLoginFailCoro(const std::string &user_id);
 
   private:
     drogon::nosql::RedisClientPtr redis_;

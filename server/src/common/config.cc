@@ -6,24 +6,22 @@
 #include <fstream>
 #include <sstream>
 
-#include <json/json.h>
+#include <nlohmann/json.hpp>
 
 namespace zchat {
+using json = nlohmann::json;
 namespace {
 
-Json::Value ReadJsonFile(const std::string &path) {
+json ReadJsonFile(const std::string &path) {
     std::ifstream input(path);
     if (!input.is_open()) {
-        return Json::Value(Json::objectValue);
+        return json::object();
     }
-
-    Json::CharReaderBuilder builder;
-    Json::Value root;
-    std::string errors;
-    if (!Json::parseFromStream(builder, input, &root, &errors)) {
-        return Json::Value(Json::objectValue);
+    try {
+        return json::parse(input);
+    } catch (...) {
+        return json::object();
     }
-    return root;
 }
 
 std::string TrimRight(std::string value) {
@@ -85,57 +83,78 @@ std::string ResolveConfigValue(const std::string &value) {
     return resolved;
 }
 
-std::string GetString(const Json::Value &value, const char *key,
+std::string GetString(const json &value, const char *key,
                       const std::string &fallback) {
-    if (!value.isObject() || !value.isMember(key)) {
+    if (!value.is_object() || !value.contains(key)) {
         return fallback;
     }
-    return ResolveConfigValue(value[key].asString());
+    return ResolveConfigValue(value[key].get<std::string>());
 }
 
-int GetInt(const Json::Value &value, const char *key, int fallback) {
-    if (!value.isObject() || !value.isMember(key)) {
+int GetInt(const json &value, const char *key, int fallback) {
+    if (!value.is_object() || !value.contains(key)) {
         return fallback;
     }
-    const Json::Value &field = value[key];
-    if (field.isInt()) {
-        return field.asInt();
+    const auto &field = value[key];
+    if (field.is_number_integer()) {
+        return field.get<int>();
     }
-    if (!field.isString()) {
-        return fallback;
+    if (field.is_string()) {
+        const std::string resolved =
+            ResolveConfigValue(field.get<std::string>());
+        if (resolved.empty()) {
+            return fallback;
+        }
+        try {
+            return std::stoi(resolved);
+        } catch (...) {
+            return fallback;
+        }
     }
-    const std::string resolved = ResolveConfigValue(field.asString());
-    if (resolved.empty()) {
-        return fallback;
-    }
-    try {
-        return std::stoi(resolved);
-    } catch (...) {
-        return fallback;
-    }
+    return fallback;
 }
 
-std::size_t GetSize(const Json::Value &value, const char *key,
-                    std::size_t fallback) {
-    if (!value.isObject() || !value.isMember(key)) {
+std::size_t GetSize(const json &value, const char *key, std::size_t fallback) {
+    if (!value.is_object() || !value.contains(key)) {
         return fallback;
     }
-    return static_cast<std::size_t>(value[key].asUInt64());
+    return static_cast<std::size_t>(value[key].get<std::uint64_t>());
+}
+
+TlsConfig ReadTls(const json &value) {
+    TlsConfig tls;
+    if (!value.is_object()) {
+        return tls;
+    }
+    if (value.contains("enable")) {
+        if (value["enable"].is_boolean()) {
+            tls.enable = value["enable"].get<bool>();
+        } else if (value["enable"].is_number_integer()) {
+            tls.enable = value["enable"].get<int>() != 0;
+        }
+    }
+    tls.ca_path = GetString(value, "ca_path", tls.ca_path);
+    tls.cert_path = GetString(value, "cert_path", tls.cert_path);
+    tls.key_path = GetString(value, "key_path", tls.key_path);
+    tls.target_name_override =
+        GetString(value, "target_name_override", tls.target_name_override);
+    return tls;
 }
 
 } // namespace
 
 AppConfig LoadConfig(const std::string &path) {
     AppConfig config;
-    const Json::Value root = ReadJsonFile(path);
+    const json root = ReadJsonFile(path);
+    (void)root;
 
-    const Json::Value server = root["server"];
+    const json server = root.value("server", json::object());
     config.server.http_port =
         GetInt(server, "http_port", config.server.http_port);
     config.server.websocket_port =
         GetInt(server, "websocket_port", config.server.websocket_port);
 
-    const Json::Value services = root["services"];
+    const json services = root.value("services", json::object());
     config.services.user = GetInt(services, "user", config.services.user);
     config.services.file = GetInt(services, "file", config.services.file);
     config.services.speech = GetInt(services, "speech", config.services.speech);
@@ -146,7 +165,7 @@ AppConfig LoadConfig(const std::string &path) {
     config.services.friend_service =
         GetInt(services, "friend", config.services.friend_service);
 
-    const Json::Value mysql = root["mysql"];
+    const json mysql = root.value("mysql", json::object());
     config.mysql.host = GetString(mysql, "host", config.mysql.host);
     config.mysql.port = GetInt(mysql, "port", config.mysql.port);
     config.mysql.database = GetString(mysql, "database", config.mysql.database);
@@ -156,7 +175,7 @@ AppConfig LoadConfig(const std::string &path) {
     config.mysql.connections =
         GetSize(mysql, "connections", config.mysql.connections);
 
-    const Json::Value redis = root["redis"];
+    const json redis = root.value("redis", json::object());
     config.redis.host = GetString(redis, "host", config.redis.host);
     config.redis.port = GetInt(redis, "port", config.redis.port);
     config.redis.database =
@@ -165,10 +184,10 @@ AppConfig LoadConfig(const std::string &path) {
     config.redis.connections =
         GetSize(redis, "connections", config.redis.connections);
 
-    const Json::Value storage = root["storage"];
+    const json storage = root.value("storage", json::object());
     config.storage.path = GetString(storage, "path", config.storage.path);
 
-    const Json::Value etcd = root["etcd"];
+    const json etcd = root.value("etcd", json::object());
     config.etcd.endpoints = GetString(etcd, "endpoints", config.etcd.endpoints);
     config.etcd.base_path = GetString(etcd, "base_path", config.etcd.base_path);
     config.etcd.advertise_host =
@@ -179,22 +198,25 @@ AppConfig LoadConfig(const std::string &path) {
         GetInt(etcd, "lease_ttl_seconds", config.etcd.lease_ttl_seconds);
     config.etcd.auth_token_ttl_seconds = GetInt(
         etcd, "auth_token_ttl_seconds", config.etcd.auth_token_ttl_seconds);
+    config.etcd.tls = ReadTls(etcd.value("tls", json::object()));
 
-    const Json::Value speech = root["speech"];
+    const json speech = root.value("speech", json::object());
     config.speech.app_id = GetString(speech, "app_id", config.speech.app_id);
     config.speech.api_key = GetString(speech, "api_key", config.speech.api_key);
     config.speech.secret_key =
         GetString(speech, "secret_key", config.speech.secret_key);
 
-    const Json::Value elasticsearch = root["elasticsearch"];
+    const json elasticsearch = root.value("elasticsearch", json::object());
     config.elasticsearch.hosts =
         GetString(elasticsearch, "hosts", config.elasticsearch.hosts);
     config.elasticsearch.user =
         GetString(elasticsearch, "user", config.elasticsearch.user);
     config.elasticsearch.password =
         GetString(elasticsearch, "password", config.elasticsearch.password);
+    config.elasticsearch.tls =
+        ReadTls(elasticsearch.value("tls", json::object()));
 
-    const Json::Value rabbitmq = root["rabbitmq"];
+    const json rabbitmq = root.value("rabbitmq", json::object());
     config.rabbitmq.host = GetString(rabbitmq, "host", config.rabbitmq.host);
     config.rabbitmq.port = GetInt(rabbitmq, "port", config.rabbitmq.port);
     config.rabbitmq.user = GetString(rabbitmq, "user", config.rabbitmq.user);
@@ -205,8 +227,9 @@ AppConfig LoadConfig(const std::string &path) {
     config.rabbitmq.queue = GetString(rabbitmq, "queue", config.rabbitmq.queue);
     config.rabbitmq.routing_key =
         GetString(rabbitmq, "routing_key", config.rabbitmq.routing_key);
+    config.rabbitmq.tls = ReadTls(rabbitmq.value("tls", json::object()));
 
-    const Json::Value grpc = root["grpc"];
+    const json grpc = root.value("grpc", json::object());
     config.grpc.bind_address =
         GetString(grpc, "bind_address", config.grpc.bind_address);
     config.grpc.num_cqs = GetInt(grpc, "num_cqs", config.grpc.num_cqs);
@@ -220,8 +243,9 @@ AppConfig LoadConfig(const std::string &path) {
         grpc, "max_send_message_size", config.grpc.max_send_message_size);
     config.grpc.max_receive_message_size = GetInt(
         grpc, "max_receive_message_size", config.grpc.max_receive_message_size);
+    config.grpc.tls = ReadTls(grpc.value("tls", json::object()));
 
-    const Json::Value sms = root["sms"];
+    const json sms = root.value("sms", json::object());
     config.sms.access_key_id =
         GetString(sms, "access_key_id", config.sms.access_key_id);
     config.sms.access_key_secret =
