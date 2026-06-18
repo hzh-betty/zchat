@@ -5,9 +5,12 @@
 
 #include <memory>
 
+#include <drogon/nosql/RedisClient.h>
 #include <drogon/orm/DbClient.h>
 
 #include "common/config.h"
+#include "common/service_clients.h"
+#include "common/session_store.h"
 #include "file/file_grpc_service.h"
 #include "file/file_repository.h"
 #include "file/file_service.h"
@@ -25,7 +28,10 @@ class FileContext : public NonCopyable {
   private:
     AppConfig config_;
     std::shared_ptr<drogon::orm::DbClient> db_;
+    drogon::nosql::RedisClientPtr redis_;
     OrmFileRepository file_repository_;
+    ServiceClients clients_;
+    SessionStore sessions_;
     std::shared_ptr<FileApplicationService> file_service_;
     FileGrpcService grpc_service_;
 };

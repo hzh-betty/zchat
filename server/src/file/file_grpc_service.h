@@ -12,32 +12,33 @@
 
 namespace zchat {
 
-class FileGrpcService final : public zchat::FileService::Service,
+class FileGrpcService final : public zchat::FileService::CallbackService,
                               public NonCopyable {
   public:
     explicit FileGrpcService(std::shared_ptr<FileApplicationService> service);
-
     ~FileGrpcService() override = default;
 
-    grpc::Status GetSingleFile(grpc::ServerContext *context,
-                               const zchat::GetSingleFileReq *request,
-                               zchat::GetSingleFileRsp *response) override;
-    grpc::Status GetMultiFile(grpc::ServerContext *context,
-                              const zchat::GetMultiFileReq *request,
-                              zchat::GetMultiFileRsp *response) override;
-    grpc::Status PutSingleFile(grpc::ServerContext *context,
-                               const zchat::PutSingleFileReq *request,
-                               zchat::PutSingleFileRsp *response) override;
-    grpc::Status PutMultiFile(grpc::ServerContext *context,
-                              const zchat::PutMultiFileReq *request,
-                              zchat::PutMultiFileRsp *response) override;
-    grpc::Status
-    GetSingleFileStream(grpc::ServerContext *context,
-                        const zchat::GetSingleFileReq *request,
-                        grpc::ServerWriter<zchat::FileChunk> *writer) override;
-    grpc::Status
-    PutSingleFileStream(grpc::ServerContext *context,
-                        grpc::ServerReader<zchat::FileChunk> *reader,
+    grpc::ServerUnaryReactor *
+    GetSingleFile(grpc::CallbackServerContext *context,
+                  const zchat::GetSingleFileReq *request,
+                  zchat::GetSingleFileRsp *response) override;
+    grpc::ServerUnaryReactor *
+    GetMultiFile(grpc::CallbackServerContext *context,
+                 const zchat::GetMultiFileReq *request,
+                 zchat::GetMultiFileRsp *response) override;
+    grpc::ServerUnaryReactor *
+    PutSingleFile(grpc::CallbackServerContext *context,
+                  const zchat::PutSingleFileReq *request,
+                  zchat::PutSingleFileRsp *response) override;
+    grpc::ServerUnaryReactor *
+    PutMultiFile(grpc::CallbackServerContext *context,
+                 const zchat::PutMultiFileReq *request,
+                 zchat::PutMultiFileRsp *response) override;
+    grpc::ServerWriteReactor<zchat::FileChunk> *
+    GetSingleFileStream(grpc::CallbackServerContext *context,
+                        const zchat::GetSingleFileReq *request) override;
+    grpc::ServerReadReactor<zchat::FileChunk> *
+    PutSingleFileStream(grpc::CallbackServerContext *context,
                         zchat::PutSingleFileRsp *response) override;
 
   private:

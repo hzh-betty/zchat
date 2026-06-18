@@ -18,73 +18,143 @@ zchat::PutSingleFileRsp PutErrorResponse(const std::string &request_id,
     return MakeErrorResponse<zchat::PutSingleFileRsp>(request_id, error);
 }
 
-} // namespace
-
-FileApplicationService::FileApplicationService(FileRepository &repository)
-    : repository_(repository) {}
-
-zchat::GetSingleFileRsp
-FileApplicationService::GetSingleFile(const zchat::GetSingleFileReq &request) {
-    ZCHAT_LOG_INFO("FileService::GetSingleFile request_id={}",
-                   request.request_id());
-    auto file = repository_.GetFile(request.file_id());
-    if (!file.ok()) {
-        return ErrorResponse(request.request_id(), file.error());
-    }
-    if (!file.value().has_value()) {
-        return ErrorResponse(request.request_id(), file_errors::FileNotFound());
-    }
-    zchat::GetSingleFileRsp response;
-    response.set_request_id(request.request_id());
-    response.set_success(true);
-    response.set_errmsg("");
-    response.mutable_file_data()->set_file_id(file.value()->file_id);
-    response.mutable_file_data()->set_file_content(file.value()->file_content);
-    ZCHAT_LOG_INFO("FileService::GetSingleFile success: request_id={}",
-                   request.request_id());
-    return response;
+AppError AccessDenied() {
+    return AppError::WithCode(ErrorCode::kForbidden,
+                              "access denied to this file");
 }
 
-zchat::GetMultiFileRsp
-FileApplicationService::GetMultiFile(const zchat::GetMultiFileReq &request) {
+} // namespace
+
+FileApplicationService::FileApplicationService(FileRepository &repository,
+                                               ServiceClients &clients,
+                                               SessionStore &sessions)
+    : repository_(repository), clients_(clients), sessions_(sessions) {}
+
+drogon::Task<bool> FileApplicationService::CheckSessionMemberCachedCoro(
+    const std::string &session_id, const std::string &user_id) {
+    // Redis 缓存 key: zchat:sessionmember:{session_id}:{user_id}
+    // 命中缓存直接返回，未命中则调 friend 服务 gRPC 查询后缓存
+    const std::string cache_key =
+        "zchat:sessionmember:" + session_id + ":" + user_id;
+    try {
+        auto cached = co_await sessions_.GetUserIdCoro(cache_key);
+        if (cached.ok() && cached.value().has_value()) {
+            co_return cached.value().value() == "1";
+        }
+    } catch (...) {
+    }
+
+    // 缓存未命中，调 friend 服务查询
+    zchat::GetChatSessionMemberIdsReq req;
+    req.set_request_id("internal-idor");
+    req.set_chat_session_id(session_id);
+    auto rsp = co_await clients_.GetChatSessionMemberIdsCoro(req);
+    if (!rsp.ok() || !rsp.value().success()) {
+        co_return false;
+    }
+    bool is_member = false;
+    for (const auto &mid : rsp.value().member_id()) {
+        if (mid == user_id) {
+            is_member = true;
+            break;
+        }
+    }
+
+    // 写缓存（TTL 60 秒）
+    try {
+        co_await sessions_.SaveVerifyCodeCoro(cache_key, is_member ? "1" : "0");
+    } catch (...) {
+    }
+
+    co_return is_member;
+}
+
+drogon::Task<bool>
+FileApplicationService::CanAccessFileCoro(const FileRecord &file,
+                                          const std::string &caller_user_id) {
+    if (caller_user_id.empty()) {
+        co_return false;
+    }
+    if (file.owner_user_id == caller_user_id) {
+        co_return true;
+    }
+    if (!file.chat_session_id.empty()) {
+        co_return co_await CheckSessionMemberCachedCoro(file.chat_session_id,
+                                                        caller_user_id);
+    }
+    co_return false;
+}
+
+drogon::Task<zchat::GetSingleFileRsp>
+FileApplicationService::GetSingleFileInternal(const std::string &request_id,
+                                              const std::string &file_id,
+                                              const std::string &caller) {
+    auto file = co_await repository_.GetFileCoro(file_id);
+    if (!file.ok()) {
+        co_return ErrorResponse(request_id, file.error());
+    }
+    if (!file.value().has_value()) {
+        co_return ErrorResponse(request_id, file_errors::FileNotFound());
+    }
+    const auto &record = file.value().value();
+    auto can_access = co_await CanAccessFileCoro(record, caller);
+    if (!can_access) {
+        co_return ErrorResponse(request_id, AccessDenied());
+    }
+    zchat::GetSingleFileRsp response;
+    response.set_request_id(request_id);
+    response.set_success(true);
+    response.set_errmsg("");
+    response.mutable_file_data()->set_file_id(record.file_id);
+    response.mutable_file_data()->set_file_content(record.file_content);
+    co_return response;
+}
+
+drogon::Task<zchat::GetSingleFileRsp> FileApplicationService::GetSingleFileCoro(
+    const zchat::GetSingleFileReq &request) {
+    ZCHAT_LOG_INFO("FileService::GetSingleFile request_id={}",
+                   request.request_id());
+    std::string caller = request.has_user_id() ? request.user_id() : "";
+    co_return co_await GetSingleFileInternal(request.request_id(),
+                                             request.file_id(), caller);
+}
+
+drogon::Task<zchat::GetMultiFileRsp> FileApplicationService::GetMultiFileCoro(
+    const zchat::GetMultiFileReq &request) {
     ZCHAT_LOG_INFO("FileService::GetMultiFile request_id={}",
                    request.request_id());
+    std::string caller = request.has_user_id() ? request.user_id() : "";
     zchat::GetMultiFileRsp response;
     response.set_request_id(request.request_id());
     response.set_success(true);
     response.set_errmsg("");
-    std::vector<std::string> file_ids(request.file_id_list().begin(),
-                                      request.file_id_list().end());
-    auto files = repository_.FindFilesByIds(file_ids);
-    if (!files.ok()) {
-        response.set_success(false);
-        response.set_errmsg(FormatErrorForClient(files.error()));
-        return response;
+    for (const auto &file_id : request.file_id_list()) {
+        auto single = co_await GetSingleFileInternal(request.request_id(),
+                                                     file_id, caller);
+        if (single.success()) {
+            *response.add_file_data() = single.file_data();
+        }
     }
-    for (const auto &file : files.value()) {
-        auto *data = response.add_file_data();
-        data->set_file_id(file.file_id);
-        data->set_file_content(file.file_content);
-    }
-    ZCHAT_LOG_INFO("FileService::GetMultiFile success: request_id={}",
-                   request.request_id());
-    return response;
+    co_return response;
 }
 
-zchat::PutSingleFileRsp
-FileApplicationService::PutSingleFile(const zchat::PutSingleFileReq &request) {
+drogon::Task<zchat::PutSingleFileRsp> FileApplicationService::PutSingleFileCoro(
+    const zchat::PutSingleFileReq &request) {
     ZCHAT_LOG_INFO("FileService::PutSingleFile request_id={}",
                    request.request_id());
     const std::string file_id = NewId();
     const auto &upload = request.file_data();
-    const auto stored = repository_.PutFile(FileRecord{
-        file_id,
-        upload.file_name(),
-        static_cast<std::uint64_t>(upload.file_size()),
-        upload.file_content(),
-    });
+    FileRecord record;
+    record.file_id = file_id;
+    record.file_name = upload.file_name();
+    record.file_size = static_cast<std::uint64_t>(upload.file_size());
+    record.file_content = upload.file_content();
+    record.owner_user_id = request.has_user_id() ? request.user_id() : "";
+    record.chat_session_id =
+        request.has_session_id() ? request.session_id() : "";
+    const auto stored = co_await repository_.PutFileCoro(record);
     if (!stored.ok()) {
-        return PutErrorResponse(request.request_id(), stored.error());
+        co_return PutErrorResponse(request.request_id(), stored.error());
     }
     zchat::PutSingleFileRsp response;
     response.set_request_id(request.request_id());
@@ -93,61 +163,64 @@ FileApplicationService::PutSingleFile(const zchat::PutSingleFileReq &request) {
     response.mutable_file_info()->set_file_id(file_id);
     response.mutable_file_info()->set_file_name(upload.file_name());
     response.mutable_file_info()->set_file_size(upload.file_size());
-    ZCHAT_LOG_INFO(
-        "FileService::PutSingleFile success: request_id={} file_id={}",
-        request.request_id(), file_id);
-    return response;
+    co_return response;
 }
 
-zchat::PutMultiFileRsp
-FileApplicationService::PutMultiFile(const zchat::PutMultiFileReq &request) {
+drogon::Task<zchat::PutMultiFileRsp> FileApplicationService::PutMultiFileCoro(
+    const zchat::PutMultiFileReq &request) {
     ZCHAT_LOG_INFO("FileService::PutMultiFile request_id={}",
                    request.request_id());
+    std::string owner = request.has_user_id() ? request.user_id() : "";
+    std::string session = request.has_session_id() ? request.session_id() : "";
     zchat::PutMultiFileRsp response;
     response.set_request_id(request.request_id());
     response.set_success(true);
     response.set_errmsg("");
     for (const auto &upload : request.file_data()) {
         const std::string file_id = NewId();
-        const auto stored = repository_.PutFile(FileRecord{
-            file_id,
-            upload.file_name(),
-            static_cast<std::uint64_t>(upload.file_size()),
-            upload.file_content(),
-        });
+        FileRecord record;
+        record.file_id = file_id;
+        record.file_name = upload.file_name();
+        record.file_size = static_cast<std::uint64_t>(upload.file_size());
+        record.file_content = upload.file_content();
+        record.owner_user_id = owner;
+        record.chat_session_id = session;
+        const auto stored = co_await repository_.PutFileCoro(record);
         if (!stored.ok()) {
             response.set_success(false);
             response.set_errmsg(FormatErrorForClient(stored.error()));
-            return response;
+            co_return response;
         }
         auto *info = response.add_file_info();
         info->set_file_id(file_id);
         info->set_file_name(upload.file_name());
         info->set_file_size(upload.file_size());
     }
-    ZCHAT_LOG_INFO("FileService::PutMultiFile success: request_id={}",
-                   request.request_id());
-    return response;
+    co_return response;
 }
 
-Result<std::optional<FileRecord>>
-FileApplicationService::GetFileForDownload(const std::string &file_id) {
-    return repository_.GetFile(file_id);
+drogon::Task<Result<std::optional<FileRecord>>>
+FileApplicationService::GetFileForDownloadCoro(const std::string &file_id) {
+    co_return co_await repository_.GetFileCoro(file_id);
 }
 
-Result<std::string>
-FileApplicationService::StoreFileContent(const std::string &file_name,
-                                         std::uint64_t file_size,
-                                         const std::string &file_content) {
+drogon::Task<Result<std::string>> FileApplicationService::StoreFileContentCoro(
+    const std::string &file_name, std::uint64_t file_size,
+    const std::string &file_content, const std::string &owner_user_id,
+    const std::string &session_id) {
     const std::string file_id = NewId();
-    const auto stored = repository_.PutFile(
-        FileRecord{file_id, file_name, file_size, file_content});
+    FileRecord record;
+    record.file_id = file_id;
+    record.file_name = file_name;
+    record.file_size = file_size;
+    record.file_content = file_content;
+    record.owner_user_id = owner_user_id;
+    record.chat_session_id = session_id;
+    const auto stored = co_await repository_.PutFileCoro(record);
     if (!stored.ok()) {
-        return Result<std::string>::Fail(stored.error());
+        co_return Result<std::string>::Fail(stored.error());
     }
-    ZCHAT_LOG_INFO("FileService::StoreFileContent success: file_id={}",
-                   file_id);
-    return Result<std::string>::Ok(file_id);
+    co_return Result<std::string>::Ok(file_id);
 }
 
 } // namespace zchat

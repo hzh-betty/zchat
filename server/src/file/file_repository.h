@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <drogon/orm/DbClient.h>
+#include <drogon/utils/coroutine.h>
 
 #include "common/domain_records.h"
 #include "common/orm_helpers.h"
@@ -19,28 +20,26 @@ namespace zchat {
 class FileRepository : public NonCopyable {
   public:
     FileRepository() = default;
-
     virtual ~FileRepository() = default;
 
-    virtual VoidResult PutFile(const FileRecord &file) = 0;
-    virtual Result<std::optional<FileRecord>>
-    GetFile(const std::string &file_id) = 0;
-    virtual Result<std::vector<FileRecord>>
-    FindFilesByIds(const std::vector<std::string> &file_ids) = 0;
+    virtual drogon::Task<VoidResult> PutFileCoro(const FileRecord &file) = 0;
+    virtual drogon::Task<Result<std::optional<FileRecord>>>
+    GetFileCoro(const std::string &file_id) = 0;
+    virtual drogon::Task<Result<std::vector<FileRecord>>>
+    FindFilesByIdsCoro(const std::vector<std::string> &file_ids) = 0;
 };
 
 class OrmFileRepository final : public FileRepository,
                                 public OrmRepositoryBase {
   public:
     explicit OrmFileRepository(std::shared_ptr<drogon::orm::DbClient> db);
-
     ~OrmFileRepository() override = default;
 
-    VoidResult PutFile(const FileRecord &file) override;
-    Result<std::optional<FileRecord>>
-    GetFile(const std::string &file_id) override;
-    Result<std::vector<FileRecord>>
-    FindFilesByIds(const std::vector<std::string> &file_ids) override;
+    drogon::Task<VoidResult> PutFileCoro(const FileRecord &file) override;
+    drogon::Task<Result<std::optional<FileRecord>>>
+    GetFileCoro(const std::string &file_id) override;
+    drogon::Task<Result<std::vector<FileRecord>>>
+    FindFilesByIdsCoro(const std::vector<std::string> &file_ids) override;
 };
 
 } // namespace zchat
