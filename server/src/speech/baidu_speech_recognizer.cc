@@ -1,6 +1,6 @@
 #include "speech/baidu_speech_recognizer.h"
 
-#include <json/json.h>
+#include <nlohmann/json.hpp>
 
 #include <sstream>
 
@@ -10,6 +10,7 @@
 #include "speech/speech_errors.h"
 
 namespace zchat {
+using json = nlohmann::json;
 
 BaiduSpeechRecognizer::BaiduSpeechRecognizer(const SpeechConfig &config)
     : app_id_(config.app_id), api_key_(config.api_key),
@@ -21,14 +22,14 @@ BaiduSpeechRecognizer::BaiduSpeechRecognizer(const SpeechConfig &config)
                                                 loop_thread_->getLoop());
 }
 
-Result<std::string>
-BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
-    auto token_result = GetAccessToken();
+drogon::Task<Result<std::string>>
+BaiduSpeechRecognizer::RecognizeCoro(const std::string &speech_data) {
+    auto token_result = co_await GetAccessTokenCoro();
     if (!token_result.ok()) {
-        return Result<std::string>::Fail(token_result.error());
+        co_return Result<std::string>::Fail(token_result.error());
     }
 
-    Json::Value body;
+    json body;
     body["format"] = "pcm";
     body["rate"] = 16000;
     body["channel"] = 1;
@@ -36,12 +37,9 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     body["token"] = token_result.value();
     body["dev_pid"] = 1537;
     body["speech"] = Base64Encode(speech_data);
-    body["len"] =
-        Json::Value::Int64(static_cast<Json::Int64>(speech_data.size()));
+    body["len"] = (static_cast<std::int64_t>(speech_data.size()));
 
-    Json::StreamWriterBuilder writer;
-    writer["indentation"] = "";
-    const std::string body_str = Json::writeString(writer, body);
+    const std::string body_str = body.dump();
 
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Post);
@@ -49,50 +47,53 @@ BaiduSpeechRecognizer::Recognize(const std::string &speech_data) {
     request->setContentTypeCode(drogon::CT_APPLICATION_JSON);
     request->setBody(body_str);
 
-    const auto [result, response] = client_->sendRequest(request, 10.0);
-    if (result != drogon::ReqResult::Ok || !response) {
-        return Result<std::string>::Fail(
+    auto response = co_await client_->sendRequestCoro(request);
+    if (!response) {
+        co_return Result<std::string>::Fail(
             speech_errors::RecognitionFailed(
                 "baidu speech recognition request failed")
-                .WithDetail(drogon::to_string(result)));
+                .WithDetail("request failed"));
     }
     if (response->statusCode() != 200) {
-        return Result<std::string>::Fail(
+        co_return Result<std::string>::Fail(
             speech_errors::RecognitionFailed(
                 "baidu speech recognition request failed")
                 .WithContext("status", std::to_string(response->statusCode())));
     }
 
-    Json::Value root;
-    Json::CharReaderBuilder reader_builder;
+    json root;
     std::string errors;
     std::istringstream input(std::string(response->body()));
-    if (!Json::parseFromStream(reader_builder, input, &root, &errors)) {
-        return Result<std::string>::Fail(
+    try {
+        root = json::parse(input);
+    } catch (const std::exception &e) {
+        co_return Result<std::string>::Fail(
             speech_errors::RecognitionFailed(
                 "baidu speech recognition response parse failed")
-                .WithDetail(errors));
+                .WithDetail(e.what()));
     }
 
-    const int err_no = root["err_no"].asInt();
+    const int err_no = root.value("err_no", 0);
     if (err_no != 0) {
-        std::string err_msg = root.get("err_msg", "unknown error").asString();
-        return Result<std::string>::Fail(
+        std::string err_msg =
+            root.value("err_msg", std::string("unknown error"));
+        co_return Result<std::string>::Fail(
             speech_errors::RecognitionFailed("baidu speech recognition failed")
                 .WithContext("provider_code", std::to_string(err_no))
                 .WithDetail(err_msg));
     }
 
-    const Json::Value &result_array = root["result"];
-    if (!result_array.isArray() || result_array.empty()) {
-        return Result<std::string>::Fail(speech_errors::RecognitionFailed(
+    const json result_array = root.value("result", json::array());
+    if (!result_array.is_array() || result_array.empty()) {
+        co_return Result<std::string>::Fail(speech_errors::RecognitionFailed(
             "baidu speech recognition returned empty result"));
     }
 
-    return Result<std::string>::Ok(result_array[0].asString());
+    co_return Result<std::string>::Ok(result_array[0]);
 }
 
-Result<std::string> BaiduSpeechRecognizer::FetchAccessToken() {
+drogon::Task<Result<std::string>>
+BaiduSpeechRecognizer::FetchAccessTokenCoro() {
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Post);
     request->setPath(
@@ -102,53 +103,54 @@ Result<std::string> BaiduSpeechRecognizer::FetchAccessToken() {
 
     auto token_client = drogon::HttpClient::newHttpClient(
         "https://aip.baidubce.com", loop_thread_->getLoop());
-    const auto [result, response] = token_client->sendRequest(request, 10.0);
-    if (result != drogon::ReqResult::Ok || !response) {
-        return Result<std::string>::Fail(
+    auto response = co_await token_client->sendRequestCoro(request);
+    if (!response) {
+        co_return Result<std::string>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "baidu oauth token request failed")
-                .WithDetail(drogon::to_string(result)));
+                .WithDetail("request failed"));
     }
     if (response->statusCode() != 200) {
-        return Result<std::string>::Fail(
+        co_return Result<std::string>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "baidu oauth token request failed")
                 .WithContext("status", std::to_string(response->statusCode())));
     }
 
-    Json::Value root;
-    Json::CharReaderBuilder reader_builder;
+    json root;
     std::string errors;
     std::istringstream input(std::string(response->body()));
-    if (!Json::parseFromStream(reader_builder, input, &root, &errors)) {
-        return Result<std::string>::Fail(
+    try {
+        root = json::parse(input);
+    } catch (const std::exception &e) {
+        co_return Result<std::string>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "baidu oauth token response parse failed")
-                .WithDetail(errors));
+                .WithDetail(e.what()));
     }
 
-    if (root.isMember("error")) {
-        return Result<std::string>::Fail(
+    if (root.contains("error")) {
+        co_return Result<std::string>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "baidu oauth token request failed")
-                .WithDetail(root["error_description"].asString()));
+                .WithDetail(root.value("error_description", std::string())));
     }
 
-    access_token_ = root["access_token"].asString();
-    const int expires_in = root.get("expires_in", 2592000).asInt();
+    access_token_ = root.value("access_token", std::string());
+    const int expires_in = root.value("expires_in", 2592000);
     token_expiry_ = std::chrono::steady_clock::now() +
                     std::chrono::seconds(expires_in - 600);
 
-    return Result<std::string>::Ok(access_token_);
+    co_return Result<std::string>::Ok(access_token_);
 }
 
-Result<std::string> BaiduSpeechRecognizer::GetAccessToken() {
+drogon::Task<Result<std::string>> BaiduSpeechRecognizer::GetAccessTokenCoro() {
     std::lock_guard<std::mutex> lock(token_mutex_);
     if (!access_token_.empty() &&
         std::chrono::steady_clock::now() < token_expiry_) {
-        return Result<std::string>::Ok(access_token_);
+        co_return Result<std::string>::Ok(access_token_);
     }
-    return FetchAccessToken();
+    co_return co_await FetchAccessTokenCoro();
 }
 
 } // namespace zchat

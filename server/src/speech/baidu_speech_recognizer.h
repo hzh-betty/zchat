@@ -8,6 +8,7 @@
 #include <string>
 
 #include <drogon/HttpClient.h>
+#include <drogon/utils/coroutine.h>
 #include <trantor/net/EventLoopThread.h>
 
 #include "common/config.h"
@@ -22,11 +23,12 @@ class BaiduSpeechRecognizer final : public SpeechRecognizer {
 
     ~BaiduSpeechRecognizer() override = default;
 
-    Result<std::string> Recognize(const std::string &speech_data) override;
+    drogon::Task<Result<std::string>>
+    RecognizeCoro(const std::string &speech_data) override;
 
   private:
-    Result<std::string> FetchAccessToken();
-    Result<std::string> GetAccessToken();
+    drogon::Task<Result<std::string>> FetchAccessTokenCoro();
+    drogon::Task<Result<std::string>> GetAccessTokenCoro();
 
     std::string app_id_;
     std::string api_key_;

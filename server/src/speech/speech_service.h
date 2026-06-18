@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include <drogon/utils/coroutine.h>
+
 #include "speech.pb.h"
 #include "speech/speech_recognizer.h"
 
@@ -16,8 +18,8 @@ class SpeechApplicationService : public NonCopyable {
 
     ~SpeechApplicationService() = default;
 
-    zchat::SpeechRecognitionRsp
-    Recognize(const zchat::SpeechRecognitionReq &request);
+    drogon::Task<zchat::SpeechRecognitionRsp>
+    RecognizeCoro(const zchat::SpeechRecognitionReq &request);
 
   private:
     SpeechRecognizer &recognizer_;

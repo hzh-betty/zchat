@@ -10,22 +10,19 @@ namespace zchat {
 SpeechApplicationService::SpeechApplicationService(SpeechRecognizer &recognizer)
     : recognizer_(recognizer) {}
 
-zchat::SpeechRecognitionRsp SpeechApplicationService::Recognize(
+drogon::Task<zchat::SpeechRecognitionRsp>
+SpeechApplicationService::RecognizeCoro(
     const zchat::SpeechRecognitionReq &request) {
     ZCHAT_LOG_INFO("SpeechService::Recognize request_id={}",
                    request.request_id());
     zchat::SpeechRecognitionRsp response;
     response.set_request_id(request.request_id());
-    auto result = recognizer_.Recognize(request.speech_content());
+    auto result = co_await recognizer_.RecognizeCoro(request.speech_content());
     response.set_success(result.ok());
     response.set_errmsg(result.ok() ? ""
                                     : FormatErrorForClient(result.error()));
     response.set_recognition_result(result.ok() ? result.value() : "");
-    if (result.ok()) {
-        ZCHAT_LOG_INFO("SpeechService::Recognize success: request_id={}",
-                       request.request_id());
-    }
-    return response;
+    co_return response;
 }
 
 } // namespace zchat

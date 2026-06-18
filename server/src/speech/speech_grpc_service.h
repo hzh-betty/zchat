@@ -12,7 +12,7 @@
 
 namespace zchat {
 
-class SpeechGrpcService final : public zchat::SpeechService::Service,
+class SpeechGrpcService final : public zchat::SpeechService::CallbackService,
                                 public NonCopyable {
   public:
     explicit SpeechGrpcService(
@@ -20,8 +20,8 @@ class SpeechGrpcService final : public zchat::SpeechService::Service,
 
     ~SpeechGrpcService() override = default;
 
-    grpc::Status
-    SpeechRecognition(grpc::ServerContext *context,
+    grpc::ServerUnaryReactor *
+    SpeechRecognition(grpc::CallbackServerContext *context,
                       const zchat::SpeechRecognitionReq *request,
                       zchat::SpeechRecognitionRsp *response) override;
 

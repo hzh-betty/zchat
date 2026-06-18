@@ -4,8 +4,10 @@
 
 namespace zchat {
 
-Result<std::string> ConfiguredSpeechRecognizer::Recognize(const std::string &) {
-    return Result<std::string>::Fail(speech_errors::RecognizerNotConfigured());
+drogon::Task<Result<std::string>>
+ConfiguredSpeechRecognizer::RecognizeCoro(const std::string &) {
+    co_return Result<std::string>::Fail(
+        speech_errors::RecognizerNotConfigured());
 }
 
 } // namespace zchat

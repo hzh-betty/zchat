@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include <drogon/utils/coroutine.h>
+
 #include "common/result.h"
 
 namespace zchat {
@@ -15,7 +17,8 @@ class SpeechRecognizer : public NonCopyable {
 
     virtual ~SpeechRecognizer() = default;
 
-    virtual Result<std::string> Recognize(const std::string &speech_data) = 0;
+    virtual drogon::Task<Result<std::string>>
+    RecognizeCoro(const std::string &speech_data) = 0;
 };
 
 class ConfiguredSpeechRecognizer final : public SpeechRecognizer {
@@ -23,7 +26,8 @@ class ConfiguredSpeechRecognizer final : public SpeechRecognizer {
     ConfiguredSpeechRecognizer() = default;
     ~ConfiguredSpeechRecognizer() override = default;
 
-    Result<std::string> Recognize(const std::string &speech_data) override;
+    drogon::Task<Result<std::string>>
+    RecognizeCoro(const std::string &speech_data) override;
 };
 
 } // namespace zchat
