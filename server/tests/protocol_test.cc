@@ -21,37 +21,42 @@
 #include "transmite/message_queue.h"
 #include "user.pb.h"
 #include "user/user_errors.h"
+#include <drogon/utils/coroutine.h>
 
 namespace {
 
 class FakeMessageRepository final : public zchat::MessageRepository {
   public:
-    zchat::VoidResult InsertMessage(const zchat::MessageRecord &) override {
-        return zchat::VoidResult::Ok();
+    drogon::Task<zchat::VoidResult>
+    InsertMessageCoro(const zchat::MessageRecord &) override {
+        co_return zchat::VoidResult::Ok();
     }
-    zchat::Result<std::vector<zchat::MessageRecord>>
-    ListRecentMessages(const std::string &session_id, int) override {
+    drogon::Task<zchat::Result<std::vector<zchat::MessageRecord>>>
+    ListRecentMessagesCoro(const std::string &session_id, int) override {
         zchat::MessageRecord message;
         message.message_id = "msg-1";
         message.session_id = session_id;
         message.user_id = "member-1";
         message.message_type = 0;
         message.content = "secret";
-        return zchat::Result<std::vector<zchat::MessageRecord>>::Ok({message});
+        co_return zchat::Result<std::vector<zchat::MessageRecord>>::Ok(
+            {message});
     }
-    zchat::Result<std::vector<zchat::MessageRecord>>
-    ListLastMessagesForSessions(const std::vector<std::string> &) override {
-        return zchat::Result<std::vector<zchat::MessageRecord>>::Ok({});
+    drogon::Task<zchat::Result<std::vector<zchat::MessageRecord>>>
+    ListLastMessagesForSessionsCoro(const std::vector<std::string> &) override {
+        co_return zchat::Result<std::vector<zchat::MessageRecord>>::Ok({});
     }
-    zchat::Result<std::vector<zchat::MessageRecord>>
-    ListMessagesByTime(const std::string &session_id, std::int64_t,
-                       std::int64_t, int, std::optional<std::string>) override {
-        return ListRecentMessages(session_id, 1);
+    drogon::Task<zchat::Result<std::vector<zchat::MessageRecord>>>
+    ListMessagesByTimeCoro(const std::string &session_id, std::int64_t,
+                           std::int64_t, int,
+                           std::optional<std::string>) override {
+        co_return co_await ListRecentMessagesCoro(session_id, 1);
     }
-    zchat::Result<std::optional<zchat::MessageRecord>>
-    LastMessage(const std::string &session_id) override {
-        return zchat::Result<std::optional<zchat::MessageRecord>>::Ok(
-            ListRecentMessages(session_id, 1).value().front());
+    drogon::Task<zchat::Result<std::optional<zchat::MessageRecord>>>
+    LastMessageCoro(const std::string &session_id) override {
+        auto msgs = co_await ListRecentMessagesCoro(session_id, 1);
+        co_return zchat::Result<std::optional<zchat::MessageRecord>>::Ok(
+            msgs.value().front());
     }
 };
 
