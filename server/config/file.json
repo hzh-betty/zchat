@@ -11,14 +11,28 @@
     "charset": "utf8mb4",
     "connections": 16
   },
+  "redis": {
+    "host": "{{ZCHAT_REDIS_HOST}}",
+    "port": "{{ZCHAT_REDIS_PORT}}",
+    "database": 0,
+    "password": "{{secret_file:ZCHAT_REDIS_PASSWORD_FILE}}",
+    "connections": 2
+  },
   "etcd": {
-    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
+    "endpoints": "https://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
     "password": "{{secret_file:ZCHAT_ETCD_PASSWORD_FILE}}",
     "lease_ttl_seconds": 3,
-    "auth_token_ttl_seconds": 300
+    "auth_token_ttl_seconds": 300,
+    "tls": {
+      "enable": true,
+      "ca_path": "{{ZCHAT_GRPC_CA_PATH}}",
+      "cert_path": "{{ZCHAT_GRPC_CERT_PATH}}",
+      "key_path": "{{ZCHAT_GRPC_KEY_PATH}}",
+      "target_name_override": "etcd"
+    }
   },
   "grpc": {
     "bind_address": "0.0.0.0",

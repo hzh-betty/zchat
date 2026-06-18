@@ -19,18 +19,29 @@
     "connections": 8
   },
   "etcd": {
-    "endpoints": "http://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
+    "endpoints": "https://{{ZCHAT_ETCD_HOST}}:{{ZCHAT_ETCD_PORT}}",
     "base_path": "/service",
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
     "password": "{{secret_file:ZCHAT_ETCD_PASSWORD_FILE}}",
     "lease_ttl_seconds": 3,
-    "auth_token_ttl_seconds": 300
+    "auth_token_ttl_seconds": 300,
+    "tls": {
+      "enable": true,
+      "ca_path": "{{ZCHAT_GRPC_CA_PATH}}",
+      "cert_path": "{{ZCHAT_GRPC_CERT_PATH}}",
+      "key_path": "{{ZCHAT_GRPC_KEY_PATH}}",
+      "target_name_override": "etcd"
+    }
   },
   "elasticsearch": {
-    "hosts": "http://{{ZCHAT_ES_HOST}}:{{ZCHAT_ES_PORT}}/",
+    "hosts": "https://{{ZCHAT_ES_HOST}}:{{ZCHAT_ES_PORT}}/",
     "user": "{{ZCHAT_ELASTICSEARCH_USER}}",
-    "password": "{{secret_file:ZCHAT_ELASTICSEARCH_PASSWORD_FILE}}"
+    "password": "{{secret_file:ZCHAT_ELASTICSEARCH_PASSWORD_FILE}}",
+    "tls": {
+      "enable": true,
+      "ca_path": "{{ZCHAT_GRPC_CA_PATH}}"
+    }
   },
   "sms": {
     "access_key_id": "{{secret_file:ZCHAT_SMS_ACCESS_KEY_ID_FILE}}",
@@ -45,6 +56,12 @@
     "max_pollers": 32,
     "cq_timeout_msec": 10000,
     "max_send_message_size": 4194304,
-    "max_receive_message_size": 4194304
+    "max_receive_message_size": 4194304,
+    "tls": {
+      "enable": true,
+      "ca_path": "{{ZCHAT_GRPC_CA_PATH}}",
+      "cert_path": "{{ZCHAT_GRPC_CERT_PATH}}",
+      "key_path": "{{ZCHAT_GRPC_KEY_PATH}}"
+    }
   }
 }
