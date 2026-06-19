@@ -7,11 +7,11 @@
 
 #include <spdlog/spdlog.h>
 
+#include "common/config.h"
+
 namespace zchat {
 
-void InitLogger(const std::string &service_name, bool console = true,
-                const std::string &log_file = std::string(),
-                const std::string &level = "debug");
+void InitLogger(const std::string &service_name, const LogConfig &config);
 std::shared_ptr<spdlog::logger> Logger();
 void FlushLogger();
 

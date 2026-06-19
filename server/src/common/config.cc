@@ -122,6 +122,20 @@ std::size_t GetSize(const json &value, const char *key, std::size_t fallback) {
     return static_cast<std::size_t>(value[key].get<std::uint64_t>());
 }
 
+bool GetBool(const json &value, const char *key, bool fallback) {
+    if (!value.is_object() || !value.contains(key)) {
+        return fallback;
+    }
+    const auto &field = value[key];
+    if (field.is_boolean()) {
+        return field.get<bool>();
+    }
+    if (field.is_number_integer()) {
+        return field.get<int>() != 0;
+    }
+    return fallback;
+}
+
 TlsConfig ReadTls(const json &value) {
     TlsConfig tls;
     if (!value.is_object()) {
@@ -149,11 +163,29 @@ AppConfig LoadConfig(const std::string &path) {
     const json root = ReadJsonFile(path);
     (void)root;
 
+    const json log = root.value("log", json::object());
+    config.log.level = GetString(log, "level", config.log.level);
+    config.log.console = GetBool(log, "console", config.log.console);
+    config.log.file = GetBool(log, "file", config.log.file);
+    config.log.file_path = GetString(log, "file_path", config.log.file_path);
+    config.log.max_file_size =
+        GetSize(log, "max_file_size", config.log.max_file_size);
+    config.log.max_files = GetSize(log, "max_files", config.log.max_files);
+    config.log.format = GetString(log, "format", config.log.format);
+
     const json server = root.value("server", json::object());
     config.server.http_port =
         GetInt(server, "http_port", config.server.http_port);
     config.server.websocket_port =
         GetInt(server, "websocket_port", config.server.websocket_port);
+    config.server.thread_num =
+        GetInt(server, "thread_num", config.server.thread_num);
+    config.server.max_connections =
+        GetInt(server, "max_connections", config.server.max_connections);
+    config.server.max_connections_per_ip = GetInt(
+        server, "max_connections_per_ip", config.server.max_connections_per_ip);
+    config.server.client_max_body_size = GetSize(
+        server, "client_max_body_size", config.server.client_max_body_size);
 
     const json services = root.value("services", json::object());
     config.services.user = GetInt(services, "user", config.services.user);

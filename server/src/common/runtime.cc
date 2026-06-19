@@ -65,18 +65,19 @@ drogon::nosql::RedisClientPtr MakeRedisClient(const RedisConfig &config) {
         config.password, config.database);
 }
 
-int RunDrogonGateway(const std::string &service_name, int http_port,
-                     int websocket_port) {
-    InitLogger(service_name);
+int RunDrogonGateway(const std::string &service_name,
+                     const LogConfig &log_config, const ServerConfig &server) {
+    InitLogger(service_name, log_config);
     try {
         ZCHAT_LOG_INFO("{} listening http={} websocket={}", service_name,
-                       http_port, websocket_port);
+                       server.http_port, server.websocket_port);
         drogon::app()
-            .addListener("0.0.0.0", http_port)
-            .addListener("0.0.0.0", websocket_port)
-            .setThreadNum(4)
-            .setMaxConnectionNum(10000)
-            .setMaxConnectionNumPerIP(1000)
+            .addListener("0.0.0.0", server.http_port)
+            .addListener("0.0.0.0", server.websocket_port)
+            .setThreadNum(server.thread_num)
+            .setMaxConnectionNum(server.max_connections)
+            .setMaxConnectionNumPerIP(server.max_connections_per_ip)
+            .setClientMaxBodySize(server.client_max_body_size)
             .run();
         ZCHAT_LOG_INFO("{} stopped", service_name);
         return EXIT_SUCCESS;

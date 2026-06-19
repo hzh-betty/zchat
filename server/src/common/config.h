@@ -1,6 +1,7 @@
 #ifndef ZCHAT_SERVER_SRC_COMMON_CONFIG_H_
 #define ZCHAT_SERVER_SRC_COMMON_CONFIG_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -12,6 +13,16 @@ struct TlsConfig {
     std::string cert_path;
     std::string key_path;
     std::string target_name_override;
+};
+
+struct LogConfig {
+    std::string level = "debug";
+    bool console = true;
+    bool file = false;
+    std::string file_path;
+    std::size_t max_file_size = 52428800; // 50MB
+    std::size_t max_files = 5;
+    std::string format = "[%n][%Y-%m-%d %H:%M:%S.%e][%t][%-8l]%v";
 };
 
 struct MysqlConfig {
@@ -35,6 +46,10 @@ struct RedisConfig {
 struct ServerConfig {
     int http_port = 8000;
     int websocket_port = 8001;
+    int thread_num = 4;
+    int max_connections = 10000;
+    int max_connections_per_ip = 1000;
+    std::size_t client_max_body_size = 64 * 1024 * 1024;
 };
 
 struct ServicePortsConfig {
@@ -104,6 +119,7 @@ struct SmsConfig {
 };
 
 struct AppConfig {
+    LogConfig log;
     ServerConfig server;
     ServicePortsConfig services;
     MysqlConfig mysql;

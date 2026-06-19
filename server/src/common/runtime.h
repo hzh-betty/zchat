@@ -26,11 +26,12 @@ std::shared_ptr<drogon::orm::DbClient> MakeDbClient(const MysqlConfig &config);
 drogon::nosql::RedisClientPtr MakeRedisClient(const RedisConfig &config);
 
 template <typename GrpcService>
-int RunGrpcServer(const std::string &service_name, int port,
-                  GrpcService *service, const GrpcServerConfig &grpc_config,
+int RunGrpcServer(const std::string &service_name, const LogConfig &log_config,
+                  int port, GrpcService *service,
+                  const GrpcServerConfig &grpc_config,
                   const EtcdConfig *etcd_config = nullptr,
                   const std::string &logical_service_name = "") {
-    InitLogger(service_name);
+    InitLogger(service_name, log_config);
     try {
         const std::string address =
             grpc_config.bind_address + ":" + std::to_string(port);
@@ -104,8 +105,8 @@ int RunGrpcServer(const std::string &service_name, int port,
     }
 }
 
-int RunDrogonGateway(const std::string &service_name, int http_port,
-                     int websocket_port);
+int RunDrogonGateway(const std::string &service_name,
+                     const LogConfig &log_config, const ServerConfig &server);
 
 } // namespace zchat
 
