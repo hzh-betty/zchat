@@ -18,7 +18,6 @@ message ClientAuthenticationRsp {
 /*  以下是HTTP请求的功能与接口路径对应关系：
     SERVICE HTTP PATH:
     {
-        获取随机验证码                  /service/user/get_random_verify_code
         获取短信验证码                  /service/user/get_phone_verify_code
         用户名密码注册                  /service/user/username_register
         用户名密码登录                  /service/user/username_login
@@ -31,7 +30,6 @@ message ClientAuthenticationRsp {
         修改绑定手机                    /service/user/set_phone
 
         获取好友列表                    /service/friend/get_friend_list
-        获取好友信息                    /service/friend/get_friend_info
         发送好友申请                    /service/friend/add_friend_apply
         好友申请处理                    /service/friend/add_friend_process
         删除好友                        /service/friend/remove_friend
