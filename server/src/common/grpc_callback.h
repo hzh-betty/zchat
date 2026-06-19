@@ -23,9 +23,13 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
                      const char *service_name, const char *method_name,
                      const std::string &request_id)
         : response_(response), service_name_(service_name),
-          method_name_(method_name), request_id_(request_id) {
+          method_name_(method_name), request_id_(request_id), ref_count_(2) {
         [](CoroUnaryReactor *self, CoroFactory factory) -> drogon::AsyncTask {
-            if (self->finished_.exchange(true)) {
+            struct ReleaseGuard {
+                CoroUnaryReactor *p;
+                ~ReleaseGuard() { p->Release(); }
+            } guard{self};
+            if (self->finished_.load()) {
                 co_return;
             }
             try {
@@ -44,12 +48,18 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
                                 self->request_id_, e.what());
                 self->SafeFinish(
                     grpc::Status(grpc::StatusCode::INTERNAL, "internal error"));
+            } catch (...) {
+                ZCHAT_LOG_ERROR("{}::{} unknown exception request_id={}",
+                                self->service_name_, self->method_name_,
+                                self->request_id_);
+                self->SafeFinish(
+                    grpc::Status(grpc::StatusCode::INTERNAL, "unknown error"));
             }
             co_return;
         }(this, std::move(factory));
     }
 
-    void OnDone() override { delete this; }
+    void OnDone() override { Release(); }
 
     void OnCancel() override {
         ZCHAT_LOG_WARN("{}::{} cancelled request_id={}", service_name_,
@@ -65,12 +75,19 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
         }
     }
 
+    void Release() {
+        if (ref_count_.fetch_sub(1) == 1) {
+            delete this;
+        }
+    }
+
     Rsp *response_;
     const char *service_name_;
     const char *method_name_;
     std::string request_id_;
     std::atomic_bool finished_{false};
     std::atomic_bool cancelled_{false};
+    std::atomic_int ref_count_{2};
 };
 
 } // namespace zchat

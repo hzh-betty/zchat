@@ -25,12 +25,6 @@ std::shared_ptr<etcd::Client> MakeEtcdClient(const EtcdConfig &config) {
             "etcd username and password must be configured together");
     }
     if (config.tls.enable && !config.tls.ca_path.empty()) {
-        if (has_user) {
-            return std::shared_ptr<etcd::Client>(etcd::Client::WithSSL(
-                config.endpoints, config.tls.ca_path, config.tls.cert_path,
-                config.tls.key_path, config.tls.target_name_override,
-                "round_robin"));
-        }
         return std::shared_ptr<etcd::Client>(etcd::Client::WithSSL(
             config.endpoints, config.tls.ca_path, config.tls.cert_path,
             config.tls.key_path, config.tls.target_name_override,
