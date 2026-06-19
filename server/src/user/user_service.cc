@@ -528,16 +528,8 @@ UserApplicationService::LoginUserCoro(const std::string &user_id) {
         co_return Result<std::string>::Fail(online_set.error());
     }
     if (!online_set.value()) {
-        co_await sessions_.SetOfflineCoro(user_id);
-        auto retry = co_await sessions_.SetOnlineIfAbsentCoro(user_id);
-        if (!retry.ok()) {
-            co_await sessions_.RemoveSessionCoro(session_id);
-            co_return Result<std::string>::Fail(retry.error());
-        }
-        if (!retry.value()) {
-            co_await sessions_.RemoveSessionCoro(session_id);
-            co_return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
-        }
+        co_await sessions_.RemoveSessionCoro(session_id);
+        co_return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
     }
     co_return Result<std::string>::Ok(session_id);
 }
