@@ -100,7 +100,8 @@ MessageService::GetMultiRecentCoro(const zchat::GetMultiRecentMsgReq &request) {
             }
         }
         (*response.mutable_recent_messages())[message.session_id] =
-            ToProtoMessage(message, FromProtoUser(sender), file_content);
+            ToProtoMessage(message, FromProtoUser(sender), file_content,
+                           sender.avatar());
     }
     co_return response;
 }
@@ -278,8 +279,8 @@ MessageService::BuildMessageListResponseCoro(const std::string &request_id,
                 file_content = it->second;
             }
         }
-        *response.add_msg_list() =
-            ToProtoMessage(message, FromProtoUser(sender), file_content);
+        *response.add_msg_list() = ToProtoMessage(
+            message, FromProtoUser(sender), file_content, sender.avatar());
     }
     co_return response;
 }

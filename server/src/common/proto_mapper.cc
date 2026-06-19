@@ -26,12 +26,13 @@ UserRecord FromProtoUser(const zchat::UserInfo &user) {
 
 zchat::MessageInfo ToProtoMessage(const MessageRecord &message,
                                   const UserRecord &sender,
-                                  const std::string &file_content) {
+                                  const std::string &file_content,
+                                  const std::string &avatar_content) {
     zchat::MessageInfo proto;
     proto.set_message_id(message.message_id);
     proto.set_chat_session_id(message.session_id);
     proto.set_timestamp(message.create_time);
-    *proto.mutable_sender() = ToProtoUser(sender, "");
+    *proto.mutable_sender() = ToProtoUser(sender, avatar_content);
     auto *content = proto.mutable_message();
     content->set_message_type(
         static_cast<zchat::MessageType>(message.message_type));

@@ -14,7 +14,8 @@ zchat::UserInfo ToProtoUser(const UserRecord &user,
 UserRecord FromProtoUser(const zchat::UserInfo &user);
 zchat::MessageInfo ToProtoMessage(const MessageRecord &message,
                                   const UserRecord &sender,
-                                  const std::string &file_content);
+                                  const std::string &file_content,
+                                  const std::string &avatar_content = "");
 MessageRecord FromProtoMessage(const zchat::MessageInfo &message,
                                std::string *file_content);
 MessageRecord ToMessageRecord(const zchat::NewMessageReq &request,

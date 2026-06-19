@@ -73,7 +73,8 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
                         UnixTimeSeconds(), &file_content);
 
     std::string queue_payload;
-    ToProtoMessage(message, FromProtoUser(sender), file_content)
+    ToProtoMessage(message, FromProtoUser(sender), file_content,
+                   sender.avatar())
         .SerializeToString(&queue_payload);
 
     zchat::GetChatSessionMemberIdsReq members_request;
@@ -93,7 +94,8 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
         zchat::NotifyMessage notify;
         notify.set_notify_type(zchat::CHAT_MESSAGE_NOTIFY);
         *notify.mutable_new_message_info()->mutable_message_info() =
-            ToProtoMessage(message, FromProtoUser(sender), file_content);
+            ToProtoMessage(message, FromProtoUser(sender), file_content,
+                           sender.avatar());
         std::string payload;
         notify.SerializeToString(&payload);
 
