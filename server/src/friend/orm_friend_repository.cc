@@ -56,7 +56,6 @@ OrmFriendRepository::ListExistingPeersCoro(
     }
     co_return co_await RunDbCoro(
         [&]() -> drogon::Task<Result<std::vector<std::string>>> {
-            // user_id/peer_id 由 CSPRNG 生成，安全拼接
             std::string sql = "SELECT peer_id FROM `relation` WHERE user_id='";
             sql += user_id;
             sql += "' AND peer_id IN ('";
@@ -174,7 +173,6 @@ drogon::Task<VoidResult> OrmFriendRepository::InsertChatSessionMembersCoro(
         co_return VoidResult::Ok();
     }
     co_return co_await RunDbCoro([&]() -> drogon::Task<VoidResult> {
-        // 逐个插入（session_id/user_id 安全，CSPRNG 生成）
         for (const auto &uid : user_ids) {
             co_await db_->execSqlCoro(
                 "INSERT IGNORE INTO `chat_session_member` "
