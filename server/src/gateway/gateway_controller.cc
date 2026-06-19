@@ -17,8 +17,6 @@ GatewayController::GatewayController(std::shared_ptr<GatewayContext> context)
 
 void GatewayController::RegisterRoutes() {
 
-    drogon::app().setClientMaxBodySize(64 * 1024 * 1024);
-
     drogon::app().registerHandler(
         "/ping",
         [](const drogon::HttpRequestPtr &,

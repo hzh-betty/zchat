@@ -29,8 +29,7 @@ int GatewayBuilder::Start() {
                     }(sessions, user_id);
                 });
         });
-    return RunDrogonGateway("zchat_gateway", config_.server.http_port,
-                            config_.server.websocket_port);
+    return RunDrogonGateway("zchat_gateway", config_.log, config_.server);
 }
 
 } // namespace zchat
