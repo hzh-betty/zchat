@@ -29,7 +29,8 @@ MessageService::GetRecentCoro(const zchat::GetRecentMsgReq &request) {
             request.request_id(), auth.error());
     }
     auto messages = co_await messages_.ListRecentMessagesCoro(
-        request.chat_session_id(), static_cast<int>(request.msg_count()));
+        request.chat_session_id(),
+        static_cast<int>(std::min<std::int64_t>(request.msg_count(), 200)));
     if (!messages.ok()) {
         co_return MakeErrorResponse<zchat::GetRecentMsgRsp>(
             request.request_id(), messages.error());
@@ -42,7 +43,7 @@ drogon::Task<zchat::GetMultiRecentMsgRsp>
 MessageService::GetMultiRecentCoro(const zchat::GetMultiRecentMsgReq &request) {
     ZCHAT_LOG_INFO("MessageService::GetMultiRecent request_id={} sessions={}",
                    request.request_id(), request.chat_session_id_size());
-    // GetMultiRecent 是内部调用（friend 服务），不做调用方校验
+
     std::vector<std::string> session_ids(request.chat_session_id().begin(),
                                          request.chat_session_id().end());
     auto messages =

@@ -54,13 +54,15 @@ OrmMessageRepository::ListLastMessagesForSessionsCoro(
     }
     co_return co_await RunDbCoro(
         [&]() -> drogon::Task<Result<std::vector<MessageRecord>>> {
-            // session_id 由 CSPRNG 生成，安全拼接
             std::string placeholders;
             for (std::size_t i = 0; i < session_ids.size(); ++i) {
                 if (i > 0)
-                    placeholders += ",";
-                placeholders += "'" + session_ids[i] + "'";
+                    placeholders += "','";
+                else
+                    placeholders += "'";
+                placeholders += session_ids[i];
             }
+            placeholders += "'";
             const std::string sql =
                 "SELECT m.message_id,m.session_id,m.user_id,m.message_type,"
                 "UNIX_TIMESTAMP(m.create_time) AS create_time,m.content,"
