@@ -38,8 +38,6 @@ MessageRecord ToMessageRecord(const drogon::orm::Row &row);
 ChatSessionRecord ToChatSessionRecord(const drogon::orm::Row &row);
 FileRecord ToFileRecord(const drogon::orm::Row &row);
 
-// 协程化 DB 调用包装。Func 返回 drogon::Task<T>，T 通常是 Result<...>。
-// 捕获 DB 异常并转为 AppError。
 template <typename Func>
 drogon::Task<std::decay_t<decltype(std::declval<std::invoke_result_t<Func>>()
                                        .operator co_await()

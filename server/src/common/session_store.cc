@@ -253,4 +253,25 @@ SessionStore::ClearLoginFailCoro(const std::string &user_id) {
     }
 }
 
+drogon::Task<Result<bool>> SessionStore::RateLimitCoro(const std::string &key,
+                                                       int window_seconds,
+                                                       int max_count) {
+    try {
+        auto count_result =
+            co_await redis_->execCommandCoro("incr zchat:rl:%s", key.c_str());
+        long long count = count_result.asInteger();
+        if (count == 1) {
+            co_await redis_->execCommandCoro("expire zchat:rl:%s %d",
+                                             key.c_str(), window_seconds);
+        }
+        co_return Result<bool>::Ok(count <= max_count);
+    } catch (const drogon::nosql::RedisException &e) {
+        co_return Result<bool>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    } catch (const std::exception &e) {
+        co_return Result<bool>::Fail(
+            common_errors::RedisOperationFailed().WithDetail(e.what()));
+    }
+}
+
 } // namespace zchat

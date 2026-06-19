@@ -12,7 +12,6 @@
 namespace zchat {
 namespace {
 
-// 确保 libsodium 在首次使用前完成初始化（线程安全）。
 void EnsureSodiumInit() {
     static const int initialized = []() { return sodium_init(); }();
     (void)initialized;
@@ -25,8 +24,6 @@ std::string Base64Encode(const unsigned char *data, std::size_t length) {
     std::string result(encoded_length, '\0');
     EVP_EncodeBlock(reinterpret_cast<unsigned char *>(&result[0]), data,
                     static_cast<int>(length));
-    result.erase(std::remove(result.begin(), result.end(), '\n'), result.end());
-    result.erase(std::remove(result.begin(), result.end(), '\r'), result.end());
     return result;
 }
 
@@ -96,14 +93,6 @@ unsigned int CsprngUniform(unsigned int upper_exclusive) {
         return 0;
     }
     return static_cast<unsigned int>(randombytes_uniform(upper_exclusive));
-}
-
-bool ConstantTimeCompare(std::string_view a, std::string_view b) {
-    EnsureSodiumInit();
-    if (a.size() != b.size()) {
-        return false;
-    }
-    return sodium_memcmp(a.data(), b.data(), a.size()) == 0;
 }
 
 } // namespace zchat

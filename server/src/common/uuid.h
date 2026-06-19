@@ -8,7 +8,6 @@ namespace zchat {
 
 std::string NewId();
 std::string NewRequestId();
-std::string NewVerifyCode();
 std::int64_t UnixTimeSeconds();
 
 } // namespace zchat

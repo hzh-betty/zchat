@@ -26,17 +26,4 @@ std::shared_ptr<drogon::HttpResponse> TextResponse(const std::string &body) {
     return response;
 }
 
-bool ParseProtobufRequest(const drogon::HttpRequestPtr &request,
-                          google::protobuf::Message *message) {
-    if (request == nullptr || message == nullptr) {
-        return false;
-    }
-    const std::string body(request->body());
-    if (!message->ParseFromString(body)) {
-        ZCHAT_LOG_WARN("protobuf parse failed, body size={}", body.size());
-        return false;
-    }
-    return true;
-}
-
 } // namespace zchat

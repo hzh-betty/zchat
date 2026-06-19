@@ -27,7 +27,6 @@ UserRecord ToUserRecord(const drogon::orm::Row &row) {
     user.nickname = FieldString(row, "nickname");
     user.description = FieldString(row, "description");
     user.password = FieldString(row, "password");
-    user.password_hash_algo = FieldString(row, "password_hash_algo");
     user.phone = FieldString(row, "phone");
     user.avatar_id = FieldString(row, "avatar_id");
     return user;

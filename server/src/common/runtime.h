@@ -36,7 +36,6 @@ int RunGrpcServer(const std::string &service_name, int port,
             grpc_config.bind_address + ":" + std::to_string(port);
         grpc::ServerBuilder builder;
 
-        // TLS/mTLS 服务端凭证
         const char *ca = std::getenv("ZCHAT_GRPC_CA_PATH");
         const char *cert = std::getenv("ZCHAT_GRPC_CERT_PATH");
         const char *key = std::getenv("ZCHAT_GRPC_KEY_PATH");
@@ -56,7 +55,7 @@ int RunGrpcServer(const std::string &service_name, int port,
             grpc::SslServerCredentialsOptions ssl_opts;
             ssl_opts.pem_root_certs = ca_stream.str();
             ssl_opts.pem_key_cert_pairs.push_back(pkcp);
-            ssl_opts.force_client_auth = true; // mTLS
+            ssl_opts.force_client_auth = true;
             builder.AddListeningPort(address,
                                      grpc::SslServerCredentials(ssl_opts));
             ZCHAT_LOG_INFO("{} using mTLS server credentials", service_name);

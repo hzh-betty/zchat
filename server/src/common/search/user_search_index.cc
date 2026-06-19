@@ -45,7 +45,6 @@ UserRecord UserRecordFromJson(const json &source) {
 
 Result<std::vector<UserRecord>> ParseSearchResponse(const std::string &body) {
     json root;
-    std::string errors;
     std::istringstream input(body);
     try {
         root = json::parse(input);
@@ -100,12 +99,12 @@ VoidResult ConfiguredUserSearchIndex::EnsureIndex() {
 
     const auto [result, response] =
         client_->sendRequest(request, kRequestTimeoutSeconds);
-    if (!response) {
+    if (result != drogon::ReqResult::Ok || !response) {
         return VoidResult::Fail(
             AppError::WithCode(
                 ErrorCode::kExternalServiceError,
                 "elasticsearch user index creation request failed")
-                .WithDetail("request failed"));
+                .WithDetail(drogon::to_string(result)));
     }
     if (IsSuccessStatus(response->statusCode())) {
         return VoidResult::Ok();
@@ -136,7 +135,7 @@ ConfiguredUserSearchIndex::IndexUserCoro(const UserRecord &user) {
     request->setBody(BuildElasticsearchUserDocument(user));
     AddAuthHeader(request);
 
-    auto response = co_await client_->sendRequestCoro(request);
+    auto response = co_await client_->sendRequestCoro(request, 3.0);
     if (!response) {
         co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
@@ -169,7 +168,7 @@ ConfiguredUserSearchIndex::SearchUsersCoro(
         BuildElasticsearchUserSearchRequest(keyword, excluded_user_ids));
     AddAuthHeader(request);
 
-    auto response = co_await client_->sendRequestCoro(request);
+    auto response = co_await client_->sendRequestCoro(request, 3.0);
     if (!response) {
         co_return Result<std::vector<UserRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,

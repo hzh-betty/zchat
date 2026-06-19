@@ -15,12 +15,13 @@ namespace {
 json ReadJsonFile(const std::string &path) {
     std::ifstream input(path);
     if (!input.is_open()) {
-        return json::object();
+        throw std::runtime_error("cannot open config file: " + path);
     }
     try {
         return json::parse(input);
-    } catch (...) {
-        return json::object();
+    } catch (const std::exception &e) {
+        throw std::runtime_error("failed to parse config file " + path + ": " +
+                                 e.what());
     }
 }
 

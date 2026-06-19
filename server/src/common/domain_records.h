@@ -16,7 +16,6 @@ struct UserRecord {
     std::string nickname;
     std::string description;
     std::string password;
-    std::string password_hash_algo;
     std::string phone;
     std::string avatar_id;
 };

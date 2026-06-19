@@ -30,16 +30,19 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
             }
             try {
                 *self->response_ = co_await factory();
+                if (self->cancelled_.load()) {
+                    co_return;
+                }
                 LogBoundaryResponseError(self->service_name_,
                                          self->method_name_, self->request_id_,
                                          *self->response_);
-                self->Finish(grpc::Status::OK);
+                self->SafeFinish(grpc::Status::OK);
             } catch (const std::exception &e) {
                 ZCHAT_LOG_ERROR("{}::{} coroutine exception request_id={} "
                                 "error={}",
                                 self->service_name_, self->method_name_,
                                 self->request_id_, e.what());
-                self->Finish(
+                self->SafeFinish(
                     grpc::Status(grpc::StatusCode::INTERNAL, "internal error"));
             }
             co_return;
@@ -51,9 +54,8 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
     void OnCancel() override {
         ZCHAT_LOG_WARN("{}::{} cancelled request_id={}", service_name_,
                        method_name_, request_id_);
-        if (!finished_.exchange(true)) {
-            Finish(grpc::Status(grpc::StatusCode::CANCELLED, "cancelled"));
-        }
+        cancelled_.store(true);
+        SafeFinish(grpc::Status(grpc::StatusCode::CANCELLED, "cancelled"));
     }
 
   private:
@@ -68,6 +70,7 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
     const char *method_name_;
     std::string request_id_;
     std::atomic_bool finished_{false};
+    std::atomic_bool cancelled_{false};
 };
 
 } // namespace zchat

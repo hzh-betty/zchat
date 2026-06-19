@@ -41,6 +41,8 @@ class SessionStore : public NonCopyable {
     drogon::Task<Result<int>> RecordLoginFailCoro(const std::string &user_id);
     drogon::Task<Result<bool>> IsAccountLockedCoro(const std::string &user_id);
     drogon::Task<VoidResult> ClearLoginFailCoro(const std::string &user_id);
+    drogon::Task<Result<bool>> RateLimitCoro(const std::string &key,
+                                             int window_seconds, int max_count);
 
   private:
     drogon::nosql::RedisClientPtr redis_;

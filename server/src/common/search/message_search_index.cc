@@ -46,7 +46,6 @@ MessageRecord MessageRecordFromJson(const json &source) {
 Result<std::vector<MessageRecord>>
 ParseSearchResponse(const std::string &body) {
     json root;
-    std::string errors;
     std::istringstream input(body);
     try {
         root = json::parse(input);
@@ -143,7 +142,7 @@ ConfiguredMessageSearchIndex::IndexMessageCoro(const MessageRecord &message) {
     request->setBody(BuildElasticsearchMessageDocument(message));
     AddAuthHeader(request);
 
-    auto response = co_await client_->sendRequestCoro(request);
+    auto response = co_await client_->sendRequestCoro(request, 3.0);
     if (!response) {
         co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
@@ -177,7 +176,7 @@ ConfiguredMessageSearchIndex::SearchMessagesCoro(const std::string &session_id,
         BuildElasticsearchSearchRequest(session_id, keyword, offset, limit));
     AddAuthHeader(request);
 
-    auto response = co_await client_->sendRequestCoro(request);
+    auto response = co_await client_->sendRequestCoro(request, 3.0);
     if (!response) {
         co_return Result<std::vector<MessageRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,

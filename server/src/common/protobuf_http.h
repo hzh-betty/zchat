@@ -15,9 +15,6 @@ ProtobufResponse(const google::protobuf::Message &message);
 
 std::shared_ptr<drogon::HttpResponse> TextResponse(const std::string &body);
 
-bool ParseProtobufRequest(const drogon::HttpRequestPtr &request,
-                          google::protobuf::Message *message);
-
 } // namespace zchat
 
 #endif // ZCHAT_SERVER_SRC_COMMON_PROTOBUF_HTTP_H_

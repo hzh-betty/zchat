@@ -19,10 +19,6 @@
 
 namespace zchat {
 
-// 通用协程化 gRPC unary 调用。
-// async_call: 可调用对象，签名
-//   void(Stub*, ClientContext*, const Req*, Rsp*,
-//        std::function<void(grpc::Status)>)
 template <typename Service, typename Req, typename Rsp, typename AsyncCall>
 drogon::Task<Result<Rsp>>
 CallUnaryCoro(EtcdDiscovery &discovery, ChannelPool &channel_pool,
@@ -41,8 +37,6 @@ CallUnaryCoro(EtcdDiscovery &discovery, ChannelPool &channel_pool,
     context->set_deadline(std::chrono::system_clock::now() + deadline);
     Req req_copy = request;
 
-    // GrpcAwaiter 持有所有资源，在 await_suspend 中发起 async 调用，
-    // 回调中 set value 并 resume 协程。
     struct GrpcAwaiter : public drogon::CallbackAwaiter<Result<Rsp>> {
         std::shared_ptr<typename Service::Stub> stub;
         std::shared_ptr<Rsp> response;

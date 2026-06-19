@@ -15,11 +15,10 @@ void InitLogger(const std::string &service_name, bool console = true,
 std::shared_ptr<spdlog::logger> Logger();
 void FlushLogger();
 
-// 日志脱敏辅助函数
-std::string RedactPhone(std::string_view phone);  // 138****5678
-std::string RedactToken(std::string_view token);  // abcd****cdef
-std::string RedactSecret(std::string_view value); // ab****cd
-std::string RedactPassword();                     // ***
+std::string RedactPhone(std::string_view phone);
+std::string RedactToken(std::string_view token);
+std::string RedactSecret(std::string_view value);
+std::string RedactPassword();
 
 } // namespace zchat
 
