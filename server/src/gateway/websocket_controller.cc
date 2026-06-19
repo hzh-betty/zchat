@@ -64,7 +64,7 @@ void ZchatWebSocketController::handleNewConnection(
     const drogon::HttpRequestPtr &,
     const drogon::WebSocketConnectionPtr &connection) {
     ZCHAT_LOG_DEBUG("websocket connected");
-    // 10 秒内未认证则关闭连接
+
     drogon::app().getLoop()->runAfter(10, [connection]() {
         auto ctx = ZchatWebSocketController::context_.lock();
         if (ctx == nullptr) {

@@ -16,7 +16,7 @@ GatewayController::GatewayController(std::shared_ptr<GatewayContext> context)
     : context_(std::move(context)) {}
 
 void GatewayController::RegisterRoutes() {
-    // 限制请求体大小（64 MiB，覆盖文件上传场景）
+
     drogon::app().setClientMaxBodySize(64 * 1024 * 1024);
 
     drogon::app().registerHandler(
