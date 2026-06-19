@@ -47,7 +47,7 @@ BaiduSpeechRecognizer::RecognizeCoro(const std::string &speech_data) {
     request->setContentTypeCode(drogon::CT_APPLICATION_JSON);
     request->setBody(body_str);
 
-    auto response = co_await client_->sendRequestCoro(request);
+    auto response = co_await client_->sendRequestCoro(request, 10.0);
     if (!response) {
         co_return Result<std::string>::Fail(
             speech_errors::RecognitionFailed(
@@ -62,7 +62,6 @@ BaiduSpeechRecognizer::RecognizeCoro(const std::string &speech_data) {
     }
 
     json root;
-    std::string errors;
     std::istringstream input(std::string(response->body()));
     try {
         root = json::parse(input);
@@ -103,7 +102,7 @@ BaiduSpeechRecognizer::FetchAccessTokenCoro() {
 
     auto token_client = drogon::HttpClient::newHttpClient(
         "https://aip.baidubce.com", loop_thread_->getLoop());
-    auto response = co_await token_client->sendRequestCoro(request);
+    auto response = co_await token_client->sendRequestCoro(request, 10.0);
     if (!response) {
         co_return Result<std::string>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
@@ -118,7 +117,6 @@ BaiduSpeechRecognizer::FetchAccessTokenCoro() {
     }
 
     json root;
-    std::string errors;
     std::istringstream input(std::string(response->body()));
     try {
         root = json::parse(input);
