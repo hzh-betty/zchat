@@ -44,7 +44,6 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
     }
     const zchat::UserInfo &sender = user_response.value().user_info();
 
-    // 校验发送者是否为会话成员
     zchat::GetChatSessionMemberIdsReq members_check;
     members_check.set_request_id(request.request_id());
     members_check.set_chat_session_id(request.chat_session_id());
@@ -81,8 +80,6 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
     members_request.set_request_id(request.request_id());
     members_request.set_chat_session_id(request.chat_session_id());
 
-    // 并发：publish + get members
-    // RabbitMQ publish 通过独立 libevent 线程执行，不会阻塞协程线程
     auto members_response =
         co_await clients_.GetChatSessionMemberIdsCoro(members_request);
     auto published = queue_.Publish(queue_payload);

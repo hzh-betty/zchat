@@ -257,7 +257,6 @@ class AmqpConsumerRuntime {
             }
             queue_cv_.notify_one();
         });
-        StartAckDrainer();
         thread_ = std::thread([this]() { event_base_dispatch(base_.get()); });
     }
 
@@ -322,12 +321,24 @@ class AmqpConsumerRuntime {
 
             const auto handled = message_handler_(task.payload);
             if (!handled.ok()) {
-                ZCHAT_LOG_ERROR("RabbitMQ message handling failed: {}",
-                                handled.error().message);
+                ZCHAT_LOG_ERROR(
+                    "RabbitMQ message handling failed, requeueing: {}",
+                    handled.error().message);
+                EnqueueNack(task.delivery_tag);
+            } else {
+                EnqueueAck(task.delivery_tag);
             }
-
-            EnqueueAck(task.delivery_tag);
         }
+    }
+
+    void EnqueueNack(std::uint64_t delivery_tag) {
+        {
+            std::lock_guard<std::mutex> lock(ack_mutex_);
+            pending_nacks_.push(delivery_tag);
+        }
+        timeval timeout{};
+        event_base_once(base_.get(), -1, EV_TIMEOUT, DrainNacksCallback, this,
+                        &timeout);
     }
 
     void EnqueueAck(std::uint64_t delivery_tag) {
@@ -357,7 +368,22 @@ class AmqpConsumerRuntime {
         }
     }
 
-    void StartAckDrainer() {}
+    static void DrainNacksCallback(evutil_socket_t, short, void *context) {
+        auto *self = static_cast<AmqpConsumerRuntime *>(context);
+        self->DrainNacks();
+    }
+
+    void DrainNacks() {
+        std::queue<std::uint64_t> nacks;
+        {
+            std::lock_guard<std::mutex> lock(ack_mutex_);
+            nacks.swap(pending_nacks_);
+        }
+        while (!nacks.empty()) {
+            channel_.reject(nacks.front(), AMQP::requeue);
+            nacks.pop();
+        }
+    }
 
     std::unique_ptr<event_base, EventBaseDeleter> base_;
     RuntimeHandler handler_;
@@ -379,6 +405,7 @@ class AmqpConsumerRuntime {
 
     std::mutex ack_mutex_;
     std::queue<std::uint64_t> pending_acks_;
+    std::queue<std::uint64_t> pending_nacks_;
 };
 
 ConfiguredMessageQueuePublisher::ConfiguredMessageQueuePublisher(
