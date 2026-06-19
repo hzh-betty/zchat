@@ -106,9 +106,8 @@ drogon::Task<VoidResult> AlibabaSmsClient::SendRequestCoro(
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Get);
     request->setPath("/?" + query);
-    request->setPath("/?" + query);
 
-    auto response = co_await client_->sendRequestCoro(request);
+    auto response = co_await client_->sendRequestCoro(request, 5.0);
     if (!response) {
         co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,

@@ -14,7 +14,7 @@ drogon::Task<Result<std::optional<UserRecord>>>
 OrmUserRepository::FindUserByIdCoro(const std::string &user_id) {
     return RunDbCoro([&]() -> drogon::Task<Result<std::optional<UserRecord>>> {
         const auto result = co_await db_->execSqlCoro(
-            "SELECT user_id,nickname,description,password,password_hash_algo,"
+            "SELECT user_id,nickname,description,password,"
             "phone,avatar_id FROM `user` WHERE user_id=? LIMIT 1",
             user_id);
         if (result.empty()) {
@@ -29,7 +29,7 @@ drogon::Task<Result<std::optional<UserRecord>>>
 OrmUserRepository::FindUserByNicknameCoro(const std::string &nickname) {
     return RunDbCoro([&]() -> drogon::Task<Result<std::optional<UserRecord>>> {
         const auto result = co_await db_->execSqlCoro(
-            "SELECT user_id,nickname,description,password,password_hash_algo,"
+            "SELECT user_id,nickname,description,password,"
             "phone,avatar_id FROM `user` WHERE nickname=? LIMIT 1",
             nickname);
         if (result.empty()) {
@@ -44,7 +44,7 @@ drogon::Task<Result<std::optional<UserRecord>>>
 OrmUserRepository::FindUserByPhoneCoro(const std::string &phone) {
     return RunDbCoro([&]() -> drogon::Task<Result<std::optional<UserRecord>>> {
         const auto result = co_await db_->execSqlCoro(
-            "SELECT user_id,nickname,description,password,password_hash_algo,"
+            "SELECT user_id,nickname,description,password,"
             "phone,avatar_id FROM `user` WHERE phone=? LIMIT 1",
             phone);
         if (result.empty()) {
@@ -63,9 +63,8 @@ OrmUserRepository::FindUsersByIdsCoro(
     }
     co_return co_await RunDbCoro(
         [&]() -> drogon::Task<Result<std::vector<UserRecord>>> {
-            // user_id 由 CSPRNG 生成（32 hex chars），安全拼接。
             std::string sql = "SELECT user_id,nickname,description,password,"
-                              "password_hash_algo,phone,avatar_id FROM `user` "
+                              "phone,avatar_id FROM `user` "
                               "WHERE user_id IN ('";
             for (std::size_t i = 0; i < user_ids.size(); ++i) {
                 if (i > 0) {
@@ -86,16 +85,12 @@ OrmUserRepository::FindUsersByIdsCoro(
 drogon::Task<VoidResult>
 OrmUserRepository::InsertUserCoro(const UserRecord &user) {
     return RunDbCoro([&]() -> drogon::Task<VoidResult> {
-        const std::string &algo = user.password_hash_algo.empty()
-                                      ? "argon2id"
-                                      : user.password_hash_algo;
         co_await db_->execSqlCoro(
             "INSERT INTO `user` "
-            "(user_id,nickname,description,password,password_hash_algo,phone,"
-            "avatar_id) "
-            "VALUES (?,?,NULLIF(?, ''),?,?,NULLIF(?, ''),NULLIF(?, ''))",
+            "(user_id,nickname,description,password,phone,avatar_id) "
+            "VALUES (?,?,NULLIF(?, ''),?,NULLIF(?, ''),NULLIF(?, ''))",
             user.user_id, user.nickname.empty() ? user.user_id : user.nickname,
-            user.description, user.password, algo, user.phone, user.avatar_id);
+            user.description, user.password, user.phone, user.avatar_id);
         co_return VoidResult::Ok();
     });
 }
@@ -138,19 +133,6 @@ OrmUserRepository::UpdateUserAvatarCoro(const std::string &user_id,
         co_await db_->execSqlCoro(
             "UPDATE `user` SET avatar_id=? WHERE user_id=?", avatar_id,
             user_id);
-        co_return VoidResult::Ok();
-    });
-}
-
-drogon::Task<VoidResult>
-OrmUserRepository::UpdateUserPasswordCoro(const std::string &user_id,
-                                          const std::string &password_hash,
-                                          const std::string &algo) {
-    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
-        co_await db_->execSqlCoro(
-            "UPDATE `user` SET password=?, password_hash_algo=?, "
-            "login_fail_count=0, lock_until=NULL WHERE user_id=?",
-            password_hash, algo, user_id);
         co_return VoidResult::Ok();
     });
 }

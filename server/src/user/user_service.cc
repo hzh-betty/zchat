@@ -63,7 +63,6 @@ UserApplicationService::RegisterByNicknameCoro(
     user.user_id = NewId();
     user.nickname = request.nickname();
     user.password = Argon2idHash(request.password());
-    user.password_hash_algo = "argon2id";
     const auto inserted = co_await users_.InsertUserCoro(user);
     if (!inserted.ok()) {
         co_return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
@@ -102,14 +101,8 @@ drogon::Task<zchat::UserLoginRsp> UserApplicationService::LoginByNicknameCoro(
     }
 
     const auto &stored = user.value()->password;
-    const auto &algo = user.value()->password_hash_algo;
-    bool password_ok = false;
-    if (algo == "argon2id") {
-        password_ok = Argon2idVerify(stored, request.password());
-    } else {
-        password_ok =
-            !stored.empty() && ConstantTimeCompare(stored, request.password());
-    }
+    bool password_ok =
+        !stored.empty() && Argon2idVerify(stored, request.password());
 
     if (!password_ok) {
         auto fail = co_await sessions_.RecordLoginFailCoro(uid);
@@ -119,18 +112,6 @@ drogon::Task<zchat::UserLoginRsp> UserApplicationService::LoginByNicknameCoro(
         }
         co_return ErrorResponse<zchat::UserLoginRsp>(
             request.request_id(), user_errors::InvalidCredentials());
-    }
-
-    if (algo != "argon2id") {
-        std::string new_hash = Argon2idHash(request.password());
-        if (!new_hash.empty()) {
-            auto migrated = co_await users_.UpdateUserPasswordCoro(
-                uid, new_hash, "argon2id");
-            if (!migrated.ok()) {
-                ZCHAT_LOG_WARN("LoginByNickname lazy migration failed user={}",
-                               uid);
-            }
-        }
     }
 
     co_await sessions_.ClearLoginFailCoro(uid);
@@ -152,6 +133,14 @@ UserApplicationService::GetPhoneVerifyCodeCoro(
     if (!IsValidPhone(request.phone_number())) {
         co_return ErrorResponse<zchat::PhoneVerifyCodeRsp>(
             request.request_id(), user_errors::InvalidPhone());
+    }
+    const auto rate_ok = co_await sessions_.RateLimitCoro(
+        "sms:phone:" + request.phone_number(), 60, 1);
+    if (rate_ok.ok() && !rate_ok.value()) {
+        co_return ErrorResponse<zchat::PhoneVerifyCodeRsp>(
+            request.request_id(),
+            AppError::WithCode(ErrorCode::kInvalidArgument,
+                               "verification code requests too frequent"));
     }
     const std::string verify_code_id = NewId();
     const auto saved = co_await sessions_.SaveVerifyCodeCoro(
@@ -539,8 +528,16 @@ UserApplicationService::LoginUserCoro(const std::string &user_id) {
         co_return Result<std::string>::Fail(online_set.error());
     }
     if (!online_set.value()) {
-        co_await sessions_.RemoveSessionCoro(session_id);
-        co_return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
+        co_await sessions_.SetOfflineCoro(user_id);
+        auto retry = co_await sessions_.SetOnlineIfAbsentCoro(user_id);
+        if (!retry.ok()) {
+            co_await sessions_.RemoveSessionCoro(session_id);
+            co_return Result<std::string>::Fail(retry.error());
+        }
+        if (!retry.value()) {
+            co_await sessions_.RemoveSessionCoro(session_id);
+            co_return Result<std::string>::Fail(user_errors::AlreadyLoggedIn());
+        }
     }
     co_return Result<std::string>::Ok(session_id);
 }
