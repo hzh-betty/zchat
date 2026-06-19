@@ -56,16 +56,25 @@ OrmFriendRepository::ListExistingPeersCoro(
     }
     co_return co_await RunDbCoro(
         [&]() -> drogon::Task<Result<std::vector<std::string>>> {
-            std::string sql = "SELECT peer_id FROM `relation` WHERE user_id='";
-            sql += user_id;
-            sql += "' AND peer_id IN ('";
+            std::string placeholders;
             for (std::size_t i = 0; i < peer_ids.size(); ++i) {
                 if (i > 0)
-                    sql += "','";
-                sql += peer_ids[i];
+                    placeholders += ",";
+                placeholders += "?";
             }
-            sql += "')";
-            const auto result = co_await db_->execSqlCoro(sql);
+            const std::string sql =
+                "SELECT peer_id FROM `relation` WHERE user_id=? "
+                "AND peer_id IN (" +
+                placeholders + ")";
+            const std::vector<std::string> params = [&] {
+                std::vector<std::string> v;
+                v.push_back(user_id);
+                for (const auto &pid : peer_ids) {
+                    v.push_back(pid);
+                }
+                return v;
+            }();
+            const auto result = co_await db_->execSqlCoro(sql, params);
             std::vector<std::string> existing;
             for (const auto &row : result) {
                 existing.push_back(FieldString(row, "peer_id"));

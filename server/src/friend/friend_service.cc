@@ -60,14 +60,20 @@ FriendApplicationService::GetFriendListCoro(
         multi_req.add_users_id(id);
     }
     auto multi_rsp = co_await clients_.GetMultiUserInfoCoro(multi_req);
+    if (!multi_rsp.ok() || !multi_rsp.value().success()) {
+        co_return ErrorResponse<zchat::GetFriendListRsp>(
+            request.request_id(),
+            multi_rsp.ok()
+                ? AppError::WithCode(ErrorCode::kExternalServiceError,
+                                     "user service GetMultiUserInfo failed")
+                : multi_rsp.error());
+    }
     zchat::GetFriendListRsp response;
     MarkOk(request.request_id(), &response);
-    if (multi_rsp.ok() && multi_rsp.value().success()) {
-        for (const auto &id : ids.value()) {
-            auto it = multi_rsp.value().users_info().find(id);
-            if (it != multi_rsp.value().users_info().end()) {
-                *response.add_friend_list() = it->second;
-            }
+    for (const auto &id : ids.value()) {
+        auto it = multi_rsp.value().users_info().find(id);
+        if (it != multi_rsp.value().users_info().end()) {
+            *response.add_friend_list() = it->second;
         }
     }
     co_return response;
@@ -111,13 +117,19 @@ FriendApplicationService::GetChatSessionListCoro(
     }
     auto multi_user_rsp =
         co_await clients_.GetMultiUserInfoCoro(multi_user_req);
+    if (!multi_user_rsp.ok() || !multi_user_rsp.value().success()) {
+        co_return ErrorResponse<zchat::GetChatSessionListRsp>(
+            request.request_id(),
+            multi_user_rsp.ok()
+                ? AppError::WithCode(ErrorCode::kExternalServiceError,
+                                     "user service GetMultiUserInfo failed")
+                : multi_user_rsp.error());
+    }
     std::unordered_map<std::string, zchat::UserInfo> peer_infos;
-    if (multi_user_rsp.ok() && multi_user_rsp.value().success()) {
-        for (const auto &pid : peer_ids) {
-            auto it = multi_user_rsp.value().users_info().find(pid);
-            if (it != multi_user_rsp.value().users_info().end()) {
-                peer_infos[pid] = it->second;
-            }
+    for (const auto &pid : peer_ids) {
+        auto it = multi_user_rsp.value().users_info().find(pid);
+        if (it != multi_user_rsp.value().users_info().end()) {
+            peer_infos[pid] = it->second;
         }
     }
 
@@ -129,11 +141,17 @@ FriendApplicationService::GetChatSessionListCoro(
     multi_recent_req.set_msg_count(1);
     auto multi_recent_rsp =
         co_await clients_.GetMultiRecentMsgCoro(multi_recent_req);
+    if (!multi_recent_rsp.ok() || !multi_recent_rsp.value().success()) {
+        co_return ErrorResponse<zchat::GetChatSessionListRsp>(
+            request.request_id(),
+            multi_recent_rsp.ok()
+                ? AppError::WithCode(ErrorCode::kExternalServiceError,
+                                     "message service GetMultiRecentMsg failed")
+                : multi_recent_rsp.error());
+    }
     std::unordered_map<std::string, zchat::MessageInfo> recent_msgs;
-    if (multi_recent_rsp.ok() && multi_recent_rsp.value().success()) {
-        for (const auto &entry : multi_recent_rsp.value().recent_messages()) {
-            recent_msgs[entry.first] = entry.second;
-        }
+    for (const auto &entry : multi_recent_rsp.value().recent_messages()) {
+        recent_msgs[entry.first] = entry.second;
     }
 
     zchat::GetChatSessionListRsp response;
@@ -169,16 +187,22 @@ FriendApplicationService::GetPendingFriendEventsCoro(
         multi_req.add_users_id(apply.user_id);
     }
     auto multi_rsp = co_await clients_.GetMultiUserInfoCoro(multi_req);
+    if (!multi_rsp.ok() || !multi_rsp.value().success()) {
+        co_return ErrorResponse<zchat::GetPendingFriendEventListRsp>(
+            request.request_id(),
+            multi_rsp.ok()
+                ? AppError::WithCode(ErrorCode::kExternalServiceError,
+                                     "user service GetMultiUserInfo failed")
+                : multi_rsp.error());
+    }
     zchat::GetPendingFriendEventListRsp response;
     MarkOk(request.request_id(), &response);
     for (const auto &apply : applies.value()) {
         auto *event = response.add_event();
         event->set_event_id(apply.event_id);
-        if (multi_rsp.ok() && multi_rsp.value().success()) {
-            auto it = multi_rsp.value().users_info().find(apply.user_id);
-            if (it != multi_rsp.value().users_info().end()) {
-                *event->mutable_sender() = it->second;
-            }
+        auto it = multi_rsp.value().users_info().find(apply.user_id);
+        if (it != multi_rsp.value().users_info().end()) {
+            *event->mutable_sender() = it->second;
         }
     }
     co_return response;
@@ -380,14 +404,20 @@ FriendApplicationService::GetChatSessionMemberCoro(
         multi_req.add_users_id(id);
     }
     zchat::GetChatSessionMemberRsp response;
-    MarkOk(request.request_id(), &response);
     auto multi_rsp = co_await clients_.GetMultiUserInfoCoro(multi_req);
-    if (multi_rsp.ok() && multi_rsp.value().success()) {
-        for (const auto &id : ids.value()) {
-            auto it = multi_rsp.value().users_info().find(id);
-            if (it != multi_rsp.value().users_info().end()) {
-                *response.add_member_info_list() = it->second;
-            }
+    if (!multi_rsp.ok() || !multi_rsp.value().success()) {
+        co_return ErrorResponse<zchat::GetChatSessionMemberRsp>(
+            request.request_id(),
+            multi_rsp.ok()
+                ? AppError::WithCode(ErrorCode::kExternalServiceError,
+                                     "user service GetMultiUserInfo failed")
+                : multi_rsp.error());
+    }
+    MarkOk(request.request_id(), &response);
+    for (const auto &id : ids.value()) {
+        auto it = multi_rsp.value().users_info().find(id);
+        if (it != multi_rsp.value().users_info().end()) {
+            *response.add_member_info_list() = it->second;
         }
     }
     co_return response;
