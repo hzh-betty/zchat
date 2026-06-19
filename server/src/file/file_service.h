@@ -32,14 +32,6 @@ class FileApplicationService : public NonCopyable {
     drogon::Task<zchat::PutMultiFileRsp>
     PutMultiFileCoro(const zchat::PutMultiFileReq &request);
 
-    drogon::Task<Result<std::optional<FileRecord>>>
-    GetFileForDownloadCoro(const std::string &file_id);
-    drogon::Task<Result<std::string>>
-    StoreFileContentCoro(const std::string &file_name, std::uint64_t file_size,
-                         const std::string &file_content,
-                         const std::string &owner_user_id = "",
-                         const std::string &session_id = "");
-
   private:
     drogon::Task<bool> CanAccessFileCoro(const FileRecord &file,
                                          const std::string &caller_user_id);

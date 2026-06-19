@@ -51,7 +51,6 @@ OrmFileRepository::FindFilesByIdsCoro(
     }
     co_return co_await RunDbCoro(
         [&]() -> drogon::Task<Result<std::vector<FileRecord>>> {
-            // file_id 由 CSPRNG 生成，安全拼接
             std::string sql = "SELECT file_id,file_name,file_size,file_content,"
                               "owner_user_id,chat_session_id FROM `file_store` "
                               "WHERE file_id IN ('";

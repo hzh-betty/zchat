@@ -32,8 +32,7 @@ FileApplicationService::FileApplicationService(FileRepository &repository,
 
 drogon::Task<bool> FileApplicationService::CheckSessionMemberCachedCoro(
     const std::string &session_id, const std::string &user_id) {
-    // Redis 缓存 key: zchat:sessionmember:{session_id}:{user_id}
-    // 命中缓存直接返回，未命中则调 friend 服务 gRPC 查询后缓存
+
     const std::string cache_key =
         "zchat:sessionmember:" + session_id + ":" + user_id;
     try {
@@ -44,7 +43,6 @@ drogon::Task<bool> FileApplicationService::CheckSessionMemberCachedCoro(
     } catch (...) {
     }
 
-    // 缓存未命中，调 friend 服务查询
     zchat::GetChatSessionMemberIdsReq req;
     req.set_request_id("internal-idor");
     req.set_chat_session_id(session_id);
@@ -60,7 +58,6 @@ drogon::Task<bool> FileApplicationService::CheckSessionMemberCachedCoro(
         }
     }
 
-    // 写缓存（TTL 60 秒）
     try {
         co_await sessions_.SaveVerifyCodeCoro(cache_key, is_member ? "1" : "0");
     } catch (...) {
@@ -197,30 +194,6 @@ drogon::Task<zchat::PutMultiFileRsp> FileApplicationService::PutMultiFileCoro(
         info->set_file_size(upload.file_size());
     }
     co_return response;
-}
-
-drogon::Task<Result<std::optional<FileRecord>>>
-FileApplicationService::GetFileForDownloadCoro(const std::string &file_id) {
-    co_return co_await repository_.GetFileCoro(file_id);
-}
-
-drogon::Task<Result<std::string>> FileApplicationService::StoreFileContentCoro(
-    const std::string &file_name, std::uint64_t file_size,
-    const std::string &file_content, const std::string &owner_user_id,
-    const std::string &session_id) {
-    const std::string file_id = NewId();
-    FileRecord record;
-    record.file_id = file_id;
-    record.file_name = file_name;
-    record.file_size = file_size;
-    record.file_content = file_content;
-    record.owner_user_id = owner_user_id;
-    record.chat_session_id = session_id;
-    const auto stored = co_await repository_.PutFileCoro(record);
-    if (!stored.ok()) {
-        co_return Result<std::string>::Fail(stored.error());
-    }
-    co_return Result<std::string>::Ok(file_id);
 }
 
 } // namespace zchat
