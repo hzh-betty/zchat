@@ -143,10 +143,12 @@ BaiduSpeechRecognizer::FetchAccessTokenCoro() {
 }
 
 drogon::Task<Result<std::string>> BaiduSpeechRecognizer::GetAccessTokenCoro() {
-    std::lock_guard<std::mutex> lock(token_mutex_);
-    if (!access_token_.empty() &&
-        std::chrono::steady_clock::now() < token_expiry_) {
-        co_return Result<std::string>::Ok(access_token_);
+    {
+        std::lock_guard<std::mutex> lock(token_mutex_);
+        if (!access_token_.empty() &&
+            std::chrono::steady_clock::now() < token_expiry_) {
+            co_return Result<std::string>::Ok(access_token_);
+        }
     }
     co_return co_await FetchAccessTokenCoro();
 }
