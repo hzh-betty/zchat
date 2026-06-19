@@ -484,19 +484,6 @@ def cmd_stop(args: argparse.Namespace) -> None:
         manager.stop(service)
 
 
-def cmd_test(args: argparse.Namespace) -> None:
-    paths = get_paths()
-    build_dir = paths.build_dir(args.preset)
-    if not (build_dir / "CTestTestfile.cmake").is_file():
-        raise SystemExit(f"No build artifacts in {build_dir}, run `develop.py build` first")
-    env = source_env_script(build_dir / "generators/conanbuild.sh", conan_home_env())
-    print(f"Running tests in {build_dir}")
-    run_command(
-        ["ctest", f"--test-dir={build_dir}", "--output-on-failure"],
-        env=env,
-    )
-
-
 def add_preset_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--preset", default=DEFAULT_PRESET, choices=SUPPORTED_PRESETS, help="CMake preset")
 
@@ -552,10 +539,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     add_preset_args(stop_parser)
     stop_parser.add_argument("service", nargs="?", default="all", help="Service name or alias, default: all")
     stop_parser.set_defaults(func=cmd_stop)
-
-    test_parser = subparsers.add_parser("test", help="Run CTest in the build folder")
-    add_preset_args(test_parser)
-    test_parser.set_defaults(func=cmd_test)
 
     return parser.parse_args(argv)
 
