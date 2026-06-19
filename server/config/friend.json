@@ -1,4 +1,13 @@
 {
+  "log": {
+    "level": "debug",
+    "console": true,
+    "file": true,
+    "file_path": "./logs/friend.log",
+    "max_file_size": 52428800,
+    "max_files": 5,
+    "format": "[%n][%Y-%m-%d %H:%M:%S.%e][%t][%-8l]%v"
+  },
   "services": {
     "friend": "{{ZCHAT_FRIEND_SERVICE_PORT}}"
   },
