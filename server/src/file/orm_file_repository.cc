@@ -51,16 +51,18 @@ OrmFileRepository::FindFilesByIdsCoro(
     }
     co_return co_await RunDbCoro(
         [&]() -> drogon::Task<Result<std::vector<FileRecord>>> {
-            std::string sql = "SELECT file_id,file_name,file_size,file_content,"
-                              "owner_user_id,chat_session_id FROM `file_store` "
-                              "WHERE file_id IN ('";
+            std::string placeholders;
             for (std::size_t i = 0; i < file_ids.size(); ++i) {
                 if (i > 0)
-                    sql += "','";
-                sql += file_ids[i];
+                    placeholders += ",";
+                placeholders += "?";
             }
-            sql += "')";
-            const auto result = co_await db_->execSqlCoro(sql);
+            const std::string sql =
+                "SELECT file_id,file_name,file_size,file_content,"
+                "owner_user_id,chat_session_id FROM `file_store` "
+                "WHERE file_id IN (" +
+                placeholders + ")";
+            const auto result = co_await db_->execSqlCoro(sql, file_ids);
             std::vector<FileRecord> files;
             for (const auto &row : result) {
                 files.push_back(ToFileRecord(row));

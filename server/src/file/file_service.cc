@@ -125,12 +125,25 @@ drogon::Task<zchat::GetMultiFileRsp> FileApplicationService::GetMultiFileCoro(
     response.set_request_id(request.request_id());
     response.set_success(true);
     response.set_errmsg("");
-    for (const auto &file_id : request.file_id_list()) {
-        auto single = co_await GetSingleFileInternal(request.request_id(),
-                                                     file_id, caller);
-        if (single.success()) {
-            *response.add_file_data() = single.file_data();
+
+    std::vector<std::string> file_ids(request.file_id_list().begin(),
+                                      request.file_id_list().end());
+    if (file_ids.empty()) {
+        co_return response;
+    }
+    auto files = co_await repository_.FindFilesByIdsCoro(file_ids);
+    if (!files.ok()) {
+        co_return MakeErrorResponse<zchat::GetMultiFileRsp>(
+            request.request_id(), files.error());
+    }
+    for (const auto &record : files.value()) {
+        auto can_access = co_await CanAccessFileCoro(record, caller);
+        if (!can_access) {
+            continue;
         }
+        auto *data = response.add_file_data();
+        data->set_file_id(record.file_id);
+        data->set_file_content(record.file_content);
     }
     co_return response;
 }
