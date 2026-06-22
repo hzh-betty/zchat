@@ -5,12 +5,15 @@
 namespace zchat {
 
 zchat::UserInfo ToProtoUser(const UserRecord &user,
-                            const std::string &avatar_content) {
+                            const std::string &avatar_content,
+                            bool include_phone) {
     zchat::UserInfo proto;
     proto.set_user_id(user.user_id);
     proto.set_nickname(user.nickname);
     proto.set_description(user.description);
-    proto.set_phone(user.phone);
+    if (include_phone) {
+        proto.set_phone(user.phone);
+    }
     proto.set_avatar(avatar_content);
     return proto;
 }

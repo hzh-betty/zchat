@@ -237,16 +237,7 @@ UserApplicationService::LoginByPhoneCoro(const zchat::PhoneLoginReq &request) {
         co_return ErrorResponse<zchat::PhoneLoginRsp>(
             request.request_id(), user_errors::VerifyCodePhoneMismatch());
     }
-    auto user = co_await users_.FindUserByPhoneCoro(request.phone_number());
-    if (!user.ok()) {
-        co_return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
-                                                      user.error());
-    }
-    if (!user.value().has_value()) {
-        co_return ErrorResponse<zchat::PhoneLoginRsp>(
-            request.request_id(), user_errors::PhoneNotRegistered());
-    }
-    auto session_id = co_await LoginUserCoro(user.value()->user_id);
+    auto session_id = co_await LoginUserCoro(existing_user.value()->user_id);
     if (!session_id.ok()) {
         co_return ErrorResponse<zchat::PhoneLoginRsp>(request.request_id(),
                                                       session_id.error());
@@ -278,7 +269,8 @@ UserApplicationService::GetUserInfoCoro(const zchat::GetUserInfoReq &request) {
     std::string avatar = co_await GetAvatarContentCoro(user.value()->avatar_id);
     zchat::GetUserInfoRsp response;
     MarkOk(request.request_id(), &response);
-    *response.mutable_user_info() = ToProtoUser(user.value().value(), avatar);
+    *response.mutable_user_info() =
+        ToProtoUser(user.value().value(), avatar, true);
     co_return response;
 }
 
@@ -467,6 +459,7 @@ UserApplicationService::ValidateVerifyCodeCoro(
     if (!checked.ok()) {
         co_return Result<std::string>::Fail(checked.error());
     }
+    co_await sessions_.RemoveVerifyCodeCoro(verify_code_id);
     co_return Result<std::string>::Ok(phone);
 }
 
