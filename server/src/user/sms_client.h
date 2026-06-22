@@ -25,20 +25,6 @@ class SmsClient : public NonCopyable {
                           const std::string &code) = 0;
 };
 
-class ConfiguredSmsClient final : public SmsClient {
-  public:
-    ConfiguredSmsClient() = default;
-
-    ~ConfiguredSmsClient() override = default;
-
-    drogon::Task<VoidResult>
-    SendVerificationCode(const std::string &phone) override;
-
-    drogon::Task<VoidResult>
-    CheckVerificationCode(const std::string &phone,
-                          const std::string &code) override;
-};
-
 } // namespace zchat
 
 #endif // ZCHAT_SERVER_SRC_USER_SMS_CLIENT_H_

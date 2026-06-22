@@ -21,15 +21,6 @@ class SpeechRecognizer : public NonCopyable {
     RecognizeCoro(const std::string &speech_data) = 0;
 };
 
-class ConfiguredSpeechRecognizer final : public SpeechRecognizer {
-  public:
-    ConfiguredSpeechRecognizer() = default;
-    ~ConfiguredSpeechRecognizer() override = default;
-
-    drogon::Task<Result<std::string>>
-    RecognizeCoro(const std::string &speech_data) override;
-};
-
 } // namespace zchat
 
 #endif // ZCHAT_SERVER_SRC_SPEECH_SPEECH_RECOGNIZER_H_

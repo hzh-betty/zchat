@@ -7,7 +7,6 @@ target_link_libraries(zchat_message_module
     zchat_search_module)
 
 add_executable(zchat_message_service
-  message_builder.cc
   message_context.cc
   message_grpc_service.cc
   message_main.cc)

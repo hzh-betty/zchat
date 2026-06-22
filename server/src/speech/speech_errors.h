@@ -10,11 +10,6 @@ inline AppError RecognitionFailed(std::string message) {
                               std::move(message));
 }
 
-inline AppError RecognizerNotConfigured() {
-    return AppError::WithCode(ErrorCode::kExternalServiceError,
-                              "speech recognizer is not configured");
-}
-
 } // namespace zchat::speech_errors
 
 #endif // ZCHAT_SERVER_SRC_SPEECH_SPEECH_ERRORS_H_

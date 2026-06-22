@@ -4,7 +4,6 @@ add_library(zchat_file_module STATIC
 target_link_libraries(zchat_file_module PUBLIC zchat_common)
 
 add_executable(zchat_file_service
-  file_builder.cc
   file_context.cc
   file_grpc_service.cc
   file_main.cc)

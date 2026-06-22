@@ -6,7 +6,6 @@ target_link_libraries(zchat_friend_module
     zchat_common)
 
 add_executable(zchat_friend_service
-  friend_builder.cc
   friend_context.cc
   friend_grpc_service.cc
   friend_main.cc)

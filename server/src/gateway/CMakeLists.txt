@@ -1,5 +1,4 @@
 add_executable(zchat_gateway
-  gateway_builder.cc
   gateway_context.cc
   gateway_controller.cc
   gateway_main.cc

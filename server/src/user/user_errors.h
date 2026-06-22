@@ -75,11 +75,6 @@ inline AppError AccountLocked() {
                               "login failures");
 }
 
-inline AppError SmsClientNotConfigured() {
-    return AppError::WithCode(ErrorCode::kExternalServiceError,
-                              "sms client is not configured");
-}
-
 } // namespace zchat::user_errors
 
 #endif // ZCHAT_SERVER_SRC_USER_USER_ERRORS_H_
