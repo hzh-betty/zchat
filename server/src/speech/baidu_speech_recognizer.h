@@ -17,6 +17,11 @@
 
 namespace zchat {
 
+struct BaiduTokenInfo {
+    std::string token;
+    std::chrono::steady_clock::time_point expiry;
+};
+
 class BaiduSpeechRecognizer final : public SpeechRecognizer {
   public:
     explicit BaiduSpeechRecognizer(const SpeechConfig &config);
@@ -27,7 +32,7 @@ class BaiduSpeechRecognizer final : public SpeechRecognizer {
     RecognizeCoro(const std::string &speech_data) override;
 
   private:
-    drogon::Task<Result<std::string>> FetchAccessTokenCoro();
+    drogon::Task<Result<BaiduTokenInfo>> FetchAccessTokenCoro();
     drogon::Task<Result<std::string>> GetAccessTokenCoro();
 
     std::string app_id_;

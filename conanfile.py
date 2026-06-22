@@ -107,10 +107,6 @@ class ZChatRecipe(ConanFile):
         deps.generate()
 
         tc = CMakeToolchain(self)
-
-        # 禁止生成用户预设文件，保持项目根目录整洁
-        tc.user_presets_path = False
-
         tc.generate()
 
     def build(self):

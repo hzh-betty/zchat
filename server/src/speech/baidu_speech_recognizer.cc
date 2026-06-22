@@ -91,7 +91,7 @@ BaiduSpeechRecognizer::RecognizeCoro(const std::string &speech_data) {
     co_return Result<std::string>::Ok(result_array[0]);
 }
 
-drogon::Task<Result<std::string>>
+drogon::Task<Result<BaiduTokenInfo>>
 BaiduSpeechRecognizer::FetchAccessTokenCoro() {
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Post);
@@ -104,13 +104,13 @@ BaiduSpeechRecognizer::FetchAccessTokenCoro() {
         "https://aip.baidubce.com", loop_thread_->getLoop());
     auto response = co_await token_client->sendRequestCoro(request, 10.0);
     if (!response) {
-        co_return Result<std::string>::Fail(
+        co_return Result<BaiduTokenInfo>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "baidu oauth token request failed")
                 .WithDetail("request failed"));
     }
     if (response->statusCode() != 200) {
-        co_return Result<std::string>::Fail(
+        co_return Result<BaiduTokenInfo>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "baidu oauth token request failed")
                 .WithContext("status", std::to_string(response->statusCode())));
@@ -121,25 +121,26 @@ BaiduSpeechRecognizer::FetchAccessTokenCoro() {
     try {
         root = json::parse(input);
     } catch (const std::exception &e) {
-        co_return Result<std::string>::Fail(
+        co_return Result<BaiduTokenInfo>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "baidu oauth token response parse failed")
                 .WithDetail(e.what()));
     }
 
     if (root.contains("error")) {
-        co_return Result<std::string>::Fail(
+        co_return Result<BaiduTokenInfo>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
                                "baidu oauth token request failed")
                 .WithDetail(root.value("error_description", std::string())));
     }
 
-    access_token_ = root.value("access_token", std::string());
+    BaiduTokenInfo info;
+    info.token = root.value("access_token", std::string());
     const int expires_in = root.value("expires_in", 2592000);
-    token_expiry_ = std::chrono::steady_clock::now() +
-                    std::chrono::seconds(expires_in - 600);
+    info.expiry = std::chrono::steady_clock::now() +
+                  std::chrono::seconds(expires_in - 600);
 
-    co_return Result<std::string>::Ok(access_token_);
+    co_return Result<BaiduTokenInfo>::Ok(std::move(info));
 }
 
 drogon::Task<Result<std::string>> BaiduSpeechRecognizer::GetAccessTokenCoro() {
@@ -150,7 +151,16 @@ drogon::Task<Result<std::string>> BaiduSpeechRecognizer::GetAccessTokenCoro() {
             co_return Result<std::string>::Ok(access_token_);
         }
     }
-    co_return co_await FetchAccessTokenCoro();
+    auto fetched = co_await FetchAccessTokenCoro();
+    if (!fetched.ok()) {
+        co_return Result<std::string>::Fail(fetched.error());
+    }
+    {
+        std::lock_guard<std::mutex> lock(token_mutex_);
+        access_token_ = fetched.value().token;
+        token_expiry_ = fetched.value().expiry;
+    }
+    co_return Result<std::string>::Ok(fetched.value().token);
 }
 
 } // namespace zchat
