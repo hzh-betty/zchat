@@ -162,23 +162,13 @@ class AmqpPublisherRuntime {
                 AppError::WithCode(ErrorCode::kExternalServiceError,
                                    "rabbitmq publish scheduling failed"));
         }
-        std::unique_lock<std::mutex> lock(state->mutex);
-        if (!state->done.wait_for(lock, std::chrono::seconds(3),
-                                  [&state]() { return state->completed; })) {
-            return VoidResult::Fail(AppError::WithCode(
-                ErrorCode::kExternalServiceError, "rabbitmq publish timeout"));
-        }
-        return state->result;
+        return VoidResult::Ok();
     }
 
   private:
     struct PublishState {
         AmqpPublisherRuntime *runtime = nullptr;
         std::string payload;
-        std::mutex mutex;
-        std::condition_variable done;
-        bool completed = false;
-        VoidResult result = VoidResult::Ok();
     };
 
     static void PublishOnLoop(evutil_socket_t, short, void *context) {
@@ -186,12 +176,11 @@ class AmqpPublisherRuntime {
             static_cast<std::shared_ptr<PublishState> *>(context);
         auto state = *state_holder;
         delete state_holder;
-        state->result = state->runtime->PublishOnLoop(state->payload);
-        {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            state->completed = true;
+        auto result = state->runtime->PublishOnLoop(state->payload);
+        if (!result.ok()) {
+            ZCHAT_LOG_WARN("rabbitmq fire-and-forget publish failed: {}",
+                           result.error().message);
         }
-        state->done.notify_one();
     }
 
     VoidResult PublishOnLoop(const std::string &payload) {

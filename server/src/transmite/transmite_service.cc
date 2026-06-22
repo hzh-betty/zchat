@@ -77,20 +77,13 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
                    sender.avatar())
         .SerializeToString(&queue_payload);
 
-    zchat::GetChatSessionMemberIdsReq members_request;
-    members_request.set_request_id(request.request_id());
-    members_request.set_chat_session_id(request.chat_session_id());
-
-    auto members_response =
-        co_await clients_.GetChatSessionMemberIdsCoro(members_request);
     auto published = queue_.Publish(queue_payload);
-
     if (!published.ok()) {
-        co_return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
-                                                          published.error());
+        ZCHAT_LOG_WARN("message queue publish failed request={} error={}",
+                       request.request_id(), published.error().message);
     }
 
-    if (members_response.ok() && members_response.value().success()) {
+    if (members_check_rsp.ok() && members_check_rsp.value().success()) {
         zchat::NotifyMessage notify;
         notify.set_notify_type(zchat::CHAT_MESSAGE_NOTIFY);
         *notify.mutable_new_message_info()->mutable_message_info() =
@@ -100,7 +93,7 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
         notify.SerializeToString(&payload);
 
         std::vector<std::string> targets;
-        for (const auto &member_id : members_response.value().member_id()) {
+        for (const auto &member_id : members_check_rsp.value().member_id()) {
             if (member_id != user_id.value().value()) {
                 targets.push_back(member_id);
             }
@@ -128,7 +121,7 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
                        targets.size());
     } else {
         ZCHAT_LOG_WARN("new message notify skipped request={} members_ok={}",
-                       request.request_id(), members_response.ok());
+                       request.request_id(), members_check_rsp.ok());
     }
 
     zchat::NewMessageRsp response;
