@@ -25,7 +25,7 @@
     "advertise_host": "{{ZCHAT_ADVERTISE_HOST}}",
     "username": "{{ZCHAT_ETCD_USERNAME}}",
     "password": "{{secret_file:ZCHAT_ETCD_PASSWORD_FILE}}",
-    "lease_ttl_seconds": 3,
+    "lease_ttl_seconds": 10,
     "auth_token_ttl_seconds": 300,
     "tls": {
       "enable": true,

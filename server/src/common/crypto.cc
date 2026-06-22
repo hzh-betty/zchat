@@ -1,7 +1,8 @@
 #include "common/crypto.h"
 
+#include <openssl/core_names.h>
 #include <openssl/evp.h>
-#include <openssl/hmac.h>
+#include <openssl/params.h>
 #include <sodium.h>
 
 #include <algorithm>
@@ -22,8 +23,10 @@ void EnsureSodiumInit() {
 std::string Base64Encode(const unsigned char *data, std::size_t length) {
     const std::size_t encoded_length = 4 * ((length + 2) / 3);
     std::string result(encoded_length, '\0');
-    EVP_EncodeBlock(reinterpret_cast<unsigned char *>(&result[0]), data,
-                    static_cast<int>(length));
+    if (EVP_EncodeBlock(reinterpret_cast<unsigned char *>(&result[0]), data,
+                        static_cast<int>(length)) <= 0) {
+        return std::string();
+    }
     return result;
 }
 
@@ -33,12 +36,47 @@ std::string Base64Encode(const std::string &input) {
 }
 
 std::string HmacSha1(const std::string &key, const std::string &message) {
-    unsigned char digest[EVP_MAX_MD_SIZE];
-    unsigned int digest_length = 0;
-    HMAC(EVP_sha1(), key.data(), static_cast<int>(key.size()),
-         reinterpret_cast<const unsigned char *>(message.data()),
-         message.size(), digest, &digest_length);
-    return Base64Encode(digest, digest_length);
+    OSSL_PARAM params[2];
+    params[0] = OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_DIGEST,
+                                                 const_cast<char *>("SHA1"), 0);
+    params[1] = OSSL_PARAM_construct_end();
+
+    auto *mac = EVP_MAC_fetch(nullptr, "HMAC", nullptr);
+    if (mac == nullptr) {
+        return std::string();
+    }
+    auto *ctx = EVP_MAC_CTX_new(mac);
+    EVP_MAC_free(mac);
+    if (ctx == nullptr) {
+        return std::string();
+    }
+    std::string digest;
+    if (EVP_MAC_init(ctx, reinterpret_cast<const unsigned char *>(key.data()),
+                     key.size(), params) != 1) {
+        EVP_MAC_CTX_free(ctx);
+        return std::string();
+    }
+    if (EVP_MAC_update(ctx,
+                       reinterpret_cast<const unsigned char *>(message.data()),
+                       message.size()) != 1) {
+        EVP_MAC_CTX_free(ctx);
+        return std::string();
+    }
+    std::size_t out_len = 0;
+    if (EVP_MAC_final(ctx, nullptr, &out_len, 0) != 1) {
+        EVP_MAC_CTX_free(ctx);
+        return std::string();
+    }
+    digest.resize(out_len);
+    if (EVP_MAC_final(ctx, reinterpret_cast<unsigned char *>(digest.data()),
+                      &out_len, digest.size()) != 1) {
+        EVP_MAC_CTX_free(ctx);
+        return std::string();
+    }
+    EVP_MAC_CTX_free(ctx);
+    digest.resize(out_len);
+    return Base64Encode(reinterpret_cast<const unsigned char *>(digest.data()),
+                        digest.size());
 }
 
 std::string UrlEncode(const std::string &value) {

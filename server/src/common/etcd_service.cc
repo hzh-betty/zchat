@@ -1,4 +1,4 @@
-﻿#include "common/etcd_service.h"
+#include "common/etcd_service.h"
 
 #include <algorithm>
 #include <fstream>

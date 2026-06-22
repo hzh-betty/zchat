@@ -71,7 +71,7 @@ struct EtcdConfig {
     std::string advertise_host = "127.0.0.1";
     std::string username;
     std::string password;
-    int lease_ttl_seconds = 3;
+    int lease_ttl_seconds = 10;
     int auth_token_ttl_seconds = 300;
     TlsConfig tls;
 };
