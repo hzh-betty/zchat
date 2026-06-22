@@ -15,6 +15,16 @@ inline AppError ApplyAlreadyExists() {
                               "friend request already exists");
 }
 
+inline AppError ApplyNotFound() {
+    return AppError::WithCode(ErrorCode::kFriendApplyNotFound,
+                              "friend request not found");
+}
+
+inline AppError NotSessionMember() {
+    return AppError::WithCode(ErrorCode::kNotSessionMember,
+                              "user is not a member of this chat session");
+}
+
 } // namespace zchat::friend_errors
 
 #endif // ZCHAT_SERVER_SRC_FRIEND_FRIEND_ERRORS_H_

@@ -36,6 +36,8 @@ enum class ErrorCode {
     kFriendAlreadyExists = 2001,
     kFriendApplyAlreadyExists = 2002,
     kFriendSessionNotFound = 2003,
+    kFriendApplyNotFound = 2004,
+    kNotSessionMember = 2005,
 
     kMessageNotFound = 3001,
     kFileNotFound = 4001,
@@ -89,6 +91,10 @@ inline const char *ErrorCodeName(ErrorCode code) {
         return "FRIEND_APPLY_ALREADY_EXISTS";
     case ErrorCode::kFriendSessionNotFound:
         return "FRIEND_SESSION_NOT_FOUND";
+    case ErrorCode::kFriendApplyNotFound:
+        return "FRIEND_APPLY_NOT_FOUND";
+    case ErrorCode::kNotSessionMember:
+        return "NOT_SESSION_MEMBER";
     case ErrorCode::kMessageNotFound:
         return "MESSAGE_NOT_FOUND";
     case ErrorCode::kFileNotFound:

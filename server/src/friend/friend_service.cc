@@ -295,33 +295,25 @@ FriendApplicationService::ProcessFriendApplyCoro(
         co_return ErrorResponse<zchat::FriendAddProcessRsp>(
             request.request_id(), common_errors::SessionExpired());
     }
+    auto apply_exists = co_await friends_.FriendApplyExistsCoro(
+        request.apply_user_id(), user_id);
+    if (!apply_exists.ok()) {
+        co_return ErrorResponse<zchat::FriendAddProcessRsp>(
+            request.request_id(), apply_exists.error());
+    }
+    if (!apply_exists.value()) {
+        co_return ErrorResponse<zchat::FriendAddProcessRsp>(
+            request.request_id(), friend_errors::ApplyNotFound());
+    }
     co_await friends_.DeleteFriendApplyCoro(request.apply_user_id(), user_id);
     std::string new_session_id;
     if (request.agree()) {
         new_session_id = NewId();
-        auto ins1 = co_await friends_.InsertRelationCoro(
-            user_id, request.apply_user_id());
-        if (!ins1.ok()) {
+        auto accepted = co_await friends_.AcceptFriendApplyCoro(
+            user_id, request.apply_user_id(), new_session_id);
+        if (!accepted.ok()) {
             co_return ErrorResponse<zchat::FriendAddProcessRsp>(
-                request.request_id(), ins1.error());
-        }
-        auto ins2 = co_await friends_.InsertChatSessionCoro(
-            ChatSessionRecord{new_session_id, "", ChatSessionType::kSingle});
-        if (!ins2.ok()) {
-            co_return ErrorResponse<zchat::FriendAddProcessRsp>(
-                request.request_id(), ins2.error());
-        }
-        auto add_self = co_await friends_.InsertChatSessionMemberCoro(
-            new_session_id, user_id);
-        if (!add_self.ok()) {
-            co_return ErrorResponse<zchat::FriendAddProcessRsp>(
-                request.request_id(), add_self.error());
-        }
-        auto add_peer = co_await friends_.InsertChatSessionMemberCoro(
-            new_session_id, request.apply_user_id());
-        if (!add_peer.ok()) {
-            co_return ErrorResponse<zchat::FriendAddProcessRsp>(
-                request.request_id(), add_peer.error());
+                request.request_id(), accepted.error());
         }
     }
     zchat::UserInfo processor_info = co_await UserInfoForIdCoro(user_id);
@@ -392,6 +384,23 @@ FriendApplicationService::GetChatSessionMemberCoro(
     const zchat::GetChatSessionMemberReq &request) {
     ZCHAT_LOG_INFO("FriendService::GetChatSessionMember request_id={}",
                    request.request_id());
+    const std::string user_id = co_await ResolveUserIdCoro(
+        request.session_id(),
+        request.has_user_id() ? request.user_id() : std::string());
+    if (user_id.empty()) {
+        co_return ErrorResponse<zchat::GetChatSessionMemberRsp>(
+            request.request_id(), common_errors::SessionExpired());
+    }
+    auto is_member = co_await friends_.IsChatSessionMemberCoro(
+        request.chat_session_id(), user_id);
+    if (!is_member.ok()) {
+        co_return ErrorResponse<zchat::GetChatSessionMemberRsp>(
+            request.request_id(), is_member.error());
+    }
+    if (!is_member.value()) {
+        co_return ErrorResponse<zchat::GetChatSessionMemberRsp>(
+            request.request_id(), friend_errors::NotSessionMember());
+    }
     auto ids =
         co_await friends_.ListChatSessionMembersCoro(request.chat_session_id());
     if (!ids.ok()) {

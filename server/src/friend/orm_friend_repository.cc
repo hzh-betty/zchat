@@ -15,12 +15,30 @@ drogon::Task<VoidResult>
 OrmFriendRepository::InsertRelationCoro(const std::string &user_id,
                                         const std::string &peer_id) {
     return RunDbCoro([&]() -> drogon::Task<VoidResult> {
-        co_await db_->execSqlCoro(
-            "INSERT IGNORE INTO `relation` (user_id,peer_id) VALUES (?,?)",
-            user_id, peer_id);
-        co_await db_->execSqlCoro(
-            "INSERT IGNORE INTO `relation` (user_id,peer_id) VALUES (?,?)",
-            peer_id, user_id);
+        auto trans = co_await db_->newTransactionCoro();
+        if (!trans) {
+            co_return VoidResult::Fail(
+                common_errors::DatabaseOperationFailed().WithDetail(
+                    "transaction begin failed"));
+        }
+        try {
+            co_await trans->execSqlCoro(
+                "INSERT IGNORE INTO `relation` (user_id,peer_id) VALUES (?,?)",
+                user_id, peer_id);
+            co_await trans->execSqlCoro(
+                "INSERT IGNORE INTO `relation` (user_id,peer_id) VALUES (?,?)",
+                peer_id, user_id);
+        } catch (const drogon::orm::DrogonDbException &e) {
+            trans->rollback();
+            AppError error = common_errors::DatabaseOperationFailed();
+            error.detail = e.base().what();
+            co_return VoidResult::Fail(std::move(error));
+        } catch (const std::exception &e) {
+            trans->rollback();
+            AppError error = common_errors::InternalServiceError();
+            error.detail = e.what();
+            co_return VoidResult::Fail(std::move(error));
+        }
         co_return VoidResult::Ok();
     });
 }
@@ -196,20 +214,41 @@ drogon::Task<VoidResult>
 OrmFriendRepository::DeleteSingleChatSessionCoro(const std::string &user_id,
                                                  const std::string &peer_id) {
     return RunDbCoro([&]() -> drogon::Task<VoidResult> {
-        const auto result = co_await db_->execSqlCoro(
-            "SELECT c.chat_session_id FROM `chat_session` c "
-            "JOIN `chat_session_member` a ON c.chat_session_id=a.session_id "
-            "JOIN `chat_session_member` b ON c.chat_session_id=b.session_id "
-            "WHERE c.chat_session_type=1 AND a.user_id=? AND b.user_id=?",
-            user_id, peer_id);
-        for (const auto &row : result) {
-            const std::string session_id = FieldString(row, "chat_session_id");
-            co_await db_->execSqlCoro(
-                "DELETE FROM `chat_session_member` WHERE session_id=?",
-                session_id);
-            co_await db_->execSqlCoro(
-                "DELETE FROM `chat_session` WHERE chat_session_id=?",
-                session_id);
+        auto trans = co_await db_->newTransactionCoro();
+        if (!trans) {
+            co_return VoidResult::Fail(
+                common_errors::DatabaseOperationFailed().WithDetail(
+                    "transaction begin failed"));
+        }
+        try {
+            const auto result = co_await trans->execSqlCoro(
+                "SELECT c.chat_session_id FROM `chat_session` c "
+                "JOIN `chat_session_member` a ON "
+                "c.chat_session_id=a.session_id "
+                "JOIN `chat_session_member` b ON "
+                "c.chat_session_id=b.session_id "
+                "WHERE c.chat_session_type=1 AND a.user_id=? AND b.user_id=?",
+                user_id, peer_id);
+            for (const auto &row : result) {
+                const std::string session_id =
+                    FieldString(row, "chat_session_id");
+                co_await trans->execSqlCoro(
+                    "DELETE FROM `chat_session_member` WHERE session_id=?",
+                    session_id);
+                co_await trans->execSqlCoro(
+                    "DELETE FROM `chat_session` WHERE chat_session_id=?",
+                    session_id);
+            }
+        } catch (const drogon::orm::DrogonDbException &e) {
+            trans->rollback();
+            AppError error = common_errors::DatabaseOperationFailed();
+            error.detail = e.base().what();
+            co_return VoidResult::Fail(std::move(error));
+        } catch (const std::exception &e) {
+            trans->rollback();
+            AppError error = common_errors::InternalServiceError();
+            error.detail = e.what();
+            co_return VoidResult::Fail(std::move(error));
         }
         co_return VoidResult::Ok();
     });
@@ -265,4 +304,61 @@ OrmFriendRepository::FindSingleChatPeerCoro(const std::string &session_id,
     });
 }
 
+drogon::Task<Result<bool>>
+OrmFriendRepository::IsChatSessionMemberCoro(const std::string &session_id,
+                                             const std::string &user_id) {
+    return RunDbCoro([&]() -> drogon::Task<Result<bool>> {
+        const auto result = co_await db_->execSqlCoro(
+            "SELECT user_id FROM `chat_session_member` "
+            "WHERE session_id=? AND user_id=? LIMIT 1",
+            session_id, user_id);
+        co_return Result<bool>::Ok(!result.empty());
+    });
+}
+
+drogon::Task<VoidResult>
+OrmFriendRepository::AcceptFriendApplyCoro(const std::string &user_id,
+                                           const std::string &apply_user_id,
+                                           const std::string &new_session_id) {
+    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
+        auto trans = co_await db_->newTransactionCoro();
+        if (!trans) {
+            co_return VoidResult::Fail(
+                common_errors::DatabaseOperationFailed().WithDetail(
+                    "transaction begin failed"));
+        }
+        try {
+            co_await trans->execSqlCoro(
+                "INSERT IGNORE INTO `relation` (user_id,peer_id) VALUES (?,?)",
+                user_id, apply_user_id);
+            co_await trans->execSqlCoro(
+                "INSERT IGNORE INTO `relation` (user_id,peer_id) VALUES (?,?)",
+                apply_user_id, user_id);
+            co_await trans->execSqlCoro(
+                "INSERT INTO `chat_session` "
+                "(chat_session_id,chat_session_name,chat_session_type) "
+                "VALUES (?,?,?)",
+                new_session_id, "", static_cast<int>(ChatSessionType::kSingle));
+            co_await trans->execSqlCoro(
+                "INSERT IGNORE INTO `chat_session_member` "
+                "(session_id,user_id) VALUES (?,?)",
+                new_session_id, user_id);
+            co_await trans->execSqlCoro(
+                "INSERT IGNORE INTO `chat_session_member` "
+                "(session_id,user_id) VALUES (?,?)",
+                new_session_id, apply_user_id);
+        } catch (const drogon::orm::DrogonDbException &e) {
+            trans->rollback();
+            AppError error = common_errors::DatabaseOperationFailed();
+            error.detail = e.base().what();
+            co_return VoidResult::Fail(std::move(error));
+        } catch (const std::exception &e) {
+            trans->rollback();
+            AppError error = common_errors::InternalServiceError();
+            error.detail = e.what();
+            co_return VoidResult::Fail(std::move(error));
+        }
+        co_return VoidResult::Ok();
+    });
+}
 } // namespace zchat

@@ -64,6 +64,13 @@ class FriendRepository : public NonCopyable {
     virtual drogon::Task<Result<std::optional<std::string>>>
     FindSingleChatPeerCoro(const std::string &session_id,
                            const std::string &user_id) = 0;
+    virtual drogon::Task<Result<bool>>
+    IsChatSessionMemberCoro(const std::string &session_id,
+                            const std::string &user_id) = 0;
+    virtual drogon::Task<VoidResult>
+    AcceptFriendApplyCoro(const std::string &user_id,
+                          const std::string &apply_user_id,
+                          const std::string &new_session_id) = 0;
 };
 
 class OrmFriendRepository final : public FriendRepository,
@@ -114,6 +121,13 @@ class OrmFriendRepository final : public FriendRepository,
     drogon::Task<Result<std::optional<std::string>>>
     FindSingleChatPeerCoro(const std::string &session_id,
                            const std::string &user_id) override;
+    drogon::Task<Result<bool>>
+    IsChatSessionMemberCoro(const std::string &session_id,
+                            const std::string &user_id) override;
+    drogon::Task<VoidResult>
+    AcceptFriendApplyCoro(const std::string &user_id,
+                          const std::string &apply_user_id,
+                          const std::string &new_session_id) override;
 };
 
 } // namespace zchat
