@@ -200,14 +200,15 @@ SessionStore::RemoveVerifyCodeCoro(const std::string &verify_code_id) {
 drogon::Task<Result<int>>
 SessionStore::RecordLoginFailCoro(const std::string &user_id) {
     try {
+        const std::string fail_key = "zchat:loginfail:" + user_id;
+        const std::string script =
+            "local c=redis.call('INCR',KEYS[1]); "
+            "if c==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; "
+            "return c";
         auto count_result = co_await redis_->execCommandCoro(
-            "incr zchat:loginfail:%s", user_id.c_str());
+            "eval %s 1 %s %d", script.c_str(), fail_key.c_str(),
+            kFailWindowSeconds);
         long long count = count_result.asInteger();
-        if (count == 1) {
-            co_await redis_->execCommandCoro("expire zchat:loginfail:%s %d",
-                                             user_id.c_str(),
-                                             kFailWindowSeconds);
-        }
         if (count >= kMaxLoginFailCount) {
             co_await redis_->execCommandCoro("setex zchat:loginlock:%s %d 1",
                                              user_id.c_str(), kLockSeconds);
@@ -257,13 +258,14 @@ drogon::Task<Result<bool>> SessionStore::RateLimitCoro(const std::string &key,
                                                        int window_seconds,
                                                        int max_count) {
     try {
-        auto count_result =
-            co_await redis_->execCommandCoro("incr zchat:rl:%s", key.c_str());
+        const std::string rl_key = "zchat:rl:" + key;
+        const std::string script =
+            "local c=redis.call('INCR',KEYS[1]); "
+            "if c==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; "
+            "return c";
+        auto count_result = co_await redis_->execCommandCoro(
+            "eval %s 1 %s %d", script.c_str(), rl_key.c_str(), window_seconds);
         long long count = count_result.asInteger();
-        if (count == 1) {
-            co_await redis_->execCommandCoro("expire zchat:rl:%s %d",
-                                             key.c_str(), window_seconds);
-        }
         co_return Result<bool>::Ok(count <= max_count);
     } catch (const drogon::nosql::RedisException &e) {
         co_return Result<bool>::Fail(
