@@ -31,6 +31,10 @@ void ZchatWebSocketController::handleNewMessage(
         connection->shutdown();
         return;
     }
+    if (context->connections().IsBound(connection)) {
+        ZCHAT_LOG_DEBUG("websocket message ignored: connection already bound");
+        return;
+    }
     zchat::ClientAuthenticationReq request;
     if (!request.ParseFromString(message)) {
         ZCHAT_LOG_WARN("websocket auth rejected: protobuf parse failed");

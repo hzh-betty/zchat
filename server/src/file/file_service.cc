@@ -30,19 +30,9 @@ FileApplicationService::FileApplicationService(FileRepository &repository,
                                                SessionStore &sessions)
     : repository_(repository), clients_(clients), sessions_(sessions) {}
 
-drogon::Task<bool> FileApplicationService::CheckSessionMemberCachedCoro(
-    const std::string &session_id, const std::string &user_id) {
-
-    const std::string cache_key =
-        "zchat:sessionmember:" + session_id + ":" + user_id;
-    try {
-        auto cached = co_await sessions_.GetUserIdCoro(cache_key);
-        if (cached.ok() && cached.value().has_value()) {
-            co_return cached.value().value() == "1";
-        }
-    } catch (...) {
-    }
-
+drogon::Task<bool>
+FileApplicationService::CheckSessionMemberCoro(const std::string &session_id,
+                                               const std::string &user_id) {
     zchat::GetChatSessionMemberIdsReq req;
     req.set_request_id("internal-idor");
     req.set_chat_session_id(session_id);
@@ -50,20 +40,12 @@ drogon::Task<bool> FileApplicationService::CheckSessionMemberCachedCoro(
     if (!rsp.ok() || !rsp.value().success()) {
         co_return false;
     }
-    bool is_member = false;
     for (const auto &mid : rsp.value().member_id()) {
         if (mid == user_id) {
-            is_member = true;
-            break;
+            co_return true;
         }
     }
-
-    try {
-        co_await sessions_.SaveVerifyCodeCoro(cache_key, is_member ? "1" : "0");
-    } catch (...) {
-    }
-
-    co_return is_member;
+    co_return false;
 }
 
 drogon::Task<bool>
@@ -76,8 +58,8 @@ FileApplicationService::CanAccessFileCoro(const FileRecord &file,
         co_return true;
     }
     if (!file.chat_session_id.empty()) {
-        co_return co_await CheckSessionMemberCachedCoro(file.chat_session_id,
-                                                        caller_user_id);
+        co_return co_await CheckSessionMemberCoro(file.chat_session_id,
+                                                  caller_user_id);
     }
     co_return false;
 }

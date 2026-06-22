@@ -35,9 +35,8 @@ class FileApplicationService : public NonCopyable {
   private:
     drogon::Task<bool> CanAccessFileCoro(const FileRecord &file,
                                          const std::string &caller_user_id);
-    drogon::Task<bool>
-    CheckSessionMemberCachedCoro(const std::string &session_id,
-                                 const std::string &user_id);
+    drogon::Task<bool> CheckSessionMemberCoro(const std::string &session_id,
+                                              const std::string &user_id);
     drogon::Task<zchat::GetSingleFileRsp>
     GetSingleFileInternal(const std::string &request_id,
                           const std::string &file_id,
