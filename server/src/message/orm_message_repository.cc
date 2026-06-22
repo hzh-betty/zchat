@@ -57,12 +57,9 @@ OrmMessageRepository::ListLastMessagesForSessionsCoro(
             std::string placeholders;
             for (std::size_t i = 0; i < session_ids.size(); ++i) {
                 if (i > 0)
-                    placeholders += "','";
-                else
-                    placeholders += "'";
-                placeholders += session_ids[i];
+                    placeholders += ",";
+                placeholders += "?";
             }
-            placeholders += "'";
             const std::string sql =
                 "SELECT m.message_id,m.session_id,m.user_id,m.message_type,"
                 "UNIX_TIMESTAMP(m.create_time) AS create_time,m.content,"
@@ -70,7 +67,7 @@ OrmMessageRepository::ListLastMessagesForSessionsCoro(
                 "INNER JOIN (SELECT session_id,MAX(id) AS max_id FROM "
                 "`message` WHERE session_id IN (" +
                 placeholders + ") GROUP BY session_id) t ON m.id=t.max_id";
-            const auto result = co_await db_->execSqlCoro(sql);
+            const auto result = co_await db_->execSqlCoro(sql, session_ids);
             std::vector<MessageRecord> messages;
             for (const auto &row : result) {
                 messages.push_back(ToMessageRecord(row));

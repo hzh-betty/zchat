@@ -63,17 +63,17 @@ OrmUserRepository::FindUsersByIdsCoro(
     }
     co_return co_await RunDbCoro(
         [&]() -> drogon::Task<Result<std::vector<UserRecord>>> {
-            std::string sql = "SELECT user_id,nickname,description,password,"
-                              "phone,avatar_id FROM `user` "
-                              "WHERE user_id IN ('";
+            std::string placeholders;
             for (std::size_t i = 0; i < user_ids.size(); ++i) {
-                if (i > 0) {
-                    sql += "','";
-                }
-                sql += user_ids[i];
+                if (i > 0)
+                    placeholders += ",";
+                placeholders += "?";
             }
-            sql += "')";
-            const auto result = co_await db_->execSqlCoro(sql);
+            const std::string sql = "SELECT user_id,nickname,description,"
+                                    "password,phone,avatar_id FROM `user` "
+                                    "WHERE user_id IN (" +
+                                    placeholders + ")";
+            const auto result = co_await db_->execSqlCoro(sql, user_ids);
             std::vector<UserRecord> users;
             for (const auto &row : result) {
                 users.push_back(ToUserRecord(row));
