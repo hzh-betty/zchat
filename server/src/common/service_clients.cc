@@ -96,9 +96,13 @@ ServiceClients::GetMultiRecentMsgCoro(
 }
 
 drogon::Task<Result<std::optional<FileRecord>>>
-ServiceClients::GetFileCoro(const std::string &file_id) {
+ServiceClients::GetFileCoro(const std::string &file_id,
+                            const std::string &caller_user_id) {
     zchat::GetSingleFileReq request;
     request.set_file_id(file_id);
+    if (!caller_user_id.empty()) {
+        request.set_user_id(caller_user_id);
+    }
     auto rsp =
         co_await CallUnaryCoro<zchat::FileService, zchat::GetSingleFileReq,
                                zchat::GetSingleFileRsp>(
@@ -124,10 +128,14 @@ ServiceClients::GetFileCoro(const std::string &file_id) {
 }
 
 drogon::Task<Result<zchat::GetMultiFileRsp>>
-ServiceClients::GetMultiFileCoro(const std::vector<std::string> &file_ids) {
+ServiceClients::GetMultiFileCoro(const std::vector<std::string> &file_ids,
+                                 const std::string &caller_user_id) {
     zchat::GetMultiFileReq request;
     for (const auto &file_id : file_ids) {
         request.add_file_id_list(file_id);
+    }
+    if (!caller_user_id.empty()) {
+        request.set_user_id(caller_user_id);
     }
     co_return co_await CallUnaryCoro<zchat::FileService, zchat::GetMultiFileReq,
                                      zchat::GetMultiFileRsp>(
@@ -140,14 +148,20 @@ ServiceClients::GetMultiFileCoro(const std::vector<std::string> &file_ids) {
         request, kFileGrpcDeadline);
 }
 
-drogon::Task<Result<std::string>>
-ServiceClients::PutFileCoro(const std::string &file_name,
-                            const std::string &file_content) {
+drogon::Task<Result<std::string>> ServiceClients::PutFileCoro(
+    const std::string &file_name, const std::string &file_content,
+    const std::string &owner_user_id, const std::string &chat_session_id) {
     zchat::PutSingleFileReq request;
     request.mutable_file_data()->set_file_name(file_name);
     request.mutable_file_data()->set_file_size(
         static_cast<std::int64_t>(file_content.size()));
     request.mutable_file_data()->set_file_content(file_content);
+    if (!owner_user_id.empty()) {
+        request.set_user_id(owner_user_id);
+    }
+    if (!chat_session_id.empty()) {
+        request.set_session_id(chat_session_id);
+    }
     auto rsp =
         co_await CallUnaryCoro<zchat::FileService, zchat::PutSingleFileReq,
                                zchat::PutSingleFileRsp>(

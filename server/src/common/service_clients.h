@@ -41,11 +41,15 @@ class ServiceClients : public NonCopyable {
     drogon::Task<Result<zchat::GetMultiRecentMsgRsp>>
     GetMultiRecentMsgCoro(const zchat::GetMultiRecentMsgReq &request);
     drogon::Task<Result<std::optional<FileRecord>>>
-    GetFileCoro(const std::string &file_id);
+    GetFileCoro(const std::string &file_id,
+                const std::string &caller_user_id = "");
     drogon::Task<Result<zchat::GetMultiFileRsp>>
-    GetMultiFileCoro(const std::vector<std::string> &file_ids);
+    GetMultiFileCoro(const std::vector<std::string> &file_ids,
+                     const std::string &caller_user_id = "");
     drogon::Task<Result<std::string>>
-    PutFileCoro(const std::string &file_name, const std::string &file_content);
+    PutFileCoro(const std::string &file_name, const std::string &file_content,
+                const std::string &owner_user_id = "",
+                const std::string &chat_session_id = "");
 
   private:
     static constexpr auto kGrpcDeadline = std::chrono::seconds(5);

@@ -41,6 +41,10 @@ inline AppError InternalServiceError() {
     return AppError::WithCode(ErrorCode::kUnknown, "internal service error");
 }
 
+inline AppError RateLimited() {
+    return AppError::WithCode(ErrorCode::kRateLimited, "rate limit exceeded");
+}
+
 } // namespace zchat::common_errors
 
 #endif // ZCHAT_SERVER_SRC_COMMON_COMMON_ERRORS_H_

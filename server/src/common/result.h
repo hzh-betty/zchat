@@ -22,6 +22,7 @@ enum class ErrorCode {
     kExternalServiceError = 8,
     kTimeout = 9,
     kSessionExpired = 10,
+    kRateLimited = 11,
 
     kUserInvalidPhone = 1001,
     kUserInvalidPassword = 1002,
@@ -67,6 +68,8 @@ inline const char *ErrorCodeName(ErrorCode code) {
         return "TIMEOUT";
     case ErrorCode::kSessionExpired:
         return "SESSION_EXPIRED";
+    case ErrorCode::kRateLimited:
+        return "RATE_LIMITED";
     case ErrorCode::kUserInvalidPhone:
         return "USER_INVALID_PHONE";
     case ErrorCode::kUserInvalidPassword:
