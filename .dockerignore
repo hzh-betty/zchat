@@ -16,4 +16,6 @@ server/run/
 
 .env
 server/config/.env
+server/secrets/
+server/certs/
 CMakeUserPresets.json

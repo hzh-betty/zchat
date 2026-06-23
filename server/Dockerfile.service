@@ -38,7 +38,11 @@ FROM conan-deps AS builder
 ARG BUILD_PRESET=conan2-release
 
 COPY CMakeLists.txt ./
-COPY server ./server
+COPY server/src ./server/src
+COPY server/proto ./server/proto
+COPY server/config ./server/config
+COPY server/cmake ./server/cmake
+COPY server/CMakeLists.txt ./server/CMakeLists.txt
 
 RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
         host_profile=profiles/linux-clang-debug ; \

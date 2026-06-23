@@ -10,6 +10,8 @@ etcd_dir="${repo_root}/server/certs/etcd"
 
 mkdir -p "${ca_dir}" "${grpc_dir}" "${rabbitmq_dir}" "${es_dir}" "${etcd_dir}"
 
+find "${grpc_dir}" "${rabbitmq_dir}" "${es_dir}" "${etcd_dir}" -name '*-key.pem' -exec chmod 600 {} + 2>/dev/null || true
+
 # ==========================================
 # 统一 CA
 # ==========================================
@@ -45,7 +47,7 @@ EOF
         -sha256 \
         -extfile "${dir}/${name}-ext.cnf"
     cp "${ca_dir}/ca.pem" "${dir}/ca.pem"
-    chmod 644 "${dir}/${name}-key.pem"
+    chmod 600 "${dir}/${name}-key.pem"
 }
 
 # ==========================================
