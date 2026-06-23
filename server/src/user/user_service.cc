@@ -35,7 +35,8 @@ UserApplicationService::UserApplicationService(UserRepository &users,
                                                SessionStore &sessions,
                                                UserSearchIndex &search_index)
     : users_(users), clients_(clients), sms_(sms), sessions_(sessions),
-      search_index_(search_index) {}
+      search_index_(search_index),
+      dummy_password_hash_(Argon2idHash("dummy-password-for-timing")) {}
 
 drogon::Task<zchat::UserRegisterRsp>
 UserApplicationService::RegisterByNicknameCoro(
@@ -82,39 +83,70 @@ UserApplicationService::RegisterByNicknameCoro(
 drogon::Task<zchat::UserLoginRsp> UserApplicationService::LoginByNicknameCoro(
     const zchat::UserLoginReq &request) {
     ZCHAT_LOG_INFO("LoginByNickname request_id={}", request.request_id());
+    const std::string nick_key = "nick:" + request.nickname();
+
+    auto locked = co_await sessions_.IsAccountLockedCoro(nick_key);
+    if (!locked.ok()) {
+        ZCHAT_LOG_WARN("account lock check failed nick={} error={}",
+                       request.nickname(), locked.error().message);
+        co_return ErrorResponse<zchat::UserLoginRsp>(
+            request.request_id(),
+            common_errors::InternalServiceError().WithDetail(
+                "security check unavailable"));
+    }
+    if (locked.value()) {
+        co_return ErrorResponse<zchat::UserLoginRsp>(
+            request.request_id(), user_errors::LoginTooFrequent());
+    }
+
     auto user = co_await users_.FindUserByNicknameCoro(request.nickname());
     if (!user.ok()) {
         co_return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
                                                      user.error());
     }
+
     if (!user.value().has_value()) {
+        Argon2idVerify(dummy_password_hash_, request.password());
+        auto fail = co_await sessions_.RecordLoginFailCoro(nick_key);
+        if (!fail.ok()) {
+            co_return ErrorResponse<zchat::UserLoginRsp>(
+                request.request_id(),
+                common_errors::InternalServiceError().WithDetail(
+                    "security check unavailable"));
+        }
+        if (fail.value() >= 5) {
+            co_return ErrorResponse<zchat::UserLoginRsp>(
+                request.request_id(), user_errors::LoginTooFrequent());
+        }
         co_return ErrorResponse<zchat::UserLoginRsp>(
             request.request_id(), user_errors::InvalidCredentials());
     }
 
     const std::string &uid = user.value()->user_id;
 
-    auto locked = co_await sessions_.IsAccountLockedCoro(uid);
-    if (locked.ok() && locked.value()) {
-        co_return ErrorResponse<zchat::UserLoginRsp>(
-            request.request_id(), user_errors::AccountLocked());
-    }
-
     const auto &stored = user.value()->password;
     bool password_ok =
         !stored.empty() && Argon2idVerify(stored, request.password());
 
     if (!password_ok) {
-        auto fail = co_await sessions_.RecordLoginFailCoro(uid);
-        if (fail.ok() && fail.value() >= 5) {
+        auto fail = co_await sessions_.RecordLoginFailCoro(nick_key);
+        if (!fail.ok()) {
+            ZCHAT_LOG_WARN("record login fail failed uid={} error={}", uid,
+                           fail.error().message);
             co_return ErrorResponse<zchat::UserLoginRsp>(
-                request.request_id(), user_errors::AccountLocked());
+                request.request_id(),
+                common_errors::InternalServiceError().WithDetail(
+                    "security check unavailable"));
+        }
+        if (fail.value() >= 5) {
+            co_return ErrorResponse<zchat::UserLoginRsp>(
+                request.request_id(), user_errors::LoginTooFrequent());
         }
         co_return ErrorResponse<zchat::UserLoginRsp>(
             request.request_id(), user_errors::InvalidCredentials());
     }
 
-    co_await sessions_.ClearLoginFailCoro(uid);
+    co_await sessions_.ClearLoginFailCoro(nick_key);
     auto session_id = co_await LoginUserCoro(uid);
     if (!session_id.ok()) {
         co_return ErrorResponse<zchat::UserLoginRsp>(request.request_id(),
@@ -266,7 +298,8 @@ UserApplicationService::GetUserInfoCoro(const zchat::GetUserInfoReq &request) {
         co_return ErrorResponse<zchat::GetUserInfoRsp>(
             request.request_id(), user_errors::UserNotFound());
     }
-    std::string avatar = co_await GetAvatarContentCoro(user.value()->avatar_id);
+    std::string avatar =
+        co_await GetAvatarContentCoro(user.value()->avatar_id, user_id.value());
     zchat::GetUserInfoRsp response;
     MarkOk(request.request_id(), &response);
     *response.mutable_user_info() =
@@ -289,7 +322,8 @@ UserApplicationService::GetMultiUserInfoCoro(
     response.set_success(true);
     response.set_errmsg("");
     for (const auto &user : users.value()) {
-        std::string avatar = co_await GetAvatarContentCoro(user.avatar_id);
+        std::string avatar =
+            co_await GetAvatarContentCoro(user.avatar_id, user.user_id);
         (*response.mutable_users_info())[user.user_id] =
             ToProtoUser(user, avatar);
     }
@@ -310,7 +344,8 @@ UserApplicationService::SearchUsersCoro(const zchat::SearchUsersReq &request) {
     response.set_success(true);
     response.set_errmsg("");
     for (const auto &user : users.value()) {
-        std::string avatar = co_await GetAvatarContentCoro(user.avatar_id);
+        std::string avatar =
+            co_await GetAvatarContentCoro(user.avatar_id, user.user_id);
         *response.add_user_info() = ToProtoUser(user, avatar);
     }
     co_return response;
@@ -324,7 +359,8 @@ UserApplicationService::SetAvatarCoro(const zchat::SetUserAvatarReq &request) {
         co_return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
                                                          user_id.error());
     }
-    const auto file_id = co_await PutAvatarContentCoro(request.avatar());
+    const auto file_id =
+        co_await PutAvatarContentCoro(request.avatar(), user_id.value());
     if (!file_id.ok()) {
         co_return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
                                                          file_id.error());
@@ -352,6 +388,16 @@ drogon::Task<zchat::SetUserNicknameRsp> UserApplicationService::SetNicknameCoro(
     if (!user_id.ok()) {
         co_return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
                                                            user_id.error());
+    }
+    auto existing = co_await users_.FindUserByNicknameCoro(request.nickname());
+    if (!existing.ok()) {
+        co_return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
+                                                           existing.error());
+    }
+    if (existing.value().has_value() &&
+        existing.value()->user_id != user_id.value()) {
+        co_return ErrorResponse<zchat::SetUserNicknameRsp>(
+            request.request_id(), user_errors::NicknameAlreadyExists());
     }
     const auto updated = co_await users_.UpdateUserNicknameCoro(
         user_id.value(), request.nickname());
@@ -411,6 +457,16 @@ drogon::Task<zchat::SetUserPhoneNumberRsp> UserApplicationService::SetPhoneCoro(
     if (code.value() != request.phone_number()) {
         co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
             request.request_id(), user_errors::VerifyCodePhoneMismatch());
+    }
+    auto existing = co_await users_.FindUserByPhoneCoro(request.phone_number());
+    if (!existing.ok()) {
+        co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
+            request.request_id(), existing.error());
+    }
+    if (existing.value().has_value() &&
+        existing.value()->user_id != user_id.value()) {
+        co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
+            request.request_id(), user_errors::PhoneAlreadyRegistered());
     }
     const auto updated = co_await users_.UpdateUserPhoneCoro(
         user_id.value(), request.phone_number());
@@ -527,21 +583,23 @@ UserApplicationService::LoginUserCoro(const std::string &user_id) {
     co_return Result<std::string>::Ok(session_id);
 }
 
-drogon::Task<std::string>
-UserApplicationService::GetAvatarContentCoro(const std::string &avatar_id) {
+drogon::Task<std::string> UserApplicationService::GetAvatarContentCoro(
+    const std::string &avatar_id, const std::string &caller_user_id) {
     if (avatar_id.empty()) {
         co_return std::string();
     }
-    auto file = co_await clients_.GetFileCoro(avatar_id);
+    auto file = co_await clients_.GetFileCoro(avatar_id, caller_user_id);
     if (!file.ok() || !file.value().has_value()) {
         co_return std::string();
     }
     co_return file.value()->file_content;
 }
 
-drogon::Task<Result<std::string>> UserApplicationService::PutAvatarContentCoro(
-    const std::string &avatar_content) {
-    co_return co_await clients_.PutFileCoro("avatar", avatar_content);
+drogon::Task<Result<std::string>>
+UserApplicationService::PutAvatarContentCoro(const std::string &avatar_content,
+                                             const std::string &owner_user_id) {
+    co_return co_await clients_.PutFileCoro("avatar", avatar_content,
+                                            owner_user_id, "");
 }
 
 } // namespace zchat

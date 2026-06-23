@@ -63,15 +63,18 @@ class UserApplicationService : public NonCopyable {
     drogon::Task<Result<std::string>> LoginUserCoro(const std::string &user_id);
 
     drogon::Task<std::string>
-    GetAvatarContentCoro(const std::string &avatar_id);
+    GetAvatarContentCoro(const std::string &avatar_id,
+                         const std::string &caller_user_id);
     drogon::Task<Result<std::string>>
-    PutAvatarContentCoro(const std::string &avatar_content);
+    PutAvatarContentCoro(const std::string &avatar_content,
+                         const std::string &owner_user_id);
 
     UserRepository &users_;
     ServiceClients &clients_;
     SmsClient &sms_;
     SessionStore &sessions_;
     UserSearchIndex &search_index_;
+    std::string dummy_password_hash_;
 };
 
 } // namespace zchat

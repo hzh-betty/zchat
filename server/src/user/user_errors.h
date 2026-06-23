@@ -75,6 +75,11 @@ inline AppError AccountLocked() {
                               "login failures");
 }
 
+inline AppError LoginTooFrequent() {
+    return AppError::WithCode(ErrorCode::kUserAccountLocked,
+                              "登录尝试过于频繁，请稍后再试");
+}
+
 } // namespace zchat::user_errors
 
 #endif // ZCHAT_SERVER_SRC_USER_USER_ERRORS_H_
