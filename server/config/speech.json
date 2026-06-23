@@ -1,6 +1,6 @@
 {
   "log": {
-    "level": "debug",
+    "level": "info",
     "console": true,
     "file": true,
     "file_path": "./logs/speech.log",

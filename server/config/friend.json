@@ -1,6 +1,6 @@
 {
   "log": {
-    "level": "debug",
+    "level": "info",
     "console": true,
     "file": true,
     "file_path": "./logs/friend.log",
@@ -41,15 +41,6 @@
       "cert_path": "{{ZCHAT_GRPC_CERT_PATH}}",
       "key_path": "{{ZCHAT_GRPC_KEY_PATH}}",
       "target_name_override": "etcd"
-    }
-  },
-  "elasticsearch": {
-    "hosts": "https://{{ZCHAT_ES_HOST}}:{{ZCHAT_ES_PORT}}/",
-    "user": "{{ZCHAT_ELASTICSEARCH_USER}}",
-    "password": "{{secret_file:ZCHAT_ELASTICSEARCH_PASSWORD_FILE}}",
-    "tls": {
-      "enable": true,
-      "ca_path": "{{ZCHAT_GRPC_CA_PATH}}"
     }
   },
   "grpc": {

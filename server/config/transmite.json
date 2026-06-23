@@ -1,6 +1,6 @@
 {
   "log": {
-    "level": "debug",
+    "level": "info",
     "console": true,
     "file": true,
     "file_path": "./logs/transmite.log",
@@ -10,15 +10,6 @@
   },
   "services": {
     "transmite": "{{ZCHAT_TRANSMITE_SERVICE_PORT}}"
-  },
-  "mysql": {
-    "host": "{{ZCHAT_MYSQL_HOST}}",
-    "port": "{{ZCHAT_MYSQL_PORT}}",
-    "database": "{{MYSQL_DATABASE}}",
-    "user": "{{MYSQL_USER}}",
-    "password": "{{secret_file:MYSQL_PASSWORD_FILE}}",
-    "charset": "utf8mb4",
-    "connections": 16
   },
   "redis": {
     "host": "{{ZCHAT_REDIS_HOST}}",
@@ -41,15 +32,6 @@
       "cert_path": "{{ZCHAT_GRPC_CERT_PATH}}",
       "key_path": "{{ZCHAT_GRPC_KEY_PATH}}",
       "target_name_override": "etcd"
-    }
-  },
-  "elasticsearch": {
-    "hosts": "https://{{ZCHAT_ES_HOST}}:{{ZCHAT_ES_PORT}}/",
-    "user": "{{ZCHAT_ELASTICSEARCH_USER}}",
-    "password": "{{secret_file:ZCHAT_ELASTICSEARCH_PASSWORD_FILE}}",
-    "tls": {
-      "enable": true,
-      "ca_path": "{{ZCHAT_GRPC_CA_PATH}}"
     }
   },
   "rabbitmq": {
