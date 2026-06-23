@@ -346,8 +346,27 @@ FriendApplicationService::CreateChatSessionCoro(
     const std::string session_id = NewId();
     std::vector<std::string> members(request.member_id_list().begin(),
                                      request.member_id_list().end());
+    std::sort(members.begin(), members.end());
+    members.erase(std::unique(members.begin(), members.end()), members.end());
     if (std::find(members.begin(), members.end(), user_id) == members.end()) {
         members.push_back(user_id);
+    }
+    std::vector<std::string> invitees(members.begin(), members.end());
+    invitees.erase(std::remove(invitees.begin(), invitees.end(), user_id),
+                   invitees.end());
+    if (!invitees.empty()) {
+        auto existing =
+            co_await friends_.ListExistingPeersCoro(user_id, invitees);
+        if (!existing.ok()) {
+            co_return ErrorResponse<zchat::ChatSessionCreateRsp>(
+                request.request_id(), existing.error());
+        }
+        if (existing.value().size() != invitees.size()) {
+            co_return ErrorResponse<zchat::ChatSessionCreateRsp>(
+                request.request_id(),
+                AppError::WithCode(ErrorCode::kForbidden,
+                                   "can only invite friends"));
+        }
     }
     const std::string name = request.chat_session_name().empty()
                                  ? "New group chat"
