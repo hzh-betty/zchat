@@ -14,6 +14,12 @@ namespace zchat {
 class SessionStore;
 class GrpcServiceClients;
 
+struct RateLimitPolicy {
+    const char *key_prefix;
+    int window_seconds;
+    int max_count;
+};
+
 struct RouteEntry {
     const char *path;
     const char *service_name;

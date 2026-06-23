@@ -51,7 +51,7 @@ void ZchatWebSocketController::handleNewMessage(
         auto user_id = co_await ctx->sessions().GetUserIdCoro(session_id);
         if (!user_id.ok() || !user_id.value().has_value()) {
             ZCHAT_LOG_WARN("websocket auth rejected: invalid session={}",
-                           session_id);
+                           RedactToken(session_id));
             conn_ptr->shutdown();
             co_return;
         }
@@ -59,7 +59,7 @@ void ZchatWebSocketController::handleNewMessage(
         conn_ptr->setPingMessage("", std::chrono::seconds(60));
         co_await ctx->sessions().SetOnlineCoro(user_id.value().value());
         ZCHAT_LOG_INFO("websocket authenticated user={} session={}",
-                       user_id.value().value(), session_id);
+                       user_id.value().value(), RedactToken(session_id));
         co_return;
     }(ctx, conn_ptr, std::move(session_id));
 }

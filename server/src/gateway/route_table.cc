@@ -82,7 +82,8 @@ template <typename Req, typename Rsp, typename Service, typename AsyncCall>
 drogon::Task<drogon::HttpResponsePtr>
 AuthAndForwardCoro(SessionStore &sessions, GrpcServiceClients &clients,
                    const char *service_name, AsyncCall async_call,
-                   const std::string &body, std::chrono::seconds deadline) {
+                   const std::string &body, std::chrono::seconds deadline,
+                   const RateLimitPolicy *rl = nullptr) {
     auto request = Req();
     if (!request.ParseFromString(body)) {
         co_return ErrorResponse<Rsp>(common_errors::RequestBodyParseFailed());
@@ -95,6 +96,14 @@ AuthAndForwardCoro(SessionStore &sessions, GrpcServiceClients &clients,
         co_return ErrorResponse<Rsp>(common_errors::SessionExpired());
     }
     request.set_user_id(user_id.value().value());
+    if (rl != nullptr) {
+        auto allowed = co_await sessions.RateLimitCoro(
+            rl->key_prefix + user_id.value().value(), rl->window_seconds,
+            rl->max_count);
+        if (!allowed.ok() || !allowed.value()) {
+            co_return ErrorResponse<Rsp>(common_errors::RateLimited());
+        }
+    }
     auto rsp = co_await CallUnaryCoro<Service, Req, Rsp>(
         clients.discovery(), clients.channel_pool(), service_name, async_call,
         request, deadline);
@@ -106,7 +115,8 @@ AuthAndForwardCoro(SessionStore &sessions, GrpcServiceClients &clients,
 
 drogon::Task<drogon::HttpResponsePtr>
 AuthAndForwardTransmiteCoro(SessionStore &sessions, GrpcServiceClients &clients,
-                            const std::string &body) {
+                            const std::string &body,
+                            const RateLimitPolicy *rl = nullptr) {
     auto request = zchat::NewMessageReq();
     if (!request.ParseFromString(body)) {
         co_return ErrorResponse<zchat::NewMessageRsp>(
@@ -121,6 +131,15 @@ AuthAndForwardTransmiteCoro(SessionStore &sessions, GrpcServiceClients &clients,
             common_errors::SessionExpired());
     }
     request.set_user_id(user_id.value().value());
+    if (rl != nullptr) {
+        auto allowed = co_await sessions.RateLimitCoro(
+            rl->key_prefix + user_id.value().value(), rl->window_seconds,
+            rl->max_count);
+        if (!allowed.ok() || !allowed.value()) {
+            co_return ErrorResponse<zchat::NewMessageRsp>(
+                common_errors::RateLimited());
+        }
+    }
     co_return co_await CallTransmiteCoro(clients, request.SerializeAsString());
 }
 
@@ -141,13 +160,14 @@ HandlerFn PublicHandler(const char *svc, AsyncCall async_call,
 
 template <typename Service, typename Req, typename Rsp, typename AsyncCall>
 HandlerFn AuthHandler(const char *svc, AsyncCall async_call,
-                      std::chrono::seconds deadline) {
+                      std::chrono::seconds deadline,
+                      const RateLimitPolicy *rl = nullptr) {
     return
-        [svc, async_call, deadline](
-            SessionStore *sessions, GrpcServiceClients &clients,
-            const std::string &body) -> drogon::Task<drogon::HttpResponsePtr> {
+        [svc, async_call, deadline,
+         rl](SessionStore *sessions, GrpcServiceClients &clients,
+             const std::string &body) -> drogon::Task<drogon::HttpResponsePtr> {
             co_return co_await AuthAndForwardCoro<Req, Rsp, Service>(
-                *sessions, clients, svc, async_call, body, deadline);
+                *sessions, clients, svc, async_call, body, deadline, rl);
         };
 }
 
@@ -160,9 +180,10 @@ RouteEntry MakePublic(const char *path, const char *svc, AsyncCall ac,
 
 template <typename Service, typename Req, typename Rsp, typename AsyncCall>
 RouteEntry MakeAuth(const char *path, const char *svc, AsyncCall ac,
-                    std::chrono::seconds deadline) {
+                    std::chrono::seconds deadline,
+                    const RateLimitPolicy *rl = nullptr) {
     return {path, svc, true, deadline,
-            AuthHandler<Service, Req, Rsp>(svc, ac, deadline)};
+            AuthHandler<Service, Req, Rsp>(svc, ac, deadline, rl)};
 }
 
 #define AC(S, method)                                                          \
@@ -176,6 +197,8 @@ RouteEntry MakeAuth(const char *path, const char *svc, AsyncCall ac,
 const std::vector<RouteEntry> &BuildRouteTable() {
     static const auto kD = std::chrono::seconds(5);
     static const auto kF = std::chrono::seconds(30);
+    static const RateLimitPolicy kMessageRateLimit{"msg:", 60, 60};
+    static const RateLimitPolicy kSpeechRateLimit{"asr:", 60, 30};
     static const std::vector<RouteEntry> routes = {
         MakePublic<zchat::UserService, zchat::PhoneVerifyCodeReq,
                    zchat::PhoneVerifyCodeRsp>(
@@ -268,8 +291,8 @@ const std::vector<RouteEntry> &BuildRouteTable() {
         {"/service/message_transmit/new_message", "transmite_service", true, kD,
          [](SessionStore *sessions, GrpcServiceClients &clients,
             const std::string &body) -> drogon::Task<drogon::HttpResponsePtr> {
-             co_return co_await AuthAndForwardTransmiteCoro(*sessions, clients,
-                                                            body);
+             co_return co_await AuthAndForwardTransmiteCoro(
+                 *sessions, clients, body, &kMessageRateLimit);
          }},
         MakeAuth<zchat::FileService, zchat::GetSingleFileReq,
                  zchat::GetSingleFileRsp>("/service/file/get_single_file",
@@ -290,7 +313,7 @@ const std::vector<RouteEntry> &BuildRouteTable() {
         MakeAuth<zchat::SpeechService, zchat::SpeechRecognitionReq,
                  zchat::SpeechRecognitionRsp>(
             "/service/speech/recognition", "speech_service",
-            AC(SpeechService, SpeechRecognition), kD),
+            AC(SpeechService, SpeechRecognition), kD, &kSpeechRateLimit),
     };
 #undef AC
     return routes;
