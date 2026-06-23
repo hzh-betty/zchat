@@ -36,7 +36,7 @@ MessageService::GetRecentCoro(const zchat::GetRecentMsgReq &request) {
             request.request_id(), messages.error());
     }
     co_return co_await BuildMessageListResponseCoro<zchat::GetRecentMsgRsp>(
-        request.request_id(), messages.value());
+        request.request_id(), messages.value(), request.user_id());
 }
 
 drogon::Task<zchat::GetMultiRecentMsgRsp>
@@ -136,7 +136,7 @@ MessageService::GetHistoryCoro(const zchat::GetHistoryMsgReq &request) {
             request.request_id(), messages.error());
     }
     co_return co_await BuildMessageListResponseCoro<zchat::GetHistoryMsgRsp>(
-        request.request_id(), messages.value());
+        request.request_id(), messages.value(), request.user_id());
 }
 
 drogon::Task<zchat::MsgSearchRsp>
@@ -167,7 +167,7 @@ MessageService::SearchCoro(const zchat::MsgSearchReq &request) {
                                                          messages.error());
     }
     co_return co_await BuildMessageListResponseCoro<zchat::MsgSearchRsp>(
-        request.request_id(), messages.value());
+        request.request_id(), messages.value(), request.user_id());
 }
 
 drogon::Task<VoidResult>
@@ -175,8 +175,8 @@ MessageService::StoreQueuedMessageCoro(const zchat::MessageInfo &message) {
     std::string file_content;
     MessageRecord record = FromProtoMessage(message, &file_content);
     if (!file_content.empty()) {
-        const auto file_id =
-            co_await clients_.PutFileCoro(record.file_name, file_content);
+        const auto file_id = co_await clients_.PutFileCoro(
+            record.file_name, file_content, record.user_id, record.session_id);
         if (!file_id.ok()) {
             co_return VoidResult::Fail(file_id.error());
         }
@@ -227,9 +227,9 @@ MessageService::EnsureCanReadSessionCoro(const std::string &user_id,
 }
 
 template <typename Response, typename Messages>
-drogon::Task<Response>
-MessageService::BuildMessageListResponseCoro(const std::string &request_id,
-                                             const Messages &messages) {
+drogon::Task<Response> MessageService::BuildMessageListResponseCoro(
+    const std::string &request_id, const Messages &messages,
+    const std::string &caller_user_id) {
     Response response;
     response.set_request_id(request_id);
     response.set_success(true);
@@ -253,7 +253,8 @@ MessageService::BuildMessageListResponseCoro(const std::string &request_id,
 
     std::unordered_map<std::string, std::string> file_contents;
     if (!file_ids.empty()) {
-        auto file_rsp = co_await clients_.GetMultiFileCoro(file_ids);
+        auto file_rsp =
+            co_await clients_.GetMultiFileCoro(file_ids, caller_user_id);
         if (file_rsp.ok() && file_rsp.value().success()) {
             for (const auto &fd : file_rsp.value().file_data()) {
                 file_contents[fd.file_id()] = fd.file_content();
@@ -288,16 +289,19 @@ MessageService::BuildMessageListResponseCoro(const std::string &request_id,
 template drogon::Task<zchat::GetRecentMsgRsp>
 MessageService::BuildMessageListResponseCoro<zchat::GetRecentMsgRsp,
                                              std::vector<MessageRecord>>(
-    const std::string &request_id, const std::vector<MessageRecord> &messages);
+    const std::string &request_id, const std::vector<MessageRecord> &messages,
+    const std::string &caller_user_id);
 
 template drogon::Task<zchat::GetHistoryMsgRsp>
 MessageService::BuildMessageListResponseCoro<zchat::GetHistoryMsgRsp,
                                              std::vector<MessageRecord>>(
-    const std::string &request_id, const std::vector<MessageRecord> &messages);
+    const std::string &request_id, const std::vector<MessageRecord> &messages,
+    const std::string &caller_user_id);
 
 template drogon::Task<zchat::MsgSearchRsp>
 MessageService::BuildMessageListResponseCoro<zchat::MsgSearchRsp,
                                              std::vector<MessageRecord>>(
-    const std::string &request_id, const std::vector<MessageRecord> &messages);
+    const std::string &request_id, const std::vector<MessageRecord> &messages,
+    const std::string &caller_user_id);
 
 } // namespace zchat

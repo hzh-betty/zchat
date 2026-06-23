@@ -33,7 +33,8 @@ class MessageService : public NonCopyable {
     template <typename Response, typename Messages>
     drogon::Task<Response>
     BuildMessageListResponseCoro(const std::string &request_id,
-                                 const Messages &messages);
+                                 const Messages &messages,
+                                 const std::string &caller_user_id);
     drogon::Task<VoidResult>
     EnsureCanReadSessionCoro(const std::string &user_id,
                              const std::string &session_id);
