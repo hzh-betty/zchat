@@ -79,8 +79,12 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
 
     auto published = queue_.Publish(queue_payload);
     if (!published.ok()) {
-        ZCHAT_LOG_WARN("message queue publish failed request={} error={}",
-                       request.request_id(), published.error().message);
+        ZCHAT_LOG_ERROR("message queue publish failed request={} error={}",
+                        request.request_id(), published.error().message);
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(
+            request.request_id(),
+            common_errors::InternalServiceError().WithDetail(
+                "message persist failed"));
     }
 
     if (members_check_rsp.ok() && members_check_rsp.value().success()) {
