@@ -2,6 +2,7 @@
 
 #include "common/error_response.h"
 #include "common/logger.h"
+#include "common/resource_limits.h"
 #include "common/uuid.h"
 #include "file/file_errors.h"
 
@@ -134,12 +135,18 @@ drogon::Task<zchat::PutSingleFileRsp> FileApplicationService::PutSingleFileCoro(
     const zchat::PutSingleFileReq &request) {
     ZCHAT_LOG_INFO("FileService::PutSingleFile request_id={}",
                    request.request_id());
+    const auto rate = co_await sessions_.RateLimitCoro(
+        "upload:global", 60, resource_limits::kUploadPerMinute);
+    if (!rate.ok() || !rate.value()) {
+        co_return PutErrorResponse(request.request_id(),
+                                   common_errors::RateLimited());
+    }
     const std::string file_id = NewId();
     const auto &upload = request.file_data();
     FileRecord record;
     record.file_id = file_id;
     record.file_name = upload.file_name();
-    record.file_size = static_cast<std::uint64_t>(upload.file_size());
+    record.file_size = upload.file_content().size();
     record.file_content = upload.file_content();
     record.owner_user_id = request.has_user_id() ? request.user_id() : "";
     record.chat_session_id =
@@ -154,7 +161,7 @@ drogon::Task<zchat::PutSingleFileRsp> FileApplicationService::PutSingleFileCoro(
     response.set_errmsg("");
     response.mutable_file_info()->set_file_id(file_id);
     response.mutable_file_info()->set_file_name(upload.file_name());
-    response.mutable_file_info()->set_file_size(upload.file_size());
+    response.mutable_file_info()->set_file_size(record.file_size);
     co_return response;
 }
 
@@ -162,6 +169,11 @@ drogon::Task<zchat::PutMultiFileRsp> FileApplicationService::PutMultiFileCoro(
     const zchat::PutMultiFileReq &request) {
     ZCHAT_LOG_INFO("FileService::PutMultiFile request_id={}",
                    request.request_id());
+    if (request.file_data_size() > 16) {
+        co_return MakeErrorResponse<zchat::PutMultiFileRsp>(
+            request.request_id(),
+            AppError::WithCode(ErrorCode::kInvalidArgument, "too many files"));
+    }
     std::string owner = request.has_user_id() ? request.user_id() : "";
     std::string session = request.has_session_id() ? request.session_id() : "";
     zchat::PutMultiFileRsp response;
@@ -169,11 +181,19 @@ drogon::Task<zchat::PutMultiFileRsp> FileApplicationService::PutMultiFileCoro(
     response.set_success(true);
     response.set_errmsg("");
     for (const auto &upload : request.file_data()) {
+        const auto rate = co_await sessions_.RateLimitCoro(
+            "upload:global", 60, resource_limits::kUploadPerMinute);
+        if (!rate.ok() || !rate.value()) {
+            response.set_success(false);
+            response.set_errmsg(
+                FormatErrorForClient(common_errors::RateLimited()));
+            co_return response;
+        }
         const std::string file_id = NewId();
         FileRecord record;
         record.file_id = file_id;
         record.file_name = upload.file_name();
-        record.file_size = static_cast<std::uint64_t>(upload.file_size());
+        record.file_size = upload.file_content().size();
         record.file_content = upload.file_content();
         record.owner_user_id = owner;
         record.chat_session_id = session;
@@ -186,7 +206,7 @@ drogon::Task<zchat::PutMultiFileRsp> FileApplicationService::PutMultiFileCoro(
         auto *info = response.add_file_info();
         info->set_file_id(file_id);
         info->set_file_name(upload.file_name());
-        info->set_file_size(upload.file_size());
+        info->set_file_size(record.file_size);
     }
     co_return response;
 }

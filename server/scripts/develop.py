@@ -18,7 +18,7 @@ from typing import Sequence
 
 SUPPORTED_PRESETS = ("conan2-debug", "conan2-release")
 DEFAULT_PRESET = "conan2-debug"
-DEFAULT_BUILD_JOBS = int(os.environ.get("BUILD_JOBS", "4"))
+DEFAULT_BUILD_JOBS = int(os.environ.get("BUILD_JOBS", "1"))
 DEFAULT_STARTUP_GRACE_SECONDS = float(os.environ.get("STARTUP_GRACE_SECONDS", "1"))
 
 

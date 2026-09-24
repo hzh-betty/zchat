@@ -26,7 +26,8 @@ struct RouteEntry {
     bool requires_auth;
     std::chrono::seconds deadline;
     std::function<drogon::Task<drogon::HttpResponsePtr>(
-        SessionStore *, GrpcServiceClients &, const std::string &)>
+        SessionStore *, GrpcServiceClients &, const std::string &,
+        const std::string &)>
         handle;
 };
 

@@ -15,6 +15,7 @@
 
 #include <amqpcpp.h>
 #include <amqpcpp/libevent.h>
+#include <amqpcpp/reliable.h>
 #include <event2/event.h>
 #include <event2/thread.h>
 #include <openssl/ssl.h>
@@ -220,19 +221,35 @@ class AmqpConsumerRuntime {
         : base_(CreateEventBase()), handler_(base_.get(), &config),
           address_(BuildRabbitmqAddress(config)),
           connection_(&handler_, address_), channel_(&connection_),
-          exchange_(config.exchange), queue_(config.queue),
-          routing_key_(config.routing_key),
+          republisher_(channel_), exchange_(config.exchange),
+          queue_(config.queue), routing_key_(config.routing_key),
           message_handler_(std::move(handler)), pool_size_(pool_size) {
         if (!base_) {
             return;
         }
         StartWorkerPool(pool_size);
-        channel_.onError([](const char *message) {
+        republisher_.onError([this](const char *message) {
+            parking_failed_ = true;
             ZCHAT_LOG_ERROR("RabbitMQ consumer channel error: {}",
                             message == nullptr ? "unknown" : message);
         });
+        channel_.recall().onReturned(
+            [this](const AMQP::Message &, int16_t, const std::string &reason) {
+                parking_failed_ = true;
+                ZCHAT_LOG_ERROR(
+                    "RabbitMQ storage retry/blocked message unroutable: {}",
+                    reason);
+                connection_.close();
+            });
         channel_.declareExchange(exchange_, AMQP::direct, AMQP::durable);
         channel_.declareQueue(queue_, AMQP::durable);
+        channel_.declareQueue(queue_ + ".storage_blocked", AMQP::durable);
+        AMQP::Table retry_arguments;
+        retry_arguments["x-message-ttl"] = 60000;
+        retry_arguments["x-dead-letter-exchange"] = "";
+        retry_arguments["x-dead-letter-routing-key"] = queue_;
+        channel_.declareQueue(queue_ + ".storage_retry", AMQP::durable,
+                              retry_arguments);
         channel_.bindQueue(exchange_, queue_, routing_key_);
         channel_.setQos(
             static_cast<std::uint16_t>(pool_size > 0 ? pool_size * 2 : 8));
@@ -270,6 +287,7 @@ class AmqpConsumerRuntime {
     struct Task {
         std::string payload;
         std::uint64_t delivery_tag = 0;
+        std::string parking_queue;
     };
 
     void StartWorkerPool(std::size_t pool_size) {
@@ -309,7 +327,25 @@ class AmqpConsumerRuntime {
             }
 
             const auto handled = message_handler_(task.payload);
-            if (!handled.ok()) {
+            if (!handled.ok() &&
+                (handled.error().code == ErrorCode::kFileStorageRejected ||
+                 handled.error().code == ErrorCode::kRateLimited)) {
+                const bool retry =
+                    handled.error().code == ErrorCode::kRateLimited;
+                ZCHAT_LOG_WARN("RabbitMQ file storage failure, {}: {}",
+                               retry ? "retry in 60 seconds"
+                                     : "park for operator review",
+                               FormatErrorForLog(handled.error()));
+                task.parking_queue =
+                    queue_ + (retry ? ".storage_retry" : ".storage_blocked");
+                {
+                    std::lock_guard<std::mutex> lock(ack_mutex_);
+                    pending_parked_.push(std::move(task));
+                }
+                timeval timeout{};
+                event_base_once(base_.get(), -1, EV_TIMEOUT,
+                                DrainParkedCallback, this, &timeout);
+            } else if (!handled.ok()) {
                 ZCHAT_LOG_ERROR(
                     "RabbitMQ message handling failed, requeueing: {}",
                     handled.error().message);
@@ -317,6 +353,36 @@ class AmqpConsumerRuntime {
             } else {
                 EnqueueAck(task.delivery_tag);
             }
+        }
+    }
+
+    static void DrainParkedCallback(evutil_socket_t, short, void *context) {
+        auto *self = static_cast<AmqpConsumerRuntime *>(context);
+        std::queue<Task> tasks;
+        {
+            std::lock_guard<std::mutex> lock(self->ack_mutex_);
+            tasks.swap(self->pending_parked_);
+        }
+        while (!tasks.empty()) {
+            auto task = std::move(tasks.front());
+            tasks.pop();
+            AMQP::Envelope envelope(task.payload.data(), task.payload.size());
+            envelope.setDeliveryMode(2);
+            self->republisher_
+                .publish("", task.parking_queue, envelope, AMQP::mandatory)
+                .onAck([self, tag = task.delivery_tag]() {
+                    // Keep the source unacked unless durable publication
+                    // succeeded.
+                    if (!self->parking_failed_)
+                        self->channel_.ack(tag);
+                })
+                .onLost([self]() {
+                    self->parking_failed_ = true;
+                    ZCHAT_LOG_ERROR(
+                        "RabbitMQ failed to preserve storage-blocked message; "
+                        "source remains unacked");
+                    self->connection_.close();
+                });
         }
     }
 
@@ -379,6 +445,7 @@ class AmqpConsumerRuntime {
     AMQP::Address address_;
     AMQP::TcpConnection connection_;
     AMQP::TcpChannel channel_;
+    AMQP::Reliable<> republisher_;
     std::string exchange_;
     std::string queue_;
     std::string routing_key_;
@@ -395,6 +462,8 @@ class AmqpConsumerRuntime {
     std::mutex ack_mutex_;
     std::queue<std::uint64_t> pending_acks_;
     std::queue<std::uint64_t> pending_nacks_;
+    std::queue<Task> pending_parked_;
+    bool parking_failed_ = false;
 };
 
 ConfiguredMessageQueuePublisher::ConfiguredMessageQueuePublisher(

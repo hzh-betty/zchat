@@ -42,6 +42,7 @@ enum class ErrorCode {
 
     kMessageNotFound = 3001,
     kFileNotFound = 4001,
+    kFileStorageRejected = 4002,
     kSpeechRecognitionFailed = 5001,
     kTransmitTargetNotFound = 6001,
 };
@@ -102,6 +103,8 @@ inline const char *ErrorCodeName(ErrorCode code) {
         return "MESSAGE_NOT_FOUND";
     case ErrorCode::kFileNotFound:
         return "FILE_NOT_FOUND";
+    case ErrorCode::kFileStorageRejected:
+        return "FILE_STORAGE_REJECTED";
     case ErrorCode::kSpeechRecognitionFailed:
         return "SPEECH_RECOGNITION_FAILED";
     case ErrorCode::kTransmitTargetNotFound:

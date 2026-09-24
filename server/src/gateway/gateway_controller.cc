@@ -51,14 +51,15 @@ void GatewayController::RegisterForwardPost(const std::string &path,
             auto body = std::string(request->body());
             [](std::shared_ptr<GatewayContext> ctx,
                std::function<drogon::Task<drogon::HttpResponsePtr>(
-                   SessionStore *, GrpcServiceClients &, const std::string &)>
+                   SessionStore *, GrpcServiceClients &, const std::string &,
+                   const std::string &)>
                    handle,
-               std::string body,
+               std::string body, std::string peer_ip,
                std::function<void(const drogon::HttpResponsePtr &)> callback)
                 -> drogon::AsyncTask {
                 try {
-                    auto resp = co_await handle(&ctx->sessions(),
-                                                ctx->grpc_clients(), body);
+                    auto resp = co_await handle(
+                        &ctx->sessions(), ctx->grpc_clients(), body, peer_ip);
                     callback(resp);
                 } catch (const std::exception &e) {
                     ZCHAT_LOG_ERROR("gateway coroutine exception: {}",
@@ -66,7 +67,8 @@ void GatewayController::RegisterForwardPost(const std::string &path,
                     callback(TextResponse("internal error"));
                 }
                 co_return;
-            }(ctx, std::move(handle), std::move(body), std::move(callback));
+            }(ctx, std::move(handle), std::move(body),
+                request->peerAddr().toIp(), std::move(callback));
         },
         {drogon::Post});
 }

@@ -1,3 +1,5 @@
+#include "common/file_storage.h"
+#include "common/uuid.h"
 #include "user/user_repository.h"
 
 #include <utility>
@@ -128,13 +130,13 @@ OrmUserRepository::UpdateUserPhoneCoro(const std::string &user_id,
 
 drogon::Task<VoidResult>
 OrmUserRepository::UpdateUserAvatarCoro(const std::string &user_id,
-                                        const std::string &avatar_id) {
-    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
-        co_await db_->execSqlCoro(
-            "UPDATE `user` SET avatar_id=? WHERE user_id=?", avatar_id,
-            user_id);
-        co_return VoidResult::Ok();
-    });
+                                        const std::string &avatar_content) {
+    FileRecord file;
+    file.file_id = NewId();
+    file.file_name = "avatar";
+    file.file_content = avatar_content;
+    file.owner_user_id = user_id;
+    return StoreFileCoro(db_, std::move(file), true);
 }
 
 } // namespace zchat

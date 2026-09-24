@@ -1,3 +1,4 @@
+#include "common/file_storage.h"
 #include "file/file_repository.h"
 
 #include <utility>
@@ -12,20 +13,7 @@ OrmFileRepository::OrmFileRepository(std::shared_ptr<drogon::orm::DbClient> db)
 
 drogon::Task<VoidResult>
 OrmFileRepository::PutFileCoro(const FileRecord &file) {
-    return RunDbCoro([&]() -> drogon::Task<VoidResult> {
-        co_await db_->execSqlCoro(
-            "INSERT INTO `file_store` "
-            "(file_id,file_name,file_size,file_content,owner_user_id,"
-            "chat_session_id) VALUES (?,?,?,?,NULLIF(?, ''),NULLIF(?, '')) "
-            "ON DUPLICATE KEY UPDATE file_name=VALUES(file_name),"
-            "file_size=VALUES(file_size),file_content=VALUES(file_content),"
-            "owner_user_id=VALUES(owner_user_id),"
-            "chat_session_id=VALUES(chat_session_id)",
-            file.file_id, file.file_name,
-            static_cast<std::uint64_t>(file.file_size), file.file_content,
-            file.owner_user_id, file.chat_session_id);
-        co_return VoidResult::Ok();
-    });
+    return StoreFileCoro(db_, file);
 }
 
 drogon::Task<Result<std::optional<FileRecord>>>

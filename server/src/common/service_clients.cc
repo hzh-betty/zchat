@@ -1,5 +1,6 @@
 #include "common/service_clients.h"
 
+#include "common/file_errors.h"
 #include "common/logger.h"
 
 namespace zchat {
@@ -177,9 +178,7 @@ drogon::Task<Result<std::string>> ServiceClients::PutFileCoro(
     }
     if (!rsp.value().success()) {
         co_return Result<std::string>::Fail(
-            AppError::WithCode(ErrorCode::kExternalServiceError,
-                               "file_service put file failed")
-                .WithDetail(rsp.value().errmsg()));
+            FileUploadError(rsp.value().errmsg()));
     }
     co_return Result<std::string>::Ok(rsp.value().file_info().file_id());
 }

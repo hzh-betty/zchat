@@ -65,9 +65,6 @@ class UserApplicationService : public NonCopyable {
     drogon::Task<std::string>
     GetAvatarContentCoro(const std::string &avatar_id,
                          const std::string &caller_user_id);
-    drogon::Task<Result<std::string>>
-    PutAvatarContentCoro(const std::string &avatar_content,
-                         const std::string &owner_user_id);
 
     UserRepository &users_;
     ServiceClients &clients_;

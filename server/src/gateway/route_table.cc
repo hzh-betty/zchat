@@ -3,6 +3,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include <grpcpp/grpcpp.h>
@@ -144,31 +145,51 @@ AuthAndForwardTransmiteCoro(SessionStore &sessions, GrpcServiceClients &clients,
 }
 
 using HandlerFn = std::function<drogon::Task<drogon::HttpResponsePtr>(
-    SessionStore *, GrpcServiceClients &, const std::string &)>;
+    SessionStore *, GrpcServiceClients &, const std::string &,
+    const std::string &)>;
 
 template <typename Service, typename Req, typename Rsp, typename AsyncCall>
 HandlerFn PublicHandler(const char *svc, AsyncCall async_call,
                         std::chrono::seconds deadline) {
-    return
-        [svc, async_call, deadline](
-            SessionStore *, GrpcServiceClients &clients,
-            const std::string &body) -> drogon::Task<drogon::HttpResponsePtr> {
-            co_return co_await CallStubCoro<Service, Req, Rsp>(
-                clients, svc, async_call, body, deadline);
-        };
+    return [svc, async_call,
+            deadline](SessionStore *sessions, GrpcServiceClients &clients,
+                      const std::string &body, const std::string &peer_ip)
+               -> drogon::Task<drogon::HttpResponsePtr> {
+        const char *prefix = nullptr;
+        int count = 0;
+        if constexpr (std::is_same_v<Req, zchat::UserLoginReq>) {
+            prefix = "login:ip:";
+            count = 10;
+        } else if constexpr (std::is_same_v<Req, zchat::UserRegisterReq>) {
+            prefix = "register:ip:";
+            count = 3;
+        } else if constexpr (std::is_same_v<Req, zchat::PhoneVerifyCodeReq>) {
+            prefix = "sms:ip:";
+            count = 3;
+        }
+        if (prefix != nullptr) {
+            const auto allowed = co_await sessions->RateLimitCoro(
+                std::string(prefix) + peer_ip, 60, count);
+            if (!allowed.ok() || !allowed.value()) {
+                co_return ErrorResponse<Rsp>(common_errors::RateLimited());
+            }
+        }
+        co_return co_await CallStubCoro<Service, Req, Rsp>(
+            clients, svc, async_call, body, deadline);
+    };
 }
 
 template <typename Service, typename Req, typename Rsp, typename AsyncCall>
 HandlerFn AuthHandler(const char *svc, AsyncCall async_call,
                       std::chrono::seconds deadline,
                       const RateLimitPolicy *rl = nullptr) {
-    return
-        [svc, async_call, deadline,
-         rl](SessionStore *sessions, GrpcServiceClients &clients,
-             const std::string &body) -> drogon::Task<drogon::HttpResponsePtr> {
-            co_return co_await AuthAndForwardCoro<Req, Rsp, Service>(
-                *sessions, clients, svc, async_call, body, deadline, rl);
-        };
+    return [svc, async_call, deadline,
+            rl](SessionStore *sessions, GrpcServiceClients &clients,
+                const std::string &body,
+                const std::string &) -> drogon::Task<drogon::HttpResponsePtr> {
+        co_return co_await AuthAndForwardCoro<Req, Rsp, Service>(
+            *sessions, clients, svc, async_call, body, deadline, rl);
+    };
 }
 
 template <typename Service, typename Req, typename Rsp, typename AsyncCall>
@@ -290,7 +311,8 @@ const std::vector<RouteEntry> &BuildRouteTable() {
                                       AC(MsgStorageService, MsgSearch), kD),
         {"/service/message_transmit/new_message", "transmite_service", true, kD,
          [](SessionStore *sessions, GrpcServiceClients &clients,
-            const std::string &body) -> drogon::Task<drogon::HttpResponsePtr> {
+            const std::string &body,
+            const std::string &) -> drogon::Task<drogon::HttpResponsePtr> {
              co_return co_await AuthAndForwardTransmiteCoro(
                  *sessions, clients, body, &kMessageRateLimit);
          }},

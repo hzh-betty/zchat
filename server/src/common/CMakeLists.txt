@@ -2,6 +2,7 @@ add_library(zchat_common STATIC
   channel_pool.cc
   config.cc
   crypto.cc
+  file_storage.cc
   etcd_service.cc
   logger.cc
   notify_publisher.cc

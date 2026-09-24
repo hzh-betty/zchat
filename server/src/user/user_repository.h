@@ -43,7 +43,7 @@ class UserRepository : public NonCopyable {
                         const std::string &phone) = 0;
     virtual drogon::Task<VoidResult>
     UpdateUserAvatarCoro(const std::string &user_id,
-                         const std::string &avatar_id) = 0;
+                         const std::string &avatar_content) = 0;
 };
 
 class OrmUserRepository final : public UserRepository,
@@ -73,7 +73,7 @@ class OrmUserRepository final : public UserRepository,
                         const std::string &phone) override;
     drogon::Task<VoidResult>
     UpdateUserAvatarCoro(const std::string &user_id,
-                         const std::string &avatar_id) override;
+                         const std::string &avatar_content) override;
 };
 
 } // namespace zchat
