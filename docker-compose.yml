@@ -207,18 +207,20 @@ services:
       xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/server-cert.pem
       xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/server-key.pem
       xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.pem
-      ELASTIC_PASSWORD: ${ZCHAT_ELASTICSEARCH_PASSWORD:?elasticsearch password is required}
+      ELASTIC_PASSWORD_FILE: /run/secrets/elasticsearch_password
       ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
       - "127.0.0.1:${ZCHAT_ES_PUBLISHED_PORT:-9200}:${ZCHAT_ES_PORT:-9200}"
     volumes:
       - es-data:/usr/share/elasticsearch/data
       - ./server/certs/elasticsearch:/usr/share/elasticsearch/config/certs:ro
+    secrets:
+      - elasticsearch_password
     networks:
       - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "curl --cacert /usr/share/elasticsearch/config/certs/ca.pem -u elastic:${ZCHAT_ELASTICSEARCH_PASSWORD:?elasticsearch password is required} --fail --silent https://127.0.0.1:${ZCHAT_ES_PORT:-9200}/_cluster/health >/dev/null"]
+      test: ["CMD-SHELL", "curl --cacert /usr/share/elasticsearch/config/certs/ca.pem -u elastic:$$(cat /run/secrets/elasticsearch_password) --fail --silent https://127.0.0.1:${ZCHAT_ES_PORT:-9200}/_cluster/health >/dev/null"]
 
   file-service:
     <<: *zchat-service-base
