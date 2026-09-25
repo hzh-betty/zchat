@@ -25,6 +25,7 @@ build_type=Debug
 
 [options]
 *:shared=False
+openssl/*:shared=True
 
 [conf]
 tools.cmake.cmaketoolchain:generator=Ninja

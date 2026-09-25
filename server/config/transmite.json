@@ -44,7 +44,7 @@
     "routing_key": "msg_queue",
     "tls": {
       "enable": true,
-      "ca_path": "{{ZCHAT_GRPC_CA_PATH}}"
+      "ca_path": "{{ZCHAT_RABBITMQ_TLS_CA_PATH}}"
     }
   },
   "grpc": {

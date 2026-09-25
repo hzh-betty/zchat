@@ -32,6 +32,7 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
     }
 
     zchat::GetUserInfoReq user_request;
+    user_request.set_session_id(request.session_id());
     user_request.set_user_id(user_id.value().value());
     auto user_response = co_await clients_.GetUserCoro(user_request);
     if (!user_response.ok() || !user_response.value().success()) {

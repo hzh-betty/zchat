@@ -20,6 +20,10 @@ void ZchatWebSocketController::SetContext(
 void ZchatWebSocketController::handleNewMessage(
     const drogon::WebSocketConnectionPtr &connection, std::string &&message,
     const drogon::WebSocketMessageType &type) {
+    if (type == drogon::WebSocketMessageType::Ping ||
+        type == drogon::WebSocketMessageType::Pong) {
+        return;
+    }
     if (type != drogon::WebSocketMessageType::Binary) {
         ZCHAT_LOG_WARN("websocket auth rejected: non-binary message");
         connection->shutdown();

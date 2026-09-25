@@ -3,6 +3,7 @@ target_link_libraries(zchat_message_queue
   PUBLIC
     zchat_common
     amqpcpp
+    OpenSSL::SSL
     libevent::core
     libevent::pthreads)
 

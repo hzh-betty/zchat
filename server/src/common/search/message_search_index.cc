@@ -83,6 +83,9 @@ ConfiguredMessageSearchIndex::ConfiguredMessageSearchIndex(
         std::make_unique<trantor::EventLoopThread>("zchat-es-http-client");
     loop_thread_->run();
     client_ = drogon::HttpClient::newHttpClient(host_, loop_thread_->getLoop());
+    if (config.tls.enable && !config.tls.ca_path.empty()) {
+        client_->addSSLConfigs({{"VerifyCAFile", config.tls.ca_path}});
+    }
     const auto ensured = EnsureIndex();
     if (!ensured.ok()) {
         ZCHAT_LOG_WARN("Elasticsearch message index init failed: {}",
@@ -216,7 +219,7 @@ std::string BuildElasticsearchSearchRequest(const std::string &session_id,
 
     json filters(json::array());
     json session_filter(json::object());
-    session_filter["term"]["session_id.keyword"] = session_id;
+    session_filter["term"]["session_id"] = session_id;
     filters.push_back(session_filter);
     json type_filter(json::object());
     type_filter["term"]["message_type"] = 0;

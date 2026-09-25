@@ -49,7 +49,7 @@
     "password": "{{secret_file:ZCHAT_ELASTICSEARCH_PASSWORD_FILE}}",
     "tls": {
       "enable": true,
-      "ca_path": "{{ZCHAT_GRPC_CA_PATH}}"
+      "ca_path": "{{ZCHAT_ES_TLS_CA_PATH}}"
     }
   },
   "sms": {

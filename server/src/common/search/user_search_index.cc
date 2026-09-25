@@ -77,6 +77,9 @@ ConfiguredUserSearchIndex::ConfiguredUserSearchIndex(
         std::make_unique<trantor::EventLoopThread>("zchat-es-user-client");
     loop_thread_->run();
     client_ = drogon::HttpClient::newHttpClient(host_, loop_thread_->getLoop());
+    if (config.tls.enable && !config.tls.ca_path.empty()) {
+        client_->addSSLConfigs({{"VerifyCAFile", config.tls.ca_path}});
+    }
     const auto ensured = EnsureIndex();
     if (!ensured.ok()) {
         ZCHAT_LOG_WARN("Elasticsearch user index init failed: {}",
@@ -199,14 +202,14 @@ std::string BuildElasticsearchUserSearchRequest(
     const std::vector<std::string> &excluded_user_ids) {
     json root(json::object());
     root["size"] = 50;
-    root["query"]["bool"]["should"][0]["term"]["user_id.keyword"] = keyword;
-    root["query"]["bool"]["should"][1]["term"]["phone.keyword"] = keyword;
+    root["query"]["bool"]["should"][0]["term"]["user_id"] = keyword;
+    root["query"]["bool"]["should"][1]["term"]["phone"] = keyword;
     root["query"]["bool"]["should"][2]["match"]["nickname"] = keyword;
     root["query"]["bool"]["minimum_should_match"] = 1;
     if (!excluded_user_ids.empty()) {
         for (const auto &id : excluded_user_ids) {
-            root["query"]["bool"]["must_not"][0]["terms"]["user_id.keyword"]
-                .push_back(id);
+            root["query"]["bool"]["must_not"][0]["terms"]["user_id"].push_back(
+                id);
         }
     }
     return CompactJson(root);

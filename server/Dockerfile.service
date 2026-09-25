@@ -57,6 +57,12 @@ RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
     && mkdir -p /app/lib/plugin \
     && find /root/.conan2 -path '*/lib/plugin/*.so' -exec cp -L {} /app/lib/plugin/ \;
 
+RUN mkdir -p /app/lib \
+    && ssl_path="$(ldd /app/build/${BUILD_PRESET}/bin/zchat_transmite_service | awk '$1 == "libssl.so.3" { print $3 }')" \
+    && crypto_path="$(ldd /app/build/${BUILD_PRESET}/bin/zchat_transmite_service | awk '$1 == "libcrypto.so.3" { print $3 }')" \
+    && case "$ssl_path:$crypto_path" in /root/.conan2/*:/root/.conan2/*) ;; *) exit 1 ;; esac \
+    && install -m 755 "$ssl_path" "$crypto_path" /app/lib/
+
 # ==========================================
 # Runner
 # ==========================================
@@ -75,9 +81,12 @@ WORKDIR /app
 ARG BUILD_PRESET=conan2-release
 
 ENV MARIADB_PLUGIN_DIR=/app/lib/plugin
+ENV LD_LIBRARY_PATH=/app/lib
 
 COPY --from=builder /app/build/${BUILD_PRESET}/bin /app/bin
 COPY --from=builder /app/lib/plugin /app/lib/plugin
+COPY --from=builder /app/lib/libssl.so.3 /app/lib/libssl.so.3
+COPY --from=builder /app/lib/libcrypto.so.3 /app/lib/libcrypto.so.3
 COPY --from=builder /app/server/config /app/server/config
 
 CMD ["/bin/sh", "-c", "exec /app/bin/${SERVICE_BINARY}"]

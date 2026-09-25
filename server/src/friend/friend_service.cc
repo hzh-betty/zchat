@@ -531,13 +531,18 @@ drogon::Task<std::string> FriendApplicationService::ResolveUserIdCoro(
 
 drogon::Task<zchat::UserInfo>
 FriendApplicationService::UserInfoForIdCoro(const std::string &user_id) {
-    zchat::GetUserInfoReq req;
-    req.set_user_id(user_id);
-    auto rsp = co_await clients_.GetUserCoro(req);
+    zchat::GetMultiUserInfoReq req;
+    req.add_users_id(user_id);
+    auto rsp = co_await clients_.GetMultiUserInfoCoro(req);
     if (!rsp.ok() || !rsp.value().success()) {
         co_return zchat::UserInfo{};
     }
-    co_return rsp.value().user_info();
+    const auto &users = rsp.value().users_info();
+    const auto user = users.find(user_id);
+    if (user == users.end()) {
+        co_return zchat::UserInfo{};
+    }
+    co_return user->second;
 }
 
 drogon::Task<zchat::ChatSessionInfo>

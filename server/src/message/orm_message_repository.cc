@@ -30,20 +30,22 @@ OrmMessageRepository::InsertMessageCoro(const MessageRecord &message) {
 drogon::Task<Result<std::vector<MessageRecord>>>
 OrmMessageRepository::ListRecentMessagesCoro(const std::string &session_id,
                                              int count) {
-    return RunDbCoro([&]() -> drogon::Task<Result<std::vector<MessageRecord>>> {
-        const auto result = co_await db_->execSqlCoro(
-            "SELECT message_id,session_id,user_id,message_type,"
-            "UNIX_TIMESTAMP(create_time) AS create_time,content,file_id,"
-            "file_name,file_size FROM `message` WHERE session_id=? "
-            "ORDER BY create_time DESC,id DESC LIMIT ?",
-            session_id, count);
-        std::vector<MessageRecord> messages;
-        for (const auto &row : result) {
-            messages.push_back(ToMessageRecord(row));
-        }
-        std::reverse(messages.begin(), messages.end());
-        co_return Result<std::vector<MessageRecord>>::Ok(std::move(messages));
-    });
+    return RunDbCoro(
+        [&, count]() -> drogon::Task<Result<std::vector<MessageRecord>>> {
+            const auto result = co_await db_->execSqlCoro(
+                "SELECT message_id,session_id,user_id,message_type,"
+                "UNIX_TIMESTAMP(create_time) AS create_time,content,file_id,"
+                "file_name,file_size FROM `message` WHERE session_id=? "
+                "ORDER BY create_time DESC,id DESC LIMIT ?",
+                session_id, count);
+            std::vector<MessageRecord> messages;
+            for (const auto &row : result) {
+                messages.push_back(ToMessageRecord(row));
+            }
+            std::reverse(messages.begin(), messages.end());
+            co_return Result<std::vector<MessageRecord>>::Ok(
+                std::move(messages));
+        });
 }
 
 drogon::Task<Result<std::vector<MessageRecord>>>

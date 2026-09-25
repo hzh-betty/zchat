@@ -62,24 +62,41 @@ class RuntimeHandler final : public AMQP::LibEventHandler {
     void onClosed(AMQP::TcpConnection *) override { ready_.store(false); }
 
     bool onSecuring(AMQP::TcpConnection *, SSL *ssl) override {
-        if (tls_config_ != nullptr && tls_config_->tls.enable &&
-            !tls_config_->tls.ca_path.empty()) {
+        if (tls_config_ != nullptr && tls_config_->tls.enable) {
+            if (tls_config_->tls.ca_path.empty() || tls_config_->host.empty()) {
+                return false;
+            }
             SSL_CTX *ctx = SSL_get_SSL_CTX(ssl);
-            if (ctx != nullptr) {
+            if (ctx == nullptr ||
                 SSL_CTX_load_verify_locations(
-                    ctx, tls_config_->tls.ca_path.c_str(), nullptr);
-                if (!tls_config_->tls.cert_path.empty() &&
-                    !tls_config_->tls.key_path.empty()) {
-                    SSL_CTX_use_certificate_file(
+                    ctx, tls_config_->tls.ca_path.c_str(), nullptr) != 1 ||
+                SSL_set1_host(ssl, tls_config_->host.c_str()) != 1) {
+                return false;
+            }
+            SSL_set_verify(ssl, SSL_VERIFY_PEER, nullptr);
+            if (tls_config_->tls.cert_path.empty() !=
+                tls_config_->tls.key_path.empty()) {
+                return false;
+            }
+            if (!tls_config_->tls.cert_path.empty() &&
+                !tls_config_->tls.key_path.empty()) {
+                if (SSL_CTX_use_certificate_file(
                         ctx, tls_config_->tls.cert_path.c_str(),
-                        SSL_FILETYPE_PEM);
+                        SSL_FILETYPE_PEM) != 1 ||
                     SSL_CTX_use_PrivateKey_file(
                         ctx, tls_config_->tls.key_path.c_str(),
-                        SSL_FILETYPE_PEM);
+                        SSL_FILETYPE_PEM) != 1 ||
+                    SSL_CTX_check_private_key(ctx) != 1) {
+                    return false;
                 }
             }
         }
         return true;
+    }
+
+    bool onSecured(AMQP::TcpConnection *, const SSL *ssl) override {
+        return SSL_get_verify_result(ssl) == X509_V_OK &&
+               SSL_get0_peer_certificate(ssl) != nullptr;
     }
 
     bool ready() const { return ready_.load(); }

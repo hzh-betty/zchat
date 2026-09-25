@@ -43,6 +43,18 @@ x-grpc-certs-volume: &grpc-certs-volume
   target: /etc/ssl/certs/zchat-grpc
   read_only: true
 
+x-es-ca-volume: &es-ca-volume
+  type: bind
+  source: ./server/certs/elasticsearch/ca.pem
+  target: /etc/ssl/certs/zchat-es-ca.pem
+  read_only: true
+
+x-rabbitmq-ca-volume: &rabbitmq-ca-volume
+  type: bind
+  source: ./server/certs/rabbitmq/ca.pem
+  target: /etc/ssl/certs/zchat-rabbitmq-ca.pem
+  read_only: true
+
 x-grpc-tls-env: &grpc-tls-env
   ZCHAT_GRPC_CA_PATH: /etc/ssl/certs/zchat-grpc/ca.pem
   ZCHAT_GRPC_CERT_PATH: /etc/ssl/certs/zchat-grpc/server-cert.pem
@@ -50,8 +62,8 @@ x-grpc-tls-env: &grpc-tls-env
   ZCHAT_ETCD_TLS_CA_PATH: /etc/ssl/certs/zchat-grpc/ca.pem
   ZCHAT_ETCD_TLS_CERT_PATH: /etc/ssl/certs/zchat-grpc/server-cert.pem
   ZCHAT_ETCD_TLS_KEY_PATH: /etc/ssl/certs/zchat-grpc/server-key.pem
-  ZCHAT_ES_TLS_CA_PATH: /etc/ssl/certs/zchat-grpc/ca.pem
-  ZCHAT_RABBITMQ_TLS_CA_PATH: /etc/ssl/certs/zchat-grpc/ca.pem
+  ZCHAT_ES_TLS_CA_PATH: /etc/ssl/certs/zchat-es-ca.pem
+  ZCHAT_RABBITMQ_TLS_CA_PATH: /etc/ssl/certs/zchat-rabbitmq-ca.pem
 
 x-healthcheck-defaults: &healthcheck-defaults
   interval: 10s
@@ -157,7 +169,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
       ZCHAT_RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
-      RABBITMQ_NODE_PORT: ${ZCHAT_RABBITMQ_PORT:-5671}
+      ZCHAT_RABBITMQ_PORT: ${ZCHAT_RABBITMQ_PORT:-5671}
     command:
       - /bin/sh
       - -ec
@@ -166,7 +178,8 @@ services:
         {
           printf 'default_user = %s\n' "$${RABBITMQ_DEFAULT_USER}"
           printf 'default_pass = %s\n' "$${rabbitmq_password}"
-          printf 'listeners.ssl.default = 5671\n'
+          printf 'listeners.tcp = none\n'
+          printf 'listeners.ssl.default = %s\n' "$${ZCHAT_RABBITMQ_PORT}"
           printf 'ssl_options.cacertfile = /etc/rabbitmq/ssl/ca.pem\n'
           printf 'ssl_options.certfile = /etc/rabbitmq/ssl/server-cert.pem\n'
           printf 'ssl_options.keyfile = /etc/rabbitmq/ssl/server-key.pem\n'
@@ -190,7 +203,9 @@ services:
       - zchat-network
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test:
+        - CMD-SHELL
+        - "rabbitmq-diagnostics -q ping && rabbitmq-diagnostics listeners | grep -q \"port: $${ZCHAT_RABBITMQ_PORT}, protocol: amqp/ssl\""
 
   elasticsearch:
     image: elasticsearch:8.8.2
@@ -265,6 +280,8 @@ services:
       ZCHAT_SPEECH_APP_ID: ${ZCHAT_SPEECH_APP_ID:-}
       ZCHAT_SPEECH_API_KEY_FILE: /run/secrets/speech_api_key
       ZCHAT_SPEECH_SECRET_KEY_FILE: /run/secrets/speech_secret_key
+    volumes:
+      - *grpc-certs-volume
     secrets:
       - etcd_password
       - speech_api_key
@@ -300,6 +317,7 @@ services:
     volumes:
       - *mysql-ca-volume
       - *grpc-certs-volume
+      - *rabbitmq-ca-volume
     secrets:
       - mysql_password
       - redis_password
@@ -343,6 +361,8 @@ services:
     volumes:
       - *mysql-ca-volume
       - *grpc-certs-volume
+      - *es-ca-volume
+      - *rabbitmq-ca-volume
     secrets:
       - mysql_password
       - etcd_password
@@ -425,6 +445,7 @@ services:
     volumes:
       - *mysql-ca-volume
       - *grpc-certs-volume
+      - *es-ca-volume
     secrets:
       - mysql_password
       - redis_password
