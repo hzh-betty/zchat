@@ -35,6 +35,7 @@ message PutSingleFileReq {
     optional string user_id = 2;
     optional string session_id = 3;
     FileUploadData file_data = 4;
+    optional string idempotency_key = 5;
 }
 message PutSingleFileRsp {
     string request_id = 1;

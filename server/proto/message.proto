@@ -11,7 +11,7 @@ message GetHistoryMsgReq {
     int64 over_time = 4;
     optional string user_id = 5;
     optional string session_id = 6;
-    optional int32 max_count = 7;       // 每页条数，缺省 50，上限 200
+    optional int32 max_count = 7;       // 每页条数，缺省 50，上限 50
     optional string before_msg_id = 8;  // 游标：返回该 message_id 之前的消息，首页不传
 }
 message GetHistoryMsgRsp {
@@ -43,7 +43,7 @@ message MsgSearchReq {
     string chat_session_id = 4;
     string search_key = 5;
     optional int32 offset = 6;  // 搜索结果偏移，缺省 0
-    optional int32 limit = 7;   // 每页条数，缺省 50，上限 100
+    optional int32 limit = 7;   // 每页条数，缺省 50，上限 50
 }
 message MsgSearchRsp {
     string request_id = 1;

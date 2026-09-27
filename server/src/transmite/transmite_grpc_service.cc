@@ -25,6 +25,7 @@ TransmiteGrpcService::GetTransmitTarget(grpc::CallbackServerContext *,
             rsp.set_request_id(result.request_id());
             rsp.set_success(result.success());
             rsp.set_errmsg(result.errmsg());
+            rsp.set_message_id(result.message_id());
             co_return rsp;
         },
         response, "MsgTransmitService", "GetTransmitTarget",

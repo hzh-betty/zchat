@@ -76,6 +76,7 @@ CallTransmiteCoro(GrpcServiceClients &clients, const std::string &body) {
     response.set_request_id(rsp.value().request_id());
     response.set_success(rsp.value().success());
     response.set_errmsg(rsp.value().errmsg());
+    response.set_message_id(rsp.value().message_id());
     co_return ProtobufResponse(response);
 }
 

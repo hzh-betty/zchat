@@ -1,5 +1,6 @@
 #include "transmite/transmite_service.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -7,6 +8,7 @@
 #include "common/error_response.h"
 #include "common/logger.h"
 #include "common/proto_mapper.h"
+#include "common/resource_limits.h"
 #include "common/uuid.h"
 #include "notify.pb.h"
 
@@ -21,6 +23,20 @@ TransmiteService::TransmiteService(MessageQueuePublisher &queue,
 
 drogon::Task<zchat::NewMessageRsp>
 TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
+    if (request.ByteSizeLong() > resource_limits::kFileBytes + 128 * 1024) {
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(
+            request.request_id(),
+            AppError::WithCode(ErrorCode::kInvalidArgument,
+                               "message is too large"));
+    }
+    if (request.message().message_type() == zchat::STRING &&
+        request.message().string_message().content().size() >
+            resource_limits::kTextBytes) {
+        co_return MakeErrorResponse<zchat::NewMessageRsp>(
+            request.request_id(),
+            AppError::WithCode(ErrorCode::kInvalidArgument,
+                               "text message is too large"));
+    }
     const auto user_id = co_await sessions_.GetUserIdCoro(request.session_id());
     if (!user_id.ok()) {
         co_return MakeErrorResponse<zchat::NewMessageRsp>(request.request_id(),
@@ -68,14 +84,28 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
                                "sender is not a member of this session"));
     }
 
+    std::string message_id = NewId();
+    if (request.has_message_id()) {
+        const auto &candidate = request.message_id();
+        if (candidate.size() != 32 ||
+            !std::all_of(candidate.begin(), candidate.end(), [](char c) {
+                return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                       (c >= 'A' && c <= 'F');
+            })) {
+            co_return MakeErrorResponse<zchat::NewMessageRsp>(
+                request.request_id(),
+                AppError::WithCode(ErrorCode::kInvalidArgument,
+                                   "invalid message id"));
+        }
+        message_id = candidate;
+    }
     std::string file_content;
     MessageRecord message =
-        ToMessageRecord(request, NewId(), user_id.value().value(),
+        ToMessageRecord(request, message_id, user_id.value().value(),
                         UnixTimeSeconds(), &file_content);
 
     std::string queue_payload;
-    ToProtoMessage(message, FromProtoUser(sender), file_content,
-                   sender.avatar())
+    ToProtoMessage(message, FromProtoUser(sender), file_content, "")
         .SerializeToString(&queue_payload);
 
     auto published = queue_.Publish(queue_payload);
@@ -92,8 +122,7 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
         zchat::NotifyMessage notify;
         notify.set_notify_type(zchat::CHAT_MESSAGE_NOTIFY);
         *notify.mutable_new_message_info()->mutable_message_info() =
-            ToProtoMessage(message, FromProtoUser(sender), file_content,
-                           sender.avatar());
+            ToProtoMessage(message, FromProtoUser(sender), file_content, "");
         std::string payload;
         notify.SerializeToString(&payload);
 
@@ -133,6 +162,7 @@ TransmiteService::NewMessageCoro(const zchat::NewMessageReq &request) {
     response.set_request_id(request.request_id());
     response.set_success(true);
     response.set_errmsg("");
+    response.set_message_id(message.message_id);
     co_return response;
 }
 

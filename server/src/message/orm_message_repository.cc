@@ -18,11 +18,34 @@ OrmMessageRepository::InsertMessageCoro(const MessageRecord &message) {
             "INSERT INTO `message` "
             "(message_id,session_id,user_id,message_type,create_time,content,"
             "file_id,file_name,file_size) "
-            "VALUES (?,?,?,?,FROM_UNIXTIME(?),?,?,?,?)",
+            "VALUES (?,?,?,?,FROM_UNIXTIME(?),?,?,?,?) "
+            "ON DUPLICATE KEY UPDATE message_id=message_id",
             message.message_id, message.session_id, message.user_id,
             message.message_type, message.create_time, message.content,
             message.file_id, message.file_name,
             static_cast<std::uint64_t>(message.file_size));
+        const auto stored = co_await db_->execSqlCoro(
+            "SELECT message_id,session_id,user_id,message_type,"
+            "UNIX_TIMESTAMP(create_time) AS create_time,content,file_id,"
+            "file_name,file_size FROM `message` WHERE message_id=? LIMIT 1",
+            message.message_id);
+        if (stored.empty()) {
+            co_return VoidResult::Fail(
+                AppError::WithCode(ErrorCode::kDatabaseError,
+                                   "message insert could not be verified"));
+        }
+        const auto existing = ToMessageRecord(stored[0]);
+        if (existing.session_id != message.session_id ||
+            existing.user_id != message.user_id ||
+            existing.message_type != message.message_type ||
+            existing.content != message.content ||
+            existing.file_id != message.file_id ||
+            existing.file_name != message.file_name ||
+            existing.file_size != message.file_size) {
+            co_return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kInvalidArgument,
+                "message id already belongs to another message"));
+        }
         co_return VoidResult::Ok();
     });
 }

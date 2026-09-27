@@ -49,7 +49,8 @@ class ServiceClients : public NonCopyable {
     drogon::Task<Result<std::string>>
     PutFileCoro(const std::string &file_name, const std::string &file_content,
                 const std::string &owner_user_id = "",
-                const std::string &chat_session_id = "");
+                const std::string &chat_session_id = "",
+                const std::string &idempotency_key = "");
 
   private:
     static constexpr auto kGrpcDeadline = std::chrono::seconds(5);

@@ -1,5 +1,8 @@
 #include "file/file_service.h"
 
+#include <algorithm>
+#include <cctype>
+
 #include "common/error_response.h"
 #include "common/logger.h"
 #include "common/resource_limits.h"
@@ -135,13 +138,17 @@ drogon::Task<zchat::PutSingleFileRsp> FileApplicationService::PutSingleFileCoro(
     const zchat::PutSingleFileReq &request) {
     ZCHAT_LOG_INFO("FileService::PutSingleFile request_id={}",
                    request.request_id());
-    const auto rate = co_await sessions_.RateLimitCoro(
-        "upload:global", 60, resource_limits::kUploadPerMinute);
-    if (!rate.ok() || !rate.value()) {
-        co_return PutErrorResponse(request.request_id(),
-                                   common_errors::RateLimited());
+    const std::string &key = request.idempotency_key();
+    if (!key.empty() &&
+        (key.size() != 32 ||
+         !std::all_of(key.begin(), key.end(),
+                      [](unsigned char c) { return std::isxdigit(c) != 0; }))) {
+        co_return PutErrorResponse(
+            request.request_id(),
+            AppError::WithCode(ErrorCode::kInvalidArgument,
+                               "invalid idempotency key"));
     }
-    const std::string file_id = NewId();
+    const std::string file_id = key.empty() ? NewId() : "F" + key;
     const auto &upload = request.file_data();
     FileRecord record;
     record.file_id = file_id;
@@ -151,9 +158,46 @@ drogon::Task<zchat::PutSingleFileRsp> FileApplicationService::PutSingleFileCoro(
     record.owner_user_id = request.has_user_id() ? request.user_id() : "";
     record.chat_session_id =
         request.has_session_id() ? request.session_id() : "";
-    const auto stored = co_await repository_.PutFileCoro(record);
-    if (!stored.ok()) {
-        co_return PutErrorResponse(request.request_id(), stored.error());
+    const auto matches_existing = [&record](const FileRecord &existing) {
+        return existing.owner_user_id == record.owner_user_id &&
+               existing.chat_session_id == record.chat_session_id &&
+               existing.file_name == record.file_name &&
+               existing.file_content == record.file_content;
+    };
+    bool already_stored = false;
+    if (!key.empty()) {
+        const auto existing = co_await repository_.GetFileCoro(file_id);
+        if (!existing.ok()) {
+            co_return PutErrorResponse(request.request_id(), existing.error());
+        }
+        if (existing.value().has_value()) {
+            if (!matches_existing(*existing.value())) {
+                co_return PutErrorResponse(
+                    request.request_id(),
+                    AppError::WithCode(ErrorCode::kConflict,
+                                       "idempotency key already used"));
+            }
+            already_stored = true;
+        }
+    }
+    if (!already_stored) {
+        const auto rate = co_await sessions_.RateLimitCoro(
+            "upload:global", 60, resource_limits::kUploadPerMinute);
+        if (!rate.ok() || !rate.value()) {
+            co_return PutErrorResponse(request.request_id(),
+                                       common_errors::RateLimited());
+        }
+        const auto stored = co_await repository_.PutFileCoro(record);
+        if (!stored.ok()) {
+            // A concurrent delivery may have inserted the same file first.
+            const auto existing = co_await repository_.GetFileCoro(file_id);
+            if (key.empty() || !existing.ok() ||
+                !existing.value().has_value() ||
+                !matches_existing(*existing.value())) {
+                co_return PutErrorResponse(request.request_id(),
+                                           stored.error());
+            }
+        }
     }
     zchat::PutSingleFileRsp response;
     response.set_request_id(request.request_id());

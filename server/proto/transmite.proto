@@ -11,17 +11,20 @@ message NewMessageReq {
     optional string session_id = 3;//客户端身份识别信息 -- 这就是消息发送者
     string chat_session_id = 4;  //聊天会话ID -- 标识了当前消息属于哪个会话，应该转发给谁
     MessageContent message = 5; // 消息内容--消息类型+内容
+    optional string message_id = 6; // 客户端重试时保持不变的消息标识
 }
 message NewMessageRsp {
     string request_id = 1;
     bool success = 2;
     string errmsg = 3; 
+    string message_id = 4;
 }
 
 message GetTransmitTargetRsp {
     string request_id = 1;
     bool success = 2;
-    string errmsg = 3; 
+    string errmsg = 3;
+    string message_id = 4;
 }
 
 service MsgTransmitService {

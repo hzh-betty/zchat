@@ -30,7 +30,7 @@ MessageService::GetRecentCoro(const zchat::GetRecentMsgReq &request) {
     }
     auto messages = co_await messages_.ListRecentMessagesCoro(
         request.chat_session_id(),
-        static_cast<int>(std::min<std::int64_t>(request.msg_count(), 200)));
+        static_cast<int>(std::clamp<std::int64_t>(request.msg_count(), 1, 50)));
     if (!messages.ok()) {
         co_return MakeErrorResponse<zchat::GetRecentMsgRsp>(
             request.request_id(), messages.error());
@@ -54,28 +54,16 @@ MessageService::GetMultiRecentCoro(const zchat::GetMultiRecentMsgReq &request) {
     }
 
     std::vector<std::string> user_ids;
-    std::vector<std::string> file_ids;
     for (const auto &message : messages.value()) {
         user_ids.push_back(message.user_id);
-        if (!message.file_id.empty()) {
-            file_ids.push_back(message.file_id);
-        }
     }
     zchat::GetMultiUserInfoReq user_req;
     user_req.set_request_id(request.request_id());
+    user_req.set_include_avatar(false);
     for (const auto &id : user_ids) {
         user_req.add_users_id(id);
     }
     auto user_rsp = co_await clients_.GetMultiUserInfoCoro(user_req);
-    std::unordered_map<std::string, std::string> file_contents;
-    if (!file_ids.empty()) {
-        auto file_rsp = co_await clients_.GetMultiFileCoro(file_ids);
-        if (file_rsp.ok() && file_rsp.value().success()) {
-            for (const auto &fd : file_rsp.value().file_data()) {
-                file_contents[fd.file_id()] = fd.file_content();
-            }
-        }
-    }
 
     zchat::GetMultiRecentMsgRsp response;
     response.set_request_id(request.request_id());
@@ -90,18 +78,22 @@ MessageService::GetMultiRecentCoro(const zchat::GetMultiRecentMsgReq &request) {
             }
         }
         if (sender.user_id().empty()) {
-            continue;
+            sender.set_user_id(message.user_id);
+            sender.set_nickname(message.user_id);
         }
-        std::string file_content;
-        if (!message.file_id.empty()) {
-            auto it = file_contents.find(message.file_id);
-            if (it != file_contents.end()) {
-                file_content = it->second;
+        MessageRecord preview = message;
+        if (preview.content.size() > 1024) {
+            std::size_t cut = 1024;
+            while (cut > 0 &&
+                   (static_cast<unsigned char>(preview.content[cut]) & 0xc0) ==
+                       0x80) {
+                --cut;
             }
+            preview.content.resize(cut);
+            preview.content += "...";
         }
         (*response.mutable_recent_messages())[message.session_id] =
-            ToProtoMessage(message, FromProtoUser(sender), file_content,
-                           sender.avatar());
+            ToProtoMessage(preview, FromProtoUser(sender), "", "");
     }
     co_return response;
 }
@@ -121,8 +113,8 @@ MessageService::GetHistoryCoro(const zchat::GetHistoryMsgReq &request) {
     if (max_count < 1) {
         max_count = 1;
     }
-    if (max_count > 200) {
-        max_count = 200;
+    if (max_count > 50) {
+        max_count = 50;
     }
     std::optional<std::string> before_msg_id;
     if (request.has_before_msg_id() && !request.before_msg_id().empty()) {
@@ -157,8 +149,8 @@ MessageService::SearchCoro(const zchat::MsgSearchReq &request) {
     if (limit < 1) {
         limit = 1;
     }
-    if (limit > 100) {
-        limit = 100;
+    if (limit > 50) {
+        limit = 50;
     }
     auto messages = co_await search_index_.SearchMessagesCoro(
         request.chat_session_id(), request.search_key(), offset, limit);
@@ -176,7 +168,8 @@ MessageService::StoreQueuedMessageCoro(const zchat::MessageInfo &message) {
     MessageRecord record = FromProtoMessage(message, &file_content);
     if (!file_content.empty()) {
         const auto file_id = co_await clients_.PutFileCoro(
-            record.file_name, file_content, record.user_id, record.session_id);
+            record.file_name, file_content, record.user_id, record.session_id,
+            record.message_id);
         if (!file_id.ok()) {
             co_return VoidResult::Fail(file_id.error());
         }
@@ -236,31 +229,17 @@ drogon::Task<Response> MessageService::BuildMessageListResponseCoro(
     response.set_errmsg("");
 
     std::vector<std::string> user_ids;
-    std::vector<std::string> file_ids;
     for (const auto &message : messages) {
         user_ids.push_back(message.user_id);
-        if (!message.file_id.empty()) {
-            file_ids.push_back(message.file_id);
-        }
     }
 
     zchat::GetMultiUserInfoReq user_req;
     user_req.set_request_id(request_id);
+    user_req.set_include_avatar(false);
     for (const auto &id : user_ids) {
         user_req.add_users_id(id);
     }
     auto user_rsp = co_await clients_.GetMultiUserInfoCoro(user_req);
-
-    std::unordered_map<std::string, std::string> file_contents;
-    if (!file_ids.empty()) {
-        auto file_rsp =
-            co_await clients_.GetMultiFileCoro(file_ids, caller_user_id);
-        if (file_rsp.ok() && file_rsp.value().success()) {
-            for (const auto &fd : file_rsp.value().file_data()) {
-                file_contents[fd.file_id()] = fd.file_content();
-            }
-        }
-    }
 
     for (const auto &message : messages) {
         zchat::UserInfo sender;
@@ -271,17 +250,11 @@ drogon::Task<Response> MessageService::BuildMessageListResponseCoro(
             }
         }
         if (sender.user_id().empty()) {
-            continue;
+            sender.set_user_id(message.user_id);
+            sender.set_nickname(message.user_id);
         }
-        std::string file_content;
-        if (!message.file_id.empty()) {
-            auto it = file_contents.find(message.file_id);
-            if (it != file_contents.end()) {
-                file_content = it->second;
-            }
-        }
-        *response.add_msg_list() = ToProtoMessage(
-            message, FromProtoUser(sender), file_content, sender.avatar());
+        *response.add_msg_list() =
+            ToProtoMessage(message, FromProtoUser(sender), "", "");
     }
     co_return response;
 }

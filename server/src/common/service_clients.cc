@@ -151,7 +151,8 @@ ServiceClients::GetMultiFileCoro(const std::vector<std::string> &file_ids,
 
 drogon::Task<Result<std::string>> ServiceClients::PutFileCoro(
     const std::string &file_name, const std::string &file_content,
-    const std::string &owner_user_id, const std::string &chat_session_id) {
+    const std::string &owner_user_id, const std::string &chat_session_id,
+    const std::string &idempotency_key) {
     zchat::PutSingleFileReq request;
     request.mutable_file_data()->set_file_name(file_name);
     request.mutable_file_data()->set_file_size(
@@ -162,6 +163,9 @@ drogon::Task<Result<std::string>> ServiceClients::PutFileCoro(
     }
     if (!chat_session_id.empty()) {
         request.set_session_id(chat_session_id);
+    }
+    if (!idempotency_key.empty()) {
+        request.set_idempotency_key(idempotency_key);
     }
     auto rsp =
         co_await CallUnaryCoro<zchat::FileService, zchat::PutSingleFileReq,

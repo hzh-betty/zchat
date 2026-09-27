@@ -120,7 +120,7 @@ class AmqpPublisherRuntime {
         : base_(CreateEventBase()), handler_(base_.get(), &config),
           address_(BuildRabbitmqAddress(config)),
           connection_(&handler_, address_), channel_(&connection_),
-          exchange_(config.exchange), queue_(config.queue),
+          reliable_(channel_), exchange_(config.exchange), queue_(config.queue),
           routing_key_(config.routing_key) {
         if (!base_) {
             return;
@@ -130,6 +130,11 @@ class AmqpPublisherRuntime {
             error_ =
                 message == nullptr ? "unknown RabbitMQ channel error" : message;
         });
+        channel_.recall().onReturned(
+            [this](const AMQP::Message &, int16_t, const std::string &reason) {
+                returned_generation_.fetch_add(1);
+                ZCHAT_LOG_ERROR("RabbitMQ publish unroutable: {}", reason);
+            });
         channel_.declareExchange(exchange_, AMQP::direct, AMQP::durable);
         channel_.declareQueue(queue_, AMQP::durable);
         channel_.bindQueue(exchange_, queue_, routing_key_);
@@ -180,6 +185,17 @@ class AmqpPublisherRuntime {
                 AppError::WithCode(ErrorCode::kExternalServiceError,
                                    "rabbitmq publish scheduling failed"));
         }
+        std::unique_lock<std::mutex> lock(state->mutex);
+        if (!state->completed.wait_for(lock, std::chrono::seconds(5),
+                                       [&state] { return state->done; })) {
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kTimeout, "rabbitmq publisher confirm timed out"));
+        }
+        if (!state->success) {
+            return VoidResult::Fail(AppError::WithCode(
+                ErrorCode::kExternalServiceError,
+                "rabbitmq did not confirm message publication"));
+        }
         return VoidResult::Ok();
     }
 
@@ -187,6 +203,22 @@ class AmqpPublisherRuntime {
     struct PublishState {
         AmqpPublisherRuntime *runtime = nullptr;
         std::string payload;
+        std::mutex mutex;
+        std::condition_variable completed;
+        bool done = false;
+        bool success = false;
+
+        void Complete(bool confirmed) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (done) {
+                    return;
+                }
+                done = true;
+                success = confirmed;
+            }
+            completed.notify_one();
+        }
     };
 
     static void PublishOnLoop(evutil_socket_t, short, void *context) {
@@ -194,26 +226,19 @@ class AmqpPublisherRuntime {
             static_cast<std::shared_ptr<PublishState> *>(context);
         auto state = *state_holder;
         delete state_holder;
-        auto result = state->runtime->PublishOnLoop(state->payload);
-        if (!result.ok()) {
-            ZCHAT_LOG_WARN("rabbitmq fire-and-forget publish failed: {}",
-                           result.error().message);
-        }
+        state->runtime->PublishOnLoop(state);
     }
 
-    VoidResult PublishOnLoop(const std::string &payload) {
-        if (!channel_.publish(exchange_, routing_key_, payload,
-                              AMQP::mandatory)) {
-            return VoidResult::Fail(
-                AppError::WithCode(ErrorCode::kExternalServiceError,
-                                   "rabbitmq publish request write failed"));
-        }
-        std::lock_guard<std::mutex> error_lock(error_mutex_);
-        if (!error_.empty()) {
-            return VoidResult::Fail(
-                AppError::WithCode(ErrorCode::kExternalServiceError, error_));
-        }
-        return VoidResult::Ok();
+    void PublishOnLoop(const std::shared_ptr<PublishState> &state) {
+        AMQP::Envelope envelope(state->payload.data(), state->payload.size());
+        envelope.setDeliveryMode(2);
+        const auto generation = returned_generation_.load();
+        reliable_.publish(exchange_, routing_key_, envelope, AMQP::mandatory)
+            .onAck([this, state, generation]() {
+                state->Complete(returned_generation_.load() == generation);
+            })
+            .onNack([state]() { state->Complete(false); })
+            .onLost([state]() { state->Complete(false); });
     }
 
     std::unique_ptr<event_base, EventBaseDeleter> base_;
@@ -221,6 +246,8 @@ class AmqpPublisherRuntime {
     AMQP::Address address_;
     AMQP::TcpConnection connection_;
     AMQP::TcpChannel channel_;
+    AMQP::Reliable<> reliable_;
+    std::atomic<std::uint64_t> returned_generation_{0};
     std::string exchange_;
     std::string queue_;
     std::string routing_key_;
@@ -274,9 +301,15 @@ class AmqpConsumerRuntime {
                                                    std::uint64_t delivery_tag,
                                                    bool) {
             const std::string payload(message.body(), message.bodySize());
+            int retry_count = 0;
+            if (message.hasHeaders() &&
+                message.headers().contains("x-zchat-retry")) {
+                retry_count = static_cast<int32_t>(
+                    message.headers().get("x-zchat-retry"));
+            }
             {
                 std::lock_guard<std::mutex> lock(queue_mutex_);
-                pending_tasks_.push({payload, delivery_tag});
+                pending_tasks_.push({payload, delivery_tag, {}, retry_count});
             }
             queue_cv_.notify_one();
         });
@@ -305,6 +338,7 @@ class AmqpConsumerRuntime {
         std::string payload;
         std::uint64_t delivery_tag = 0;
         std::string parking_queue;
+        int retry_count = 0;
     };
 
     void StartWorkerPool(std::size_t pool_size) {
@@ -344,17 +378,21 @@ class AmqpConsumerRuntime {
             }
 
             const auto handled = message_handler_(task.payload);
-            if (!handled.ok() &&
-                (handled.error().code == ErrorCode::kFileStorageRejected ||
-                 handled.error().code == ErrorCode::kRateLimited)) {
+            if (!handled.ok()) {
                 const bool retry =
-                    handled.error().code == ErrorCode::kRateLimited;
-                ZCHAT_LOG_WARN("RabbitMQ file storage failure, {}: {}",
-                               retry ? "retry in 60 seconds"
-                                     : "park for operator review",
-                               FormatErrorForLog(handled.error()));
+                    handled.error().code != ErrorCode::kFileStorageRejected &&
+                    handled.error().code != ErrorCode::kInvalidArgument &&
+                    task.retry_count < 5;
                 task.parking_queue =
                     queue_ + (retry ? ".storage_retry" : ".storage_blocked");
+                if (retry) {
+                    ++task.retry_count;
+                }
+                ZCHAT_LOG_WARN(
+                    "RabbitMQ message handling failed, {} "
+                    "attempt={}: {}",
+                    retry ? "retry in 60 seconds" : "park for operator review",
+                    task.retry_count, FormatErrorForLog(handled.error()));
                 {
                     std::lock_guard<std::mutex> lock(ack_mutex_);
                     pending_parked_.push(std::move(task));
@@ -362,11 +400,6 @@ class AmqpConsumerRuntime {
                 timeval timeout{};
                 event_base_once(base_.get(), -1, EV_TIMEOUT,
                                 DrainParkedCallback, this, &timeout);
-            } else if (!handled.ok()) {
-                ZCHAT_LOG_ERROR(
-                    "RabbitMQ message handling failed, requeueing: {}",
-                    handled.error().message);
-                EnqueueNack(task.delivery_tag);
             } else {
                 EnqueueAck(task.delivery_tag);
             }
@@ -385,6 +418,10 @@ class AmqpConsumerRuntime {
             tasks.pop();
             AMQP::Envelope envelope(task.payload.data(), task.payload.size());
             envelope.setDeliveryMode(2);
+            AMQP::Table headers;
+            headers.set("x-zchat-retry",
+                        static_cast<int32_t>(task.retry_count));
+            envelope.setHeaders(std::move(headers));
             self->republisher_
                 .publish("", task.parking_queue, envelope, AMQP::mandatory)
                 .onAck([self, tag = task.delivery_tag]() {
@@ -399,18 +436,13 @@ class AmqpConsumerRuntime {
                         "RabbitMQ failed to preserve storage-blocked message; "
                         "source remains unacked");
                     self->connection_.close();
+                })
+                .onNack([self]() {
+                    self->parking_failed_ = true;
+                    ZCHAT_LOG_ERROR("RabbitMQ rejected retry publication");
+                    self->connection_.close();
                 });
         }
-    }
-
-    void EnqueueNack(std::uint64_t delivery_tag) {
-        {
-            std::lock_guard<std::mutex> lock(ack_mutex_);
-            pending_nacks_.push(delivery_tag);
-        }
-        timeval timeout{};
-        event_base_once(base_.get(), -1, EV_TIMEOUT, DrainNacksCallback, this,
-                        &timeout);
     }
 
     void EnqueueAck(std::uint64_t delivery_tag) {
@@ -440,23 +472,6 @@ class AmqpConsumerRuntime {
         }
     }
 
-    static void DrainNacksCallback(evutil_socket_t, short, void *context) {
-        auto *self = static_cast<AmqpConsumerRuntime *>(context);
-        self->DrainNacks();
-    }
-
-    void DrainNacks() {
-        std::queue<std::uint64_t> nacks;
-        {
-            std::lock_guard<std::mutex> lock(ack_mutex_);
-            nacks.swap(pending_nacks_);
-        }
-        while (!nacks.empty()) {
-            channel_.reject(nacks.front(), AMQP::requeue);
-            nacks.pop();
-        }
-    }
-
     std::unique_ptr<event_base, EventBaseDeleter> base_;
     RuntimeHandler handler_;
     AMQP::Address address_;
@@ -478,7 +493,6 @@ class AmqpConsumerRuntime {
 
     std::mutex ack_mutex_;
     std::queue<std::uint64_t> pending_acks_;
-    std::queue<std::uint64_t> pending_nacks_;
     std::queue<Task> pending_parked_;
     bool parking_failed_ = false;
 };

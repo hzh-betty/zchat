@@ -89,6 +89,7 @@ message GetUserInfoRsp {
 message GetMultiUserInfoReq {
     string request_id = 1;
     repeated string users_id = 2;
+    optional bool include_avatar = 3;
 }
 message GetMultiUserInfoRsp {
     string request_id = 1;
