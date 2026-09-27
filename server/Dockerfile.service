@@ -27,7 +27,8 @@ COPY profiles ./profiles
 
 ARG BUILD_PRESET=conan2-release
 
-RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
+RUN --mount=type=cache,id=zchat-conan-cache,target=/root/.conan2,sharing=locked \
+    if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
         conan install . --output-folder=/app/build/${BUILD_PRESET} --build=missing -pr:h profiles/linux-clang-debug -pr:b profiles/linux-clang-release ; \
     else \
         conan install . --output-folder=/app/build/${BUILD_PRESET} --build=missing -pr:h profiles/linux-clang-release -pr:b profiles/linux-clang-release ; \
@@ -44,7 +45,8 @@ COPY server/config ./server/config
 COPY server/cmake ./server/cmake
 COPY server/CMakeLists.txt ./server/CMakeLists.txt
 
-RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
+RUN --mount=type=cache,id=zchat-conan-cache,target=/root/.conan2,sharing=locked \
+    if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
         host_profile=profiles/linux-clang-debug ; \
     else \
         host_profile=profiles/linux-clang-release ; \
@@ -57,7 +59,8 @@ RUN if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
     && mkdir -p /app/lib/plugin \
     && find /root/.conan2 -path '*/lib/plugin/*.so' -exec cp -L {} /app/lib/plugin/ \;
 
-RUN mkdir -p /app/lib \
+RUN --mount=type=cache,id=zchat-conan-cache,target=/root/.conan2,sharing=locked \
+    mkdir -p /app/lib \
     && ssl_path="$(ldd /app/build/${BUILD_PRESET}/bin/zchat_transmite_service | awk '$1 == "libssl.so.3" { print $3 }')" \
     && crypto_path="$(ldd /app/build/${BUILD_PRESET}/bin/zchat_transmite_service | awk '$1 == "libcrypto.so.3" { print $3 }')" \
     && case "$ssl_path:$crypto_path" in /root/.conan2/*:/root/.conan2/*) ;; *) exit 1 ;; esac \

@@ -18,6 +18,11 @@ if(NOT CMAKE_BUILD_TYPE)
   message(FATAL_ERROR "CMAKE_BUILD_TYPE is required for Conan tool runtime paths")
 endif()
 string(TOUPPER "${CMAKE_BUILD_TYPE}" ZCHAT_CONAN_BUILD_TYPE)
+set(ZCHAT_PROTOC_EXECUTABLE
+  "${protobuf_PACKAGE_FOLDER_${ZCHAT_CONAN_BUILD_TYPE}}/bin/protoc")
+if(NOT EXISTS "${ZCHAT_PROTOC_EXECUTABLE}")
+  message(FATAL_ERROR "Conan protoc is missing: ${ZCHAT_PROTOC_EXECUTABLE}")
+endif()
 
 set(ZCHAT_PROTOC_RUNTIME_DIRS)
 foreach(PACKAGE_NAME protobuf abseil grpc re2 c-ares openssl zlib)
@@ -50,7 +55,7 @@ foreach(PROTO_FILE ${PROTO_FILES})
     COMMAND ${CMAKE_COMMAND} -E make_directory
       "${CMAKE_CURRENT_BINARY_DIR}/generated"
     COMMAND ${CMAKE_COMMAND} -E env ${ZCHAT_PROTOC_ENV}
-      $<TARGET_FILE:protobuf::protoc>
+      "${ZCHAT_PROTOC_EXECUTABLE}"
     ARGS --cpp_out=${CMAKE_CURRENT_BINARY_DIR}/generated
       --grpc_out=${CMAKE_CURRENT_BINARY_DIR}/generated
       --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
