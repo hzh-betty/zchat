@@ -219,16 +219,11 @@ drogon::Task<zchat::FriendRemoveRsp> FriendApplicationService::RemoveFriendCoro(
         co_return ErrorResponse<zchat::FriendRemoveRsp>(
             request.request_id(), common_errors::SessionExpired());
     }
-    auto del = co_await friends_.DeleteRelationCoro(user_id, request.peer_id());
-    if (!del.ok()) {
-        ZCHAT_LOG_WARN("RemoveFriend DeleteRelation failed: {}",
-                       del.error().message);
-    }
-    auto del_session = co_await friends_.DeleteSingleChatSessionCoro(
-        user_id, request.peer_id());
-    if (!del_session.ok()) {
-        ZCHAT_LOG_WARN("RemoveFriend DeleteSingleChatSession failed: {}",
-                       del_session.error().message);
+    auto removed =
+        co_await friends_.RemoveFriendCoro(user_id, request.peer_id());
+    if (!removed.ok()) {
+        co_return ErrorResponse<zchat::FriendRemoveRsp>(request.request_id(),
+                                                        removed.error());
     }
     zchat::NotifyMessage notify;
     notify.set_notify_type(zchat::FRIEND_REMOVE_NOTIFY);
@@ -305,7 +300,6 @@ FriendApplicationService::ProcessFriendApplyCoro(
         co_return ErrorResponse<zchat::FriendAddProcessRsp>(
             request.request_id(), friend_errors::ApplyNotFound());
     }
-    co_await friends_.DeleteFriendApplyCoro(request.apply_user_id(), user_id);
     std::string new_session_id;
     if (request.agree()) {
         new_session_id = NewId();
@@ -314,6 +308,13 @@ FriendApplicationService::ProcessFriendApplyCoro(
         if (!accepted.ok()) {
             co_return ErrorResponse<zchat::FriendAddProcessRsp>(
                 request.request_id(), accepted.error());
+        }
+    } else {
+        auto deleted = co_await friends_.DeleteFriendApplyCoro(
+            request.apply_user_id(), user_id);
+        if (!deleted.ok()) {
+            co_return ErrorResponse<zchat::FriendAddProcessRsp>(
+                request.request_id(), deleted.error());
         }
     }
     zchat::UserInfo processor_info = co_await UserInfoForIdCoro(user_id);
@@ -371,17 +372,11 @@ FriendApplicationService::CreateChatSessionCoro(
     const std::string name = request.chat_session_name().empty()
                                  ? "New group chat"
                                  : request.chat_session_name();
-    auto ins = co_await friends_.InsertChatSessionCoro(
-        ChatSessionRecord{session_id, name, ChatSessionType::kGroup});
+    auto ins = co_await friends_.CreateGroupCoro(
+        ChatSessionRecord{session_id, name, ChatSessionType::kGroup}, members);
     if (!ins.ok()) {
         co_return ErrorResponse<zchat::ChatSessionCreateRsp>(
             request.request_id(), ins.error());
-    }
-    auto ins_member =
-        co_await friends_.InsertChatSessionMembersCoro(session_id, members);
-    if (!ins_member.ok()) {
-        co_return ErrorResponse<zchat::ChatSessionCreateRsp>(
-            request.request_id(), ins_member.error());
     }
     ChatSessionRecord session{session_id, name, ChatSessionType::kGroup};
     const std::unordered_map<std::string, zchat::UserInfo> empty_peers;

@@ -57,6 +57,12 @@ class FriendRepository : public NonCopyable {
     virtual drogon::Task<VoidResult>
     DeleteSingleChatSessionCoro(const std::string &user_id,
                                 const std::string &peer_id) = 0;
+    virtual drogon::Task<VoidResult>
+    RemoveFriendCoro(const std::string &user_id,
+                     const std::string &peer_id) = 0;
+    virtual drogon::Task<VoidResult>
+    CreateGroupCoro(const ChatSessionRecord &session,
+                    const std::vector<std::string> &user_ids) = 0;
     virtual drogon::Task<Result<std::vector<ChatSessionRecord>>>
     ListChatSessionsCoro(const std::string &user_id) = 0;
     virtual drogon::Task<Result<std::vector<std::string>>>
@@ -114,6 +120,12 @@ class OrmFriendRepository final : public FriendRepository,
     drogon::Task<VoidResult>
     DeleteSingleChatSessionCoro(const std::string &user_id,
                                 const std::string &peer_id) override;
+    drogon::Task<VoidResult>
+    RemoveFriendCoro(const std::string &user_id,
+                     const std::string &peer_id) override;
+    drogon::Task<VoidResult>
+    CreateGroupCoro(const ChatSessionRecord &session,
+                    const std::vector<std::string> &user_ids) override;
     drogon::Task<Result<std::vector<ChatSessionRecord>>>
     ListChatSessionsCoro(const std::string &user_id) override;
     drogon::Task<Result<std::vector<std::string>>>
