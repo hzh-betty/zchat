@@ -4,6 +4,7 @@
 #include <atomic>
 #include <exception>
 #include <functional>
+#include <mutex>
 #include <utility>
 
 #include <drogon/utils/coroutine.h>
@@ -29,18 +30,20 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
                 CoroUnaryReactor *p;
                 ~ReleaseGuard() { p->Release(); }
             } guard{self};
-            if (self->finished_.load()) {
-                co_return;
-            }
             try {
-                *self->response_ = co_await factory();
-                if (self->cancelled_.load()) {
-                    co_return;
+                Rsp result = co_await factory();
+                {
+                    std::lock_guard<std::mutex> lock(self->finish_mutex_);
+                    if (self->finished_) {
+                        co_return;
+                    }
+                    *self->response_ = std::move(result);
+                    LogBoundaryResponseError(
+                        self->service_name_, self->method_name_,
+                        self->request_id_, *self->response_);
+                    self->finished_ = true;
+                    self->Finish(grpc::Status::OK);
                 }
-                LogBoundaryResponseError(self->service_name_,
-                                         self->method_name_, self->request_id_,
-                                         *self->response_);
-                self->SafeFinish(grpc::Status::OK);
             } catch (const std::exception &e) {
                 ZCHAT_LOG_ERROR("{}::{} coroutine exception request_id={} "
                                 "error={}",
@@ -64,13 +67,14 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
     void OnCancel() override {
         ZCHAT_LOG_WARN("{}::{} cancelled request_id={}", service_name_,
                        method_name_, request_id_);
-        cancelled_.store(true);
         SafeFinish(grpc::Status(grpc::StatusCode::CANCELLED, "cancelled"));
     }
 
   private:
     void SafeFinish(const grpc::Status &status) {
-        if (!finished_.exchange(true)) {
+        std::lock_guard<std::mutex> lock(finish_mutex_);
+        if (!finished_) {
+            finished_ = true;
             Finish(status);
         }
     }
@@ -85,8 +89,8 @@ class CoroUnaryReactor final : public grpc::ServerUnaryReactor {
     const char *service_name_;
     const char *method_name_;
     std::string request_id_;
-    std::atomic_bool finished_{false};
-    std::atomic_bool cancelled_{false};
+    std::mutex finish_mutex_;
+    bool finished_ = false;
     std::atomic_int ref_count_{2};
 };
 

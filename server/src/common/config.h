@@ -49,7 +49,7 @@ struct ServerConfig {
     int thread_num = 4;
     int max_connections = 10000;
     int max_connections_per_ip = 1000;
-    std::size_t client_max_body_size = 64 * 1024 * 1024;
+    std::size_t client_max_body_size = 4 * 1024 * 1024;
 };
 
 struct ServicePortsConfig {
