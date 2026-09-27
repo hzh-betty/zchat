@@ -1,5 +1,6 @@
 #include "common/search/message_search_index.h"
 
+#include <exception>
 #include <sstream>
 #include <utility>
 
@@ -145,7 +146,15 @@ ConfiguredMessageSearchIndex::IndexMessageCoro(const MessageRecord &message) {
     request->setBody(BuildElasticsearchMessageDocument(message));
     AddAuthHeader(request);
 
-    auto response = co_await client_->sendRequestCoro(request, 3.0);
+    drogon::HttpResponsePtr response;
+    try {
+        response = co_await client_->sendRequestCoro(request, 3.0);
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch message index request failed")
+                .WithDetail(e.what()));
+    }
     if (!response) {
         co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
@@ -179,7 +188,15 @@ ConfiguredMessageSearchIndex::SearchMessagesCoro(const std::string &session_id,
         BuildElasticsearchSearchRequest(session_id, keyword, offset, limit));
     AddAuthHeader(request);
 
-    auto response = co_await client_->sendRequestCoro(request, 3.0);
+    drogon::HttpResponsePtr response;
+    try {
+        response = co_await client_->sendRequestCoro(request, 3.0);
+    } catch (const std::exception &e) {
+        co_return Result<std::vector<MessageRecord>>::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch message search request failed")
+                .WithDetail(e.what()));
+    }
     if (!response) {
         co_return Result<std::vector<MessageRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,

@@ -1,5 +1,6 @@
 #include "common/search/user_search_index.h"
 
+#include <exception>
 #include <sstream>
 #include <utility>
 
@@ -138,7 +139,15 @@ ConfiguredUserSearchIndex::IndexUserCoro(const UserRecord &user) {
     request->setBody(BuildElasticsearchUserDocument(user));
     AddAuthHeader(request);
 
-    auto response = co_await client_->sendRequestCoro(request, 3.0);
+    drogon::HttpResponsePtr response;
+    try {
+        response = co_await client_->sendRequestCoro(request, 3.0);
+    } catch (const std::exception &e) {
+        co_return VoidResult::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user index request failed")
+                .WithDetail(e.what()));
+    }
     if (!response) {
         co_return VoidResult::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,
@@ -171,7 +180,15 @@ ConfiguredUserSearchIndex::SearchUsersCoro(
         BuildElasticsearchUserSearchRequest(keyword, excluded_user_ids));
     AddAuthHeader(request);
 
-    auto response = co_await client_->sendRequestCoro(request, 3.0);
+    drogon::HttpResponsePtr response;
+    try {
+        response = co_await client_->sendRequestCoro(request, 3.0);
+    } catch (const std::exception &e) {
+        co_return Result<std::vector<UserRecord>>::Fail(
+            AppError::WithCode(ErrorCode::kExternalServiceError,
+                               "elasticsearch user search request failed")
+                .WithDetail(e.what()));
+    }
     if (!response) {
         co_return Result<std::vector<UserRecord>>::Fail(
             AppError::WithCode(ErrorCode::kExternalServiceError,

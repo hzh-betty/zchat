@@ -31,6 +31,8 @@ class UserRepository : public NonCopyable {
     FindUserByPhoneCoro(const std::string &phone) = 0;
     virtual drogon::Task<Result<std::vector<UserRecord>>>
     FindUsersByIdsCoro(const std::vector<std::string> &user_ids) = 0;
+    virtual drogon::Task<Result<std::vector<UserRecord>>>
+    ListUsersForIndexCoro(const std::string &after_user_id, int limit) = 0;
     virtual drogon::Task<VoidResult> InsertUserCoro(const UserRecord &user) = 0;
     virtual drogon::Task<VoidResult>
     UpdateUserNicknameCoro(const std::string &user_id,
@@ -61,6 +63,8 @@ class OrmUserRepository final : public UserRepository,
     FindUserByPhoneCoro(const std::string &phone) override;
     drogon::Task<Result<std::vector<UserRecord>>>
     FindUsersByIdsCoro(const std::vector<std::string> &user_ids) override;
+    drogon::Task<Result<std::vector<UserRecord>>>
+    ListUsersForIndexCoro(const std::string &after_user_id, int limit) override;
     drogon::Task<VoidResult> InsertUserCoro(const UserRecord &user) override;
     drogon::Task<VoidResult>
     UpdateUserNicknameCoro(const std::string &user_id,

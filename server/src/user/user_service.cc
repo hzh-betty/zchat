@@ -92,8 +92,8 @@ UserApplicationService::RegisterByNicknameCoro(
     }
     const auto indexed = co_await IndexUserCoro(user);
     if (!indexed.ok()) {
-        co_return ErrorResponse<zchat::UserRegisterRsp>(request.request_id(),
-                                                        indexed.error());
+        ZCHAT_LOG_WARN("user index pending user={} error={}", user.user_id,
+                       indexed.error().message);
     }
 
     zchat::UserRegisterRsp response;
@@ -275,8 +275,8 @@ UserApplicationService::RegisterByPhoneCoro(
     }
     const auto indexed = co_await IndexUserCoro(user);
     if (!indexed.ok()) {
-        co_return ErrorResponse<zchat::PhoneRegisterRsp>(request.request_id(),
-                                                         indexed.error());
+        ZCHAT_LOG_WARN("user index pending user={} error={}", user.user_id,
+                       indexed.error().message);
     }
     co_await sessions_.RemoveVerifyCodeCoro(request.verify_code_id());
     zchat::PhoneRegisterRsp response;
@@ -364,8 +364,11 @@ UserApplicationService::GetMultiUserInfoCoro(
     response.set_success(true);
     response.set_errmsg("");
     for (const auto &user : users.value()) {
-        std::string avatar =
-            co_await GetAvatarContentCoro(user.avatar_id, user.user_id);
+        std::string avatar;
+        if (!request.has_include_avatar() || request.include_avatar()) {
+            avatar =
+                co_await GetAvatarContentCoro(user.avatar_id, user.user_id);
+        }
         (*response.mutable_users_info())[user.user_id] =
             ToProtoUser(user, avatar);
     }
@@ -415,8 +418,8 @@ UserApplicationService::SetAvatarCoro(const zchat::SetUserAvatarReq &request) {
     }
     const auto indexed = co_await IndexUserByIdCoro(user_id.value());
     if (!indexed.ok()) {
-        co_return ErrorResponse<zchat::SetUserAvatarRsp>(request.request_id(),
-                                                         indexed.error());
+        ZCHAT_LOG_WARN("user index pending user={} error={}", user_id.value(),
+                       indexed.error().message);
     }
     zchat::SetUserAvatarRsp response;
     MarkOk(request.request_id(), &response);
@@ -449,8 +452,8 @@ drogon::Task<zchat::SetUserNicknameRsp> UserApplicationService::SetNicknameCoro(
     }
     const auto indexed = co_await IndexUserByIdCoro(user_id.value());
     if (!indexed.ok()) {
-        co_return ErrorResponse<zchat::SetUserNicknameRsp>(request.request_id(),
-                                                           indexed.error());
+        ZCHAT_LOG_WARN("user index pending user={} error={}", user_id.value(),
+                       indexed.error().message);
     }
     zchat::SetUserNicknameRsp response;
     MarkOk(request.request_id(), &response);
@@ -474,8 +477,8 @@ UserApplicationService::SetDescriptionCoro(
     }
     const auto indexed = co_await IndexUserByIdCoro(user_id.value());
     if (!indexed.ok()) {
-        co_return ErrorResponse<zchat::SetUserDescriptionRsp>(
-            request.request_id(), indexed.error());
+        ZCHAT_LOG_WARN("user index pending user={} error={}", user_id.value(),
+                       indexed.error().message);
     }
     zchat::SetUserDescriptionRsp response;
     MarkOk(request.request_id(), &response);
@@ -518,8 +521,8 @@ drogon::Task<zchat::SetUserPhoneNumberRsp> UserApplicationService::SetPhoneCoro(
     }
     const auto indexed = co_await IndexUserByIdCoro(user_id.value());
     if (!indexed.ok()) {
-        co_return ErrorResponse<zchat::SetUserPhoneNumberRsp>(
-            request.request_id(), indexed.error());
+        ZCHAT_LOG_WARN("user index pending user={} error={}", user_id.value(),
+                       indexed.error().message);
     }
     co_await sessions_.RemoveVerifyCodeCoro(request.phone_verify_code_id());
     zchat::SetUserPhoneNumberRsp response;
@@ -604,6 +607,26 @@ UserApplicationService::IndexUserByIdCoro(const std::string &user_id) {
         co_return VoidResult::Fail(user_errors::UserNotFound());
     }
     co_return co_await IndexUserCoro(user.value().value());
+}
+
+drogon::Task<Result<bool>>
+UserApplicationService::ReconcileIndexPageCoro(std::string &cursor) {
+    auto page = co_await users_.ListUsersForIndexCoro(cursor, 100);
+    if (!page.ok()) {
+        co_return Result<bool>::Fail(page.error());
+    }
+    if (page.value().empty()) {
+        cursor.clear();
+        co_return Result<bool>::Ok(true);
+    }
+    for (const auto &user : page.value()) {
+        auto indexed = co_await IndexUserCoro(user);
+        if (!indexed.ok()) {
+            co_return Result<bool>::Fail(indexed.error());
+        }
+        cursor = user.user_id;
+    }
+    co_return Result<bool>::Ok(false);
 }
 
 drogon::Task<Result<std::string>>

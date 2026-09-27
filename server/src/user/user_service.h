@@ -23,6 +23,7 @@ class UserApplicationService : public NonCopyable {
                            UserSearchIndex &search_index);
 
     ~UserApplicationService() = default;
+    drogon::Task<Result<bool>> ReconcileIndexPageCoro(std::string &cursor);
 
     drogon::Task<zchat::UserRegisterRsp>
     RegisterByNicknameCoro(const zchat::UserRegisterReq &request);

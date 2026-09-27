@@ -84,6 +84,22 @@ OrmUserRepository::FindUsersByIdsCoro(
         });
 }
 
+drogon::Task<Result<std::vector<UserRecord>>>
+OrmUserRepository::ListUsersForIndexCoro(const std::string &after_user_id,
+                                         int limit) {
+    return RunDbCoro([&]() -> drogon::Task<Result<std::vector<UserRecord>>> {
+        const auto result = co_await db_->execSqlCoro(
+            "SELECT user_id,nickname,description,password,phone,avatar_id "
+            "FROM `user` WHERE user_id>? ORDER BY user_id LIMIT ?",
+            after_user_id, limit);
+        std::vector<UserRecord> users;
+        for (const auto &row : result) {
+            users.push_back(ToUserRecord(row));
+        }
+        co_return Result<std::vector<UserRecord>>::Ok(std::move(users));
+    });
+}
+
 drogon::Task<VoidResult>
 OrmUserRepository::InsertUserCoro(const UserRecord &user) {
     return RunDbCoro([&]() -> drogon::Task<VoidResult> {

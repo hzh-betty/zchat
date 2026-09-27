@@ -3,7 +3,10 @@
 
 #include "common/noncopyable.h"
 
+#include <condition_variable>
 #include <memory>
+#include <mutex>
+#include <thread>
 
 #include <drogon/nosql/RedisClient.h>
 #include <drogon/orm/DbClient.h>
@@ -23,7 +26,7 @@ class UserContext : public NonCopyable {
   public:
     explicit UserContext(const AppConfig &config);
 
-    ~UserContext() = default;
+    ~UserContext();
 
     UserGrpcService &grpc_service() { return grpc_service_; }
 
@@ -38,6 +41,10 @@ class UserContext : public NonCopyable {
     std::unique_ptr<SmsClient> sms_;
     std::shared_ptr<UserApplicationService> user_service_;
     UserGrpcService grpc_service_;
+    std::thread index_worker_;
+    std::mutex index_mutex_;
+    std::condition_variable index_cv_;
+    bool stop_index_worker_ = false;
 };
 
 } // namespace zchat
