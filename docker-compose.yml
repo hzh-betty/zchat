@@ -483,8 +483,8 @@ services:
       - redis_password
       - etcd_password
     ports:
-      - "${ZCHAT_GATEWAY_HTTP_PUBLISHED_PORT:-8000}:${ZCHAT_GATEWAY_HTTP_PORT:-8000}"
-      - "${ZCHAT_GATEWAY_WEBSOCKET_PUBLISHED_PORT:-8001}:${ZCHAT_GATEWAY_WEBSOCKET_PORT:-8001}"
+      - "127.0.0.1:${ZCHAT_GATEWAY_HTTP_PUBLISHED_PORT:-8000}:${ZCHAT_GATEWAY_HTTP_PORT:-8000}"
+      - "127.0.0.1:${ZCHAT_GATEWAY_WEBSOCKET_PUBLISHED_PORT:-8001}:${ZCHAT_GATEWAY_WEBSOCKET_PORT:-8001}"
     depends_on:
       redis:
         condition: service_healthy
