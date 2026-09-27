@@ -9,6 +9,7 @@ enum NotifyType {
     CHAT_SESSION_CREATE_NOTIFY = 2;
     CHAT_MESSAGE_NOTIFY = 3;
     FRIEND_REMOVE_NOTIFY = 4;
+    AUTHENTICATED_NOTIFY = 5;
 } 
 message NotifyFriendAddApply {
     UserInfo user_info = 1; //申请人信息

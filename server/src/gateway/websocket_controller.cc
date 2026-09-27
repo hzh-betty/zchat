@@ -7,6 +7,7 @@
 
 #include "common/logger.h"
 #include "gateway.pb.h"
+#include "notify.pb.h"
 
 namespace zchat {
 
@@ -60,6 +61,11 @@ void ZchatWebSocketController::handleNewMessage(
             co_return;
         }
         ctx->connections().Bind(user_id.value().value(), session_id, conn_ptr);
+        zchat::NotifyMessage authenticated;
+        authenticated.set_notify_type(zchat::AUTHENTICATED_NOTIFY);
+        std::string payload;
+        authenticated.SerializeToString(&payload);
+        conn_ptr->send(payload, drogon::WebSocketMessageType::Binary);
         conn_ptr->setPingMessage("", std::chrono::seconds(60));
         co_await ctx->sessions().SetOnlineCoro(user_id.value().value());
         ZCHAT_LOG_INFO("websocket authenticated user={} session={}",
