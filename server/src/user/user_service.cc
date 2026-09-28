@@ -226,6 +226,8 @@ UserApplicationService::GetPhoneVerifyCodeCoro(
     const auto sent =
         co_await sms_.SendVerificationCode(request.phone_number());
     if (!sent.ok()) {
+        ZCHAT_LOG_WARN("SendVerificationCode failed: {}",
+                       FormatErrorForLog(sent.error()));
         co_await sessions_.RemoveVerifyCodeCoro(verify_code_id);
         co_return ErrorResponse<zchat::PhoneVerifyCodeRsp>(request.request_id(),
                                                            sent.error());

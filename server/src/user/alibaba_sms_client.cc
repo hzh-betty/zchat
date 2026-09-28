@@ -106,6 +106,7 @@ drogon::Task<VoidResult> AlibabaSmsClient::SendRequestCoro(
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Get);
     request->setPath("/?" + query);
+    request->setPathEncode(false);
 
     auto response = co_await client_->sendRequestCoro(request, 5.0);
     if (!response) {
