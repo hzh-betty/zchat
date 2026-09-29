@@ -60,9 +60,12 @@ foreach(PROTO_FILE ${PROTO_FILES})
       --grpc_out=${CMAKE_CURRENT_BINARY_DIR}/generated
       --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
       -I ${CMAKE_CURRENT_SOURCE_DIR}
+      --dependency_out=${CMAKE_CURRENT_BINARY_DIR}/generated/${PROTO_NAME}.d
       --experimental_allow_proto3_optional
       ${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_FILE}
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_FILE}"
+    DEPFILE "${CMAKE_CURRENT_BINARY_DIR}/generated/${PROTO_NAME}.d"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_FILE}" "${ZCHAT_PROTOC_EXECUTABLE}"
+      gRPC::grpc_cpp_plugin
     VERBATIM)
   list(APPEND PROTO_SRCS ${PROTO_SRC})
   list(APPEND PROTO_HDRS ${PROTO_HDR})

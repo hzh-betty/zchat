@@ -1,20 +1,9 @@
+import os
+import shutil
+from pathlib import Path
+
 from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain
-import os
-
-DEPENDENCY_VERSIONS = {
-    "amqp-cpp": "4.3.27",
-    "cmake": "4.3.2",
-    "drogon": "1.9.13",
-    "etcd-cpp-apiv3": "0.15.4",
-    "grpc": "1.78.1",
-    "libevent": "2.1.12",
-    "libsodium": "1.0.22",
-    "ninja": "1.13.2",
-    "nlohmann_json": "3.12.0",
-    "protobuf": "6.33.5",
-    "spdlog": "1.17.0",
-}
 
 required_conan_version = ">=2.28"
 
@@ -51,51 +40,36 @@ class ZChatRecipe(ConanFile):
         "boost/*:without_wave": True,
 
         "cpprestsdk/*:with_websockets": False,
-        
+
         "drogon/*:with_mysql": True,
         "drogon/*:with_redis": True,
-        
+
+        "mariadb-connector-c/*:with_curl": False,
+
         "grpc/*:csharp_plugin": False,
         "grpc/*:node_plugin": False,
         "grpc/*:objective_c_plugin": False,
         "grpc/*:php_plugin": False,
         "grpc/*:python_plugin": False,
         "grpc/*:ruby_plugin": False,
-        
-        "libcurl/*:with_dict": False,
-        "libcurl/*:with_file": False,
-        "libcurl/*:with_ftp": False,
-        "libcurl/*:with_gopher": False,
-        "libcurl/*:with_imap": False,
-        "libcurl/*:with_mqtt": False,
-        "libcurl/*:with_pop3": False,
-        "libcurl/*:with_rtsp": False,
-        "libcurl/*:with_smtp": False,
-        "libcurl/*:with_telnet": False,
-        "libcurl/*:with_tftp": False,
-        "libcurl/*:with_websockets": False,
-        
-        
+
         "libevent/*:with_openssl": True,
 
         "nlohmann_json/*:header_only": False,
     }
 
-    def requirements(self):
-        # 核心直接依赖库
-        self.requires(f"drogon/{DEPENDENCY_VERSIONS['drogon']}")
-        self.requires(f"amqp-cpp/{DEPENDENCY_VERSIONS['amqp-cpp']}")
-        self.requires(f"etcd-cpp-apiv3/{DEPENDENCY_VERSIONS['etcd-cpp-apiv3']}")
-        self.requires(f"grpc/{DEPENDENCY_VERSIONS['grpc']}")
-        self.requires(f"protobuf/{DEPENDENCY_VERSIONS['protobuf']}")
-        self.requires(f"spdlog/{DEPENDENCY_VERSIONS['spdlog']}")
-        self.requires(f"libevent/{DEPENDENCY_VERSIONS['libevent']}")
-        self.requires(f"libsodium/{DEPENDENCY_VERSIONS['libsodium']}")
-        self.requires(f"nlohmann_json/{DEPENDENCY_VERSIONS['nlohmann_json']}")
-
-    def build_requirements(self):
-        self.tool_requires(f"cmake/{DEPENDENCY_VERSIONS['cmake']}")
-        self.tool_requires(f"ninja/{DEPENDENCY_VERSIONS['ninja']}")
+    requires = (
+        "drogon/1.9.13",
+        "amqp-cpp/4.3.27",
+        "etcd-cpp-apiv3/0.15.4",
+        "grpc/1.78.1",
+        "protobuf/6.33.5",
+        "spdlog/1.17.0",
+        "libevent/2.1.12",
+        "libsodium/1.0.22",
+        "nlohmann_json/3.12.0",
+    )
+    tool_requires = "cmake/4.3.2", "ninja/1.13.2"
 
     def layout(self):
         self.folders.source = "."
@@ -110,8 +84,25 @@ class ZChatRecipe(ConanFile):
         tc.generate()
 
     def build(self):
+        build_folder = Path(self.build_folder)
+        dependency_paths = "\n".join(
+            sorted(
+                f"{dependency.ref}={dependency.package_folder}"
+                for dependency in self.dependencies.host.values()
+                if dependency.package_folder
+            )
+        )
+        dependency_marker = build_folder / ".conan-dependency-paths"
+        previous_paths = dependency_marker.read_text() if dependency_marker.exists() else ""
+        if previous_paths != dependency_paths and (build_folder / "CMakeCache.txt").exists():
+            self.output.info("Conan package paths changed; refreshing the CMake cache")
+            shutil.rmtree(build_folder / "CMakeFiles", ignore_errors=True)
+            for filename in ("CMakeCache.txt", "build.ninja", ".ninja_deps", ".ninja_log"):
+                (build_folder / filename).unlink(missing_ok=True)
+
         cmake = CMake(self)
         cmake.configure()
+        dependency_marker.write_text(dependency_paths)
         env_targets = os.environ.get("ZCHAT_BUILD_TARGETS", "")
         if env_targets:
             for target in env_targets.split():

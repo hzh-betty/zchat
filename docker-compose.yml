@@ -1,12 +1,6 @@
-x-zchat-build: &zchat-build
-  context: .
-  dockerfile: server/Dockerfile.service
-  args:
-    BUILD_PRESET: ${ZCHAT_BUILD_PRESET:-conan2-release}
-
 x-zchat-service-base: &zchat-service-base
-  image: zchat-service:latest
-  build: *zchat-build
+  image: ${ZCHAT_IMAGE:-zchat-service:latest}
+  pull_policy: never
   restart: always
   networks:
     - zchat-network
@@ -69,7 +63,33 @@ x-healthcheck-defaults: &healthcheck-defaults
   interval: 10s
   timeout: 5s
   retries: 10
-  start_period: 10s
+  start_period: 30s
+  start_interval: 2s
+
+x-mysql-env: &mysql-env
+  MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
+  MYSQL_USER: ${MYSQL_USER:-}
+  MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+  ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
+
+x-redis-env: &redis-env
+  ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
+  ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+
+x-etcd-env: &etcd-env
+  ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
+  ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
+  ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
+
+x-es-env: &es-env
+  ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
+  ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
+  ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
+
+x-rabbitmq-env: &rabbitmq-env
+  ZCHAT_RABBITMQ_PORT: ${ZCHAT_RABBITMQ_PORT:-5671}
+  RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
+  RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
 
 services:
   mysql:
@@ -240,18 +260,9 @@ services:
   file-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env, *mysql-env, *redis-env, *etcd-env]
       SERVICE_BINARY: zchat_file_service
       ZCHAT_ADVERTISE_HOST: file-service
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
-      MYSQL_USER: ${MYSQL_USER:-}
-      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
-      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
-      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
-      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
-      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
-      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
-      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
     volumes:
       - *mysql-ca-volume
       - *grpc-certs-volume
@@ -271,12 +282,9 @@ services:
   speech-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *grpc-tls-env]
+      <<: [*docker-service-hosts, *service-ports, *grpc-tls-env, *etcd-env]
       SERVICE_BINARY: zchat_speech_service
       ZCHAT_ADVERTISE_HOST: speech-service
-      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
-      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
-      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
       ZCHAT_SPEECH_APP_ID: ${ZCHAT_SPEECH_APP_ID:-}
       ZCHAT_SPEECH_API_KEY_FILE: /run/secrets/speech_api_key
       ZCHAT_SPEECH_SECRET_KEY_FILE: /run/secrets/speech_secret_key
@@ -296,24 +304,9 @@ services:
   transmite-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env, *mysql-env, *redis-env, *etcd-env, *es-env, *rabbitmq-env]
       SERVICE_BINARY: zchat_transmite_service
       ZCHAT_ADVERTISE_HOST: transmite-service
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
-      MYSQL_USER: ${MYSQL_USER:-}
-      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
-      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
-      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
-      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
-      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
-      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
-      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
-      ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
-      ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
-      ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
-      ZCHAT_RABBITMQ_PORT: ${ZCHAT_RABBITMQ_PORT:-5671}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
-      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
     volumes:
       - *mysql-ca-volume
       - *grpc-certs-volume
@@ -342,22 +335,9 @@ services:
   message-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env, *mysql-env, *etcd-env, *es-env, *rabbitmq-env]
       SERVICE_BINARY: zchat_message_service
       ZCHAT_ADVERTISE_HOST: message-service
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
-      MYSQL_USER: ${MYSQL_USER:-}
-      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
-      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
-      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
-      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
-      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
-      ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
-      ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
-      ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
-      ZCHAT_RABBITMQ_PORT: ${ZCHAT_RABBITMQ_PORT:-5671}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
-      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass
     volumes:
       - *mysql-ca-volume
       - *grpc-certs-volume
@@ -384,21 +364,9 @@ services:
   friend-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env, *mysql-env, *redis-env, *etcd-env, *es-env]
       SERVICE_BINARY: zchat_friend_service
       ZCHAT_ADVERTISE_HOST: friend-service
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
-      MYSQL_USER: ${MYSQL_USER:-}
-      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
-      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
-      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
-      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
-      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
-      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
-      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
-      ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
-      ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
-      ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
     volumes:
       - *mysql-ca-volume
       - *grpc-certs-volume
@@ -423,21 +391,9 @@ services:
   user-service:
     <<: *zchat-service-base
     environment:
-      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env]
+      <<: [*docker-service-hosts, *service-ports, *mysql-client-environment, *grpc-tls-env, *mysql-env, *redis-env, *etcd-env, *es-env]
       SERVICE_BINARY: zchat_user_service
       ZCHAT_ADVERTISE_HOST: user-service
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-zchat}
-      MYSQL_USER: ${MYSQL_USER:-}
-      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
-      ZCHAT_MYSQL_PORT: ${ZCHAT_MYSQL_PORT:-3306}
-      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
-      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
-      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
-      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
-      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
-      ZCHAT_ES_PORT: ${ZCHAT_ES_PORT:-9200}
-      ZCHAT_ELASTICSEARCH_USER: ${ZCHAT_ELASTICSEARCH_USER:-}
-      ZCHAT_ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
       ZCHAT_SMS_ACCESS_KEY_ID_FILE: /run/secrets/sms_access_key_id
       ZCHAT_SMS_ACCESS_KEY_SECRET_FILE: /run/secrets/sms_access_key_secret
       ZCHAT_SMS_SIGN_NAME: ${ZCHAT_SMS_SIGN_NAME:-}
@@ -468,15 +424,19 @@ services:
 
   gateway:
     <<: *zchat-service-base
+    # All seven services use this image; define its build exactly once.
+    build:
+      context: .
+      dockerfile: server/Dockerfile.service
+      args:
+        BUILD_PRESET: ${ZCHAT_BUILD_PRESET:-conan2-release}
+        BUILD_JOBS: ${BUILD_JOBS:-4}
+        UBUNTU_MIRROR: ${ZCHAT_UBUNTU_MIRROR:-http://mirrors.tuna.tsinghua.edu.cn/ubuntu}
+        PYPI_INDEX_URL: ${ZCHAT_PYPI_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
     environment:
-      <<: [*docker-service-hosts, *service-ports, *grpc-tls-env]
+      <<: [*docker-service-hosts, *service-ports, *grpc-tls-env, *redis-env, *etcd-env]
       SERVICE_BINARY: zchat_gateway
       ZCHAT_ADVERTISE_HOST: gateway
-      ZCHAT_REDIS_PORT: ${ZCHAT_REDIS_PORT:-6379}
-      ZCHAT_REDIS_PASSWORD_FILE: /run/secrets/redis_password
-      ZCHAT_ETCD_PORT: ${ZCHAT_ETCD_PORT:-2379}
-      ZCHAT_ETCD_USERNAME: ${ZCHAT_ETCD_USERNAME:-}
-      ZCHAT_ETCD_PASSWORD_FILE: /run/secrets/etcd_password
     volumes:
       - *grpc-certs-volume
     secrets:

@@ -1,95 +1,61 @@
-# ==========================================
-# Common Conan/CMake service image
-# ==========================================
-FROM ubuntu:22.04 AS conan-deps
+# syntax=docker/dockerfile:1
+FROM ubuntu:26.04 AS toolchain
 
-ENV DEBIAN_FRONTEND=noninteractive
+ARG UBUNTU_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/ubuntu
+ARG PYPI_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV DEBIAN_FRONTEND=noninteractive CC=clang-21 CXX=clang++-21
+RUN sed -i \
+    -e "s|http://archive.ubuntu.com/ubuntu/|${UBUNTU_MIRROR}/|g" \
+    -e "s|http://security.ubuntu.com/ubuntu/|${UBUNTU_MIRROR}/|g" \
+    /etc/apt/sources.list.d/ubuntu.sources
+RUN --mount=type=cache,id=zchat-apt-lists-resolute,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,id=zchat-apt-packages-resolute,target=/var/cache/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+        build-essential clang-21 gcc-15 g++-15 cmake ninja-build \
+        pkg-config python3 python3-venv git ca-certificates
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    clang \
-    cmake \
-    ninja-build \
-    pkg-config \
-    python3 \
-    python3-pip \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+ENV PATH=/opt/conan-venv/bin:$PATH
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m venv /opt/conan-venv \
+    && pip install --index-url "${PYPI_INDEX_URL}" "conan==2.29.0"
 
-ENV CC=clang
-ENV CXX=clang++
-
-RUN pip3 install "conan>=2.28"
-
+FROM toolchain AS builder
 WORKDIR /app
-COPY conanfile.py .
+ARG BUILD_PRESET=conan2-release
+ARG BUILD_JOBS=4
+ARG TARGETARCH
+
+COPY conanfile.py conan.lock CMakeLists.txt ./
+COPY conan/deployers ./conan/deployers
 COPY profiles ./profiles
-
-ARG BUILD_PRESET=conan2-release
-
-RUN --mount=type=cache,id=zchat-conan-cache,target=/root/.conan2,sharing=locked \
-    if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
-        conan install . --output-folder=/app/build/${BUILD_PRESET} --build=missing -pr:h profiles/linux-clang-debug -pr:b profiles/linux-clang-release ; \
-    else \
-        conan install . --output-folder=/app/build/${BUILD_PRESET} --build=missing -pr:h profiles/linux-clang-release -pr:b profiles/linux-clang-release ; \
-    fi
-
-FROM conan-deps AS builder
-
-ARG BUILD_PRESET=conan2-release
-
-COPY CMakeLists.txt ./
-COPY server/src ./server/src
-COPY server/proto ./server/proto
-COPY server/config ./server/config
-COPY server/cmake ./server/cmake
 COPY server/CMakeLists.txt ./server/CMakeLists.txt
+COPY server/proto ./server/proto
+COPY server/src ./server/src
+COPY server/scripts/build-image.sh ./server/scripts/build-image.sh
 
 RUN --mount=type=cache,id=zchat-conan-cache,target=/root/.conan2,sharing=locked \
-    if [ "$BUILD_PRESET" = "conan2-debug" ] ; then \
-        host_profile=profiles/linux-clang-debug ; \
-    else \
-        host_profile=profiles/linux-clang-release ; \
-    fi \
-    && conan build . \
-        --output-folder=/app/build/${BUILD_PRESET} \
-        -pr:h $host_profile \
-        -pr:b profiles/linux-clang-release \
-        -c tools.build:jobs=4 \
-    && mkdir -p /app/lib/plugin \
-    && find /root/.conan2 -path '*/lib/plugin/*.so' -exec cp -L {} /app/lib/plugin/ \;
+    --mount=type=cache,id=zchat-build-clang21-${TARGETARCH}-${BUILD_PRESET},target=/app/build,sharing=locked \
+    sh server/scripts/build-image.sh
 
-RUN --mount=type=cache,id=zchat-conan-cache,target=/root/.conan2,sharing=locked \
-    mkdir -p /app/lib \
-    && ssl_path="$(ldd /app/build/${BUILD_PRESET}/bin/zchat_transmite_service | awk '$1 == "libssl.so.3" { print $3 }')" \
-    && crypto_path="$(ldd /app/build/${BUILD_PRESET}/bin/zchat_transmite_service | awk '$1 == "libcrypto.so.3" { print $3 }')" \
-    && case "$ssl_path:$crypto_path" in /root/.conan2/*:/root/.conan2/*) ;; *) exit 1 ;; esac \
-    && install -m 755 "$ssl_path" "$crypto_path" /app/lib/
-
-# ==========================================
-# Runner
-# ==========================================
-FROM ubuntu:22.04 AS runner
-
+FROM ubuntu:26.04 AS runner
+ARG UBUNTU_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/ubuntu
 ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y \
-    ca-certificates \
-    libstdc++6 \
-    libuuid1 \
-    && rm -rf /var/lib/apt/lists/*
+RUN sed -i \
+    -e "s|http://archive.ubuntu.com/ubuntu/|${UBUNTU_MIRROR}/|g" \
+    -e "s|http://security.ubuntu.com/ubuntu/|${UBUNTU_MIRROR}/|g" \
+    /etc/apt/sources.list.d/ubuntu.sources
+RUN --mount=type=cache,id=zchat-apt-lists-resolute,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,id=zchat-apt-packages-resolute,target=/var/cache/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+        ca-certificates libstdc++6 libuuid1
 
 WORKDIR /app
+ENV MARIADB_PLUGIN_DIR=/app/lib/plugin LD_LIBRARY_PATH=/app/lib
+COPY --from=builder /app/runtime/ /app/
 
-ARG BUILD_PRESET=conan2-release
-
-ENV MARIADB_PLUGIN_DIR=/app/lib/plugin
-ENV LD_LIBRARY_PATH=/app/lib
-
-COPY --from=builder /app/build/${BUILD_PRESET}/bin /app/bin
-COPY --from=builder /app/lib/plugin /app/lib/plugin
-COPY --from=builder /app/lib/libssl.so.3 /app/lib/libssl.so.3
-COPY --from=builder /app/lib/libcrypto.so.3 /app/lib/libcrypto.so.3
-COPY --from=builder /app/server/config /app/server/config
-
+COPY server/config ./server/config
 CMD ["/bin/sh", "-c", "exec /app/bin/${SERVICE_BINARY}"]

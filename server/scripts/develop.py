@@ -18,7 +18,7 @@ from typing import Sequence
 
 SUPPORTED_PRESETS = ("conan2-debug", "conan2-release")
 DEFAULT_PRESET = "conan2-debug"
-DEFAULT_BUILD_JOBS = int(os.environ.get("BUILD_JOBS", "1"))
+DEFAULT_BUILD_JOBS = int(os.environ.get("BUILD_JOBS", "4"))
 DEFAULT_STARTUP_GRACE_SECONDS = float(os.environ.get("STARTUP_GRACE_SECONDS", "1"))
 
 
@@ -175,7 +175,9 @@ def install_conan(preset: str, jobs: int, env: dict[str, str]) -> None:
             str(paths.root_dir),
             f"--output-folder={paths.build_dir(preset)}",
             "--build=missing",
-            "-c",
+            "-cc",
+            "core.graph:compatibility_mode=optimized",
+            "-c:a",
             f"tools.build:jobs={jobs}",
             "-pr:h",
             str(host_profile),
@@ -184,11 +186,6 @@ def install_conan(preset: str, jobs: int, env: dict[str, str]) -> None:
         ],
         env=env,
     )
-
-
-def conan_generators_exist(preset: str) -> bool:
-    paths = get_paths()
-    return (paths.build_dir(preset) / "generators").is_dir()
 
 
 def build_services(preset: str, jobs: int, env: dict[str, str], services: Sequence[Service]) -> dict[str, str]:
@@ -207,12 +204,15 @@ def build_services(preset: str, jobs: int, env: dict[str, str], services: Sequen
             "conan",
             "build",
             str(paths.root_dir),
+            "--build=missing",
+            "-cc",
+            "core.graph:compatibility_mode=optimized",
             f"--output-folder={build_dir}",
             "-pr:h",
             str(host_profile),
             "-pr:b",
             str(build_profile),
-            "-c",
+            "-c:a",
             f"tools.build:jobs={jobs}",
         ],
         env=build_env,
@@ -404,9 +404,7 @@ def cmd_install(args: argparse.Namespace) -> None:
 def cmd_build(args: argparse.Namespace) -> None:
     services = selected_services(args.service)
     env = conan_home_env()
-    if not args.force_install and conan_generators_exist(args.preset):
-        print("Conan dependencies already installed, skipping install (use --force-install to override)")
-    else:
+    if args.force_install:
         install_conan(args.preset, args.jobs, env)
     build_services(args.preset, args.jobs, env, services)
 
@@ -419,9 +417,7 @@ def cmd_start(args: argparse.Namespace) -> None:
     paths.log_dir.mkdir(parents=True, exist_ok=True)
 
     if args.build:
-        if not args.force_install and conan_generators_exist(args.preset):
-            print("Conan dependencies already installed, skipping install (use --force-install to override)")
-        else:
+        if args.force_install:
             install_conan(args.preset, args.jobs, env)
         env = build_services(args.preset, args.jobs, env, services)
     else:

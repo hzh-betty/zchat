@@ -1,0 +1,28 @@
+# Ubuntu 26.04 (WSL and Docker): x86_64, Clang 21, GCC 15 libstdc++.
+[settings]
+os=Linux
+arch=x86_64
+compiler=clang
+compiler.version=21
+compiler.libcxx=libstdc++11
+compiler.cppstd=20
+
+[options]
+*:shared=False
+openssl/*:shared=True
+# etcd needs grpc_cpp_plugin in the build context. Keep both contexts on the
+# same minimal gRPC package so Conan can reuse one binary.
+grpc/*:csharp_plugin=False
+grpc/*:node_plugin=False
+grpc/*:objective_c_plugin=False
+grpc/*:php_plugin=False
+grpc/*:python_plugin=False
+grpc/*:ruby_plugin=False
+
+[conf]
+tools.cmake.cmaketoolchain:generator=Ninja
+tools.build:compiler_executables={"c": "clang-21", "cpp": "clang++-21"}
+tools.build:cxxflags=["--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/15", "-Wno-error=nullability-extension"]
+tools.build:sharedlinkflags=["--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/15"]
+tools.build:exelinkflags=["--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/15", "-Wl,--copy-dt-needed-entries"]
+tools.build:jobs=4
